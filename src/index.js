@@ -10,6 +10,20 @@
 //  - limite de payload
 //  - logs com PII minimizado
 
+
+const PROD_HOST = "api.apiqagent.com";
+
+function isProdAllowedHost(request, env) {
+  const host = (request.headers.get("host") || "").toLowerCase();
+
+  // Se quiser manter dev/local liberado, controle por env:
+  // env.ENVIRONMENT = "production" | "development"
+  const isProd = (env.ENVIRONMENT || "production") === "production";
+
+  if (!isProd) return true;
+  return host === PROD_HOST;
+}
+
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
   headers.set("Content-Type", "application/json; charset=utf-8");
@@ -352,6 +366,10 @@ export default {
   async fetch(req, env) {
     try {
       const url = new URL(req.url);
+       // 🔒 Bloqueia hosts não autorizados em produção (inclui *.workers.dev)
+      if (!isProdAllowedHost(req, env)) {
+        return json({ ok: false, message: "Forbidden" }, { status: 403, headers: corsHeaders() });
+      }
 
       if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders() });
