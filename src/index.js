@@ -366,7 +366,7 @@ export default {
   async fetch(req, env) {
     try {
       const url = new URL(req.url);
-       // 🔒 Bloqueia hosts não autorizados em produção (inclui *.workers.dev)
+      // 🔒 Bloqueia hosts não autorizados em produção (inclui *.workers.dev)
       if (!isProdAllowedHost(req, env)) {
         return json({ ok: false, message: "Forbidden" }, { status: 403, headers: corsHeaders() });
       }
@@ -388,6 +388,89 @@ export default {
       if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
         return await handleGenerateTests(req, env);
       }
+      // Página de Política de Privacidade
+      if (url.pathname === "/privacy-policy") {
+        return new Response(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Política de Privacidade — QAgent</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      line-height: 1.6;
+      padding: 0 20px;
+      color: #111;
+    }
+    h1, h2 {
+      margin-top: 32px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Política de Privacidade — QAgent</h1>
+
+<p>Última atualização: Janeiro de 2026</p>
+
+<h2>1. Informações coletadas</h2>
+<p>
+A extensão QAgent não coleta, armazena ou compartilha informações pessoais identificáveis.
+</p>
+
+<h2>2. Dados processados</h2>
+<p>
+A extensão processa apenas informações fornecidas diretamente pelo usuário,
+como texto de tarefas do Jira, descrições técnicas e contexto informado manualmente,
+exclusivamente com o objetivo de gerar casos de teste.
+</p>
+
+<h2>3. Processamento externo</h2>
+<p>
+Para gerar os resultados, os dados enviados pelo usuário podem ser processados
+por serviços de inteligência artificial através da API do QAgent.
+Nenhum dado é utilizado para treinamento de modelos.
+</p>
+
+<h2>4. Armazenamento</h2>
+<p>
+Os dados são armazenados apenas localmente no navegador do usuário.
+O QAgent não mantém banco de dados de conteúdo de tarefas, testes ou documentos.
+</p>
+
+<h2>5. Compartilhamento</h2>
+<p>
+Nenhuma informação pessoal é vendida, compartilhada ou utilizada para fins publicitários.
+</p>
+
+<h2>6. Segurança</h2>
+<p>
+Toda comunicação ocorre via HTTPS e utiliza mecanismos de autenticação por token.
+</p>
+
+<h2>7. Alterações</h2>
+<p>
+Esta política pode ser atualizada futuramente. Alterações relevantes serão refletidas nesta página.
+</p>
+
+<h2>8. Contato</h2>
+<p>
+Em caso de dúvidas, entre em contato pelo e-mail:
+<strong>contato@apiqagent.com</strong>
+</p>
+
+</body>
+</html>
+`, {
+          headers: { "Content-Type": "text/html; charset=utf-8" }
+        });
+      }
+
+
 
       return json({ status: "not_found", message: "Endpoint inexistente." }, { status: 404, headers: corsHeaders() });
     } catch (e) {
