@@ -7,6 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: CLOUDFLARE_API_TOKEN   # <- nome EXATO do Environment que você criou
     steps:
       - uses: actions/checkout@v4
 
