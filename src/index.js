@@ -13,6 +13,15 @@
 
 const PROD_HOST = "api.apiqagent.com";
 
+const TRIAL_DAYS = 6;
+const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+
+function isAdminToken(env, token) {
+  const raw = (env?.QAGENT_ADMIN_TOKENS || "").trim();
+  if (!raw) return false;
+  return raw.split(",").map(s => s.trim()).filter(Boolean).includes(token);
+}
+
 function isProdAllowedHost(request, env) {
   const host = (request.headers.get("host") || "").toLowerCase();
 
@@ -106,24 +115,27 @@ async function readJsonWithLimit(req, maxBytes) {
 }
 
 function validateToken(env, token) {
-  const raw = (env?.QAGENT_LICENSE_TOKENS || "").trim();
-  const allowed = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
   if (!token) {
     const err = new Error("Token ausente. Vá em IA e cole seu license token.");
     err.status = 401;
     throw err;
   }
 
-  if (allowed.length && !allowed.includes(token)) {
-    const err = new Error("Token inválido/expirado.");
+  // mínimo anti-abuso
+  if (token.length < 24) {
+    const err = new Error("Token inválido.");
+    err.status = 403;
+    throw err;
+  }
+
+  // charset seguro
+  if (!/^[A-Za-z0-9_\-\.]+$/.test(token)) {
+    const err = new Error("Token inválido (formato).");
     err.status = 403;
     throw err;
   }
 }
+
 
 function normalizeCases(payload) {
   if (!payload) return null;
@@ -188,6 +200,8 @@ async function handleDebugOpenAIModels(env) {
 async function handleGenerateTests(req, env) {
   const token = getBearerToken(req);
   validateToken(env, token);
+  const license = await getOrCreateLicense(env, token);
+  assertPremiumAllowed(license);
 
   const windowMs = getEnvNum(env, "RATE_LIMIT_WINDOW_MS", 60_000);
   const max = getEnvNum(env, "RATE_LIMIT_MAX", 20);
@@ -362,32 +376,131 @@ ${(ctx.expected || "").trim() || "(vazio)"}`;
   return json(normalized, { headers: corsHeaders() });
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function addMsToIso(ms) {
+  return new Date(Date.now() + ms).toISOString();
+}
+
+function daysLeft(expiresAt) {
+  const exp = Date.parse(expiresAt || "");
+  if (!Number.isFinite(exp)) return 0;
+  const diff = exp - Date.now();
+  return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
+}
+
+function licenseKeyForToken(token) {
+  // usa safeId(token) que você já tem (hash)
+  return `license:t:${safeId(token)}`;
+}
+
+async function kvGetJson(env, key) {
+  const raw = await env.QAGENT_KV.get(key);
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function kvPutJson(env, key, value) {
+  await env.QAGENT_KV.put(key, JSON.stringify(value));
+}
+
+function normalizeLicenseStatus(lic) {
+  // expira automaticamente se passou do expiresAt
+  if (!lic?.expiresAt) return lic;
+
+  const exp = Date.parse(lic.expiresAt);
+  if (Number.isFinite(exp) && Date.now() > exp && lic.status !== "expired") {
+    return { ...lic, status: "expired", updatedAt: nowIso() };
+  }
+  return lic;
+}
+
+async function getOrCreateLicense(env, token) {
+  if (isAdminToken(env, token)) {
+    return {
+      licenseId: "admin",
+      status: "active",
+      plan: "pro",
+      expiresAt: "2999-01-01T00:00:00.000Z",
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+  }
+  if (!env?.QAGENT_KV) {
+    const err = new Error("KV não configurado (env.QAGENT_KV ausente).");
+    err.status = 500;
+    throw err;
+  }
+
+  const key = licenseKeyForToken(token);
+  let lic = await kvGetJson(env, key);
+
+  if (!lic) {
+    const createdAt = nowIso();
+    lic = {
+      licenseId: `lic_${crypto.randomUUID()}`,
+      status: "trial",
+      plan: "pro", // trial normalmente libera tudo
+      expiresAt: addMsToIso(TRIAL_MS),
+      createdAt,
+      updatedAt: createdAt,
+    };
+    await kvPutJson(env, key, lic);
+    return lic;
+  }
+
+  const updated = normalizeLicenseStatus(lic);
+  if (updated.status !== lic.status) {
+    await kvPutJson(env, key, updated);
+    return updated;
+  }
+
+  return lic;
+}
+
+function assertPremiumAllowed(license) {
+  if (!license) {
+    const err = new Error("Licença não encontrada.");
+    err.status = 403;
+    throw err;
+  }
+
+  if (license.status !== "trial" && license.status !== "active") {
+    const err = new Error("Seu trial expirou. Ative o plano para continuar usando recursos premium.");
+    err.status = 403;
+    throw err;
+  }
+}
+
+async function handleGetLicense(req, env) {
+  const token = getBearerToken(req);
+  validateToken(env, token); // mantém seu modelo atual de tokens permitidos
+
+  const lic = await getOrCreateLicense(env, token);
+
+  return json(
+    {
+      status: "ok",
+      license: {
+        status: lic.status,
+        plan: lic.plan,
+        expiresAt: lic.expiresAt,
+        daysLeft: daysLeft(lic.expiresAt),
+      },
+    },
+    { status: 200, headers: corsHeaders() }
+  );
+}
+
+
 export default {
   async fetch(req, env) {
     try {
+
+
+
       const url = new URL(req.url);
-      // 🔒 Bloqueia hosts não autorizados em produção (inclui *.workers.dev)
-      if (!isProdAllowedHost(req, env)) {
-        return json({ ok: false, message: "Forbidden" }, { status: 403, headers: corsHeaders() });
-      }
-
-      if (req.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: corsHeaders() });
-      }
-
-      // health: aceita GET ou POST
-      if (url.pathname === "/health") {
-        return json({ ok: true }, { status: 200, headers: corsHeaders() });
-      }
-
-      // debug: só GET
-      if (url.pathname === "/debug/openai-models" && req.method === "GET") {
-        return await handleDebugOpenAIModels(env);
-      }
-
-      if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
-        return await handleGenerateTests(req, env);
-      }
       // Página de Política de Privacidade
       if (url.pathname === "/privacy-policy") {
         return new Response(`
@@ -469,6 +582,33 @@ Em caso de dúvidas, entre em contato pelo e-mail:
           headers: { "Content-Type": "text/html; charset=utf-8" }
         });
       }
+      // 🔒 Bloqueia hosts não autorizados em produção (inclui *.workers.dev)
+      if (!isProdAllowedHost(req, env)) {
+        return json({ ok: false, message: "Forbidden" }, { status: 403, headers: corsHeaders() });
+      }
+
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders() });
+      }
+
+      // health: aceita GET ou POST
+      if (url.pathname === "/health") {
+        return json({ ok: true }, { status: 200, headers: corsHeaders() });
+      }
+
+      // debug: só GET
+      if (url.pathname === "/debug/openai-models" && req.method === "GET") {
+        return await handleDebugOpenAIModels(env);
+      }
+      // get pagamentos 
+      if (url.pathname === "/v1/license" && req.method === "GET") {
+        return await handleGetLicense(req, env);
+      }
+      // generate-tests: só POST
+      if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
+        return await handleGenerateTests(req, env);
+      }
+
 
 
 

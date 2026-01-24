@@ -9,6 +9,14 @@
     "RATE_LIMIT_WINDOW_MS": "90000",
     "RATE_LIMIT_MAX": "200",
     // Limite de payload (bytes)
-    "MAX_BODY_BYTES": "250000"
+    "MAX_BODY_BYTES": "250000",
+    "QAGENT_ADMIN_TOKENS" :"dev-token-123",
+    "kv_namespaces": [
+      {
+        "binding": "QAGENT_KV",
+        "id": "b701fa48f0ec4e14970843f0c6294d47",
+        "preview_id": "<ID_OF_PREVIEW_KV_NAMESPACE_FOR_LOCAL_DEVELOPMENT>"
+      }
+    ]
   }
 }
