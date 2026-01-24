@@ -497,9 +497,6 @@ async function handleGetLicense(req, env) {
 export default {
   async fetch(req, env) {
     try {
-
-
-
       const url = new URL(req.url);
       // Página de Política de Privacidade
       if (url.pathname === "/privacy-policy") {

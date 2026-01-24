@@ -1,22 +1,29 @@
 {
-  "name": "qagent-gateway",
-  "compatibility_date": "2026-01-19",
-  "main": "src/index.js",
-  "vars": {
-    // Tokens válidos (dev). Em produção, migre para KV/DB.
-    "OPENAI_TIMEOUT_MS": "90000",
-    // Rate limit simples (por token): 20 req / 60s
-    "RATE_LIMIT_WINDOW_MS": "90000",
-    "RATE_LIMIT_MAX": "200",
-    // Limite de payload (bytes)
-    "MAX_BODY_BYTES": "250000",
-    "QAGENT_ADMIN_TOKENS" :"dev-token-123",
-    "kv_namespaces": [
-      {
-        "binding": "QAGENT_KV",
-        "id": "b701fa48f0ec4e14970843f0c6294d47",
-        "preview_id": "<ID_OF_PREVIEW_KV_NAMESPACE_FOR_LOCAL_DEVELOPMENT>"
-      }
-    ]
-  }
+	"name": "qagent-gateway",
+	"compatibility_date": "2026-01-19",
+	"main": "src/index.js",
+	"vars": {
+		// Tokens válidos (dev). Em produção, migre para KV/DB.
+		"OPENAI_TIMEOUT_MS": "90000",
+		// Rate limit simples (por token): 20 req / 60s
+		"RATE_LIMIT_WINDOW_MS": "90000",
+		"RATE_LIMIT_MAX": "200",
+		// Limite de payload (bytes)
+		"MAX_BODY_BYTES": "250000",
+		"QAGENT_ADMIN_TOKENS": "dev-token-123",
+		"kv_namespaces": [
+			{
+				"binding": "QAGENT_KV",
+				"id": "b701fa48f0ec4e14970843f0c6294d47",
+				"preview_id": "<ID_OF_PREVIEW_KV_NAMESPACE_FOR_LOCAL_DEVELOPMENT>"
+			}
+		]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "QAGENT_KV",
+			"id": "64fb68d7aa714061a3082d259df3cdff",
+			"remote": true
+		}
+	]
 }
