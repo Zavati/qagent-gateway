@@ -39,14 +39,24 @@ function json(data, init = {}) {
   return new Response(JSON.stringify(data, null, 2), { ...init, headers });
 }
 
-function corsHeaders(extra = {}) {
+function corsHeaders(req = null, env = {}, extra = {}) {
+  // env.QAGENT_ALLOWED_ORIGINS can be "*" (default) or a comma-separated list of allowed origins
+  const allowed = (env?.QAGENT_ALLOWED_ORIGINS || "*").trim();
+  let origin = "*";
+  if (allowed !== "*") {
+    const reqOrigin = req?.headers?.get?.("origin") || "";
+    const allowedList = allowed.split(",").map(s => s.trim()).filter(Boolean);
+    if (reqOrigin && allowedList.includes(reqOrigin)) origin = reqOrigin;
+    else origin = "null"; // deliberately block when origin not allowed
+  }
+
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     ...extra,
   };
-}
+} 
 
 function getEnvNum(env, key, fallback) {
   const v = env?.[key];
@@ -58,6 +68,15 @@ function getBearerToken(req) {
   const h = req.headers.get("Authorization") || "";
   const m = h.match(/^Bearer\s+(.+)$/i);
   return (m?.[1] || "").trim();
+}
+
+// Structured logging helper (JSON) - helps observability
+function log(type, payload = {}) {
+  try {
+    console.log(JSON.stringify({ t: type, time: new Date().toISOString(), ...payload }));
+  } catch (e) {
+    console.log(type, payload);
+  }
 }
 
 // --- Rate limit (memória do Worker) ---
@@ -107,7 +126,7 @@ async function readJsonWithLimit(req, maxBytes) {
   try {
     return JSON.parse(text);
   } catch {
-    console.log("[QAGENT][GW] invalid_json_body_head:", text.slice(0, 300));
+    log("invalid_json_body_head", { head: text.slice(0, 300) });
     const err = new Error("JSON inválido.");
     err.status = 400;
     throw err;
@@ -146,6 +165,27 @@ function normalizeCases(payload) {
   return null;
 }
 
+function validateGenerateTestsBody(body) {
+  if (!body || typeof body !== "object") {
+    const err = new Error("Body inválido.");
+    err.status = 400;
+    throw err;
+  }
+  const hasJira = body.jira && (body.jira.key || body.jira.title || body.jira.description);
+  const hasSource = body.source && body.source.issueKey;
+  if (!hasJira && !hasSource) {
+    const err = new Error("Payload inválido: faltando 'jira' ou 'source.issueKey'.");
+    err.status = 400;
+    throw err;
+  }
+  if (body.format && !["step", "bdd"].includes(String(body.format).toLowerCase())) {
+    const err = new Error("Formato inválido.");
+    err.status = 400;
+    throw err;
+  }
+}
+
+
 // ✅ fetch com timeout + captura REAL de erro (inclusive quando status=0)
 async function fetchTextWithTimeout(url, init, timeoutMs) {
   const controller = new AbortController();
@@ -177,7 +217,7 @@ async function fetchTextWithTimeout(url, init, timeoutMs) {
 // ✅ Diagnóstico: dá pra chamar e ver se o Worker consegue falar com OpenAI e qual status vem.
 async function handleDebugOpenAIModels(env) {
   if (!env?.OPENAI_API_KEY) {
-    return json({ ok: false, message: "OPENAI_API_KEY ausente no env." }, { status: 500, headers: corsHeaders() });
+    return json({ ok: false, message: "OPENAI_API_KEY ausente no env." }, { status: 500, headers: corsHeaders(null, env) });
   }
 
   const r = await fetchTextWithTimeout(
@@ -193,7 +233,7 @@ async function handleDebugOpenAIModels(env) {
       error: r.error || null,
       bodyHead: (r.text || "").slice(0, 400),
     },
-    { status: r.ok ? 200 : 502, headers: corsHeaders() }
+    { status: r.ok ? 200 : 502, headers: corsHeaders(null, env) }
   );
 }
 
@@ -211,13 +251,16 @@ async function handleGenerateTests(req, env) {
 
   const body = await readJsonWithLimit(req, maxBytes);
 
+  // Validate payload early to avoid unnecessary OpenAI calls
+  validateGenerateTestsBody(body);
+
   const issueKey = body?.jira?.key || body?.source?.issueKey || "";
   const format = (body?.format || "step").toLowerCase();
   const jiraTitle = body?.jira?.title || "";
   const jiraDesc = body?.jira?.description || "";
   const ctx = body?.context || {};
 
-  console.log("[QAGENT][GW] generate-tests", {
+  log("generate-tests", {
     token: safeId(token),
     issue: issueKey ? safeId(issueKey) : "none",
     format,
@@ -245,7 +288,7 @@ async function handleGenerateTests(req, env) {
         ],
         meta: { mode: "stub", issueKey },
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(req, env) }
     );
   }
 
@@ -326,7 +369,7 @@ ${(ctx.expected || "").trim() || "(vazio)"}`;
   }
 
   if (!last?.ok) {
-    console.log("[QAGENT][GW] openai_error", {
+    log("openai_error", {
       status: last?.status,
       error: last?.error || null,
       bodyHead: (last?.text || "").slice(0, 400),
@@ -360,7 +403,7 @@ ${(ctx.expected || "").trim() || "(vazio)"}`;
   try {
     parsed = JSON.parse(contentText);
   } catch {
-    console.log("[QAGENT][GW] openai_non_json_output_head:", (contentText || "").slice(0, 400));
+    log("openai_non_json_output_head", { head: (contentText || "").slice(0, 400) });
     const err = new Error("Resposta da LLM não veio em JSON válido.");
     err.status = 502;
     throw err;
@@ -373,7 +416,7 @@ ${(ctx.expected || "").trim() || "(vazio)"}`;
     throw err;
   }
 
-  return json(normalized, { headers: corsHeaders() });
+  return json(normalized, { headers: corsHeaders(req, env) });
 }
 
 function nowIso() {
@@ -489,7 +532,7 @@ async function handleGetLicense(req, env) {
         daysLeft: daysLeft(lic.expiresAt),
       },
     },
-    { status: 200, headers: corsHeaders() }
+    { status: 200, headers: corsHeaders(req, env) }
   );
 }
 
@@ -581,16 +624,16 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       }
       // 🔒 Bloqueia hosts não autorizados em produção (inclui *.workers.dev)
       if (!isProdAllowedHost(req, env)) {
-        return json({ ok: false, message: "Forbidden" }, { status: 403, headers: corsHeaders() });
+        return json({ ok: false, message: "Forbidden" }, { status: 403, headers: corsHeaders(req, env) });
       }
 
       if (req.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: corsHeaders() });
+        return new Response(null, { status: 204, headers: corsHeaders(req, env) });
       }
 
       // health: aceita GET ou POST
       if (url.pathname === "/health") {
-        return json({ ok: true }, { status: 200, headers: corsHeaders() });
+        return json({ ok: true }, { status: 200, headers: corsHeaders(req, env) });
       }
 
       // debug: só GET
@@ -609,13 +652,21 @@ Em caso de dúvidas, entre em contato pelo e-mail:
 
 
 
-      return json({ status: "not_found", message: "Endpoint inexistente." }, { status: 404, headers: corsHeaders() });
+      return json({ status: "not_found", message: "Endpoint inexistente." }, { status: 404, headers: corsHeaders(req, env) });
     } catch (e) {
       const status = e?.status || 500;
-      const headers = corsHeaders(
-        status === 429 && e.retryAfterMs ? { "Retry-After": String(Math.ceil(e.retryAfterMs / 1000)) } : {}
-      );
+      const headers = corsHeaders(req, env, status === 429 && e.retryAfterMs ? { "Retry-After": String(Math.ceil(e.retryAfterMs / 1000)) } : {});
       return json({ status: "error", message: e?.message || String(e) }, { status, headers });
     }
   },
+};
+
+// Named exports for testing
+export {
+  corsHeaders,
+  validateGenerateTestsBody,
+  safeId,
+  normalizeCases,
+  daysLeft,
+  isAdminToken,
 };
