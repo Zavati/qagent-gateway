@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse } from '../src/index.js';
+import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics } from '../src/index.js';
 
 console.log('Running quick unit tests...');
 
@@ -56,7 +56,15 @@ assert.strictEqual(actions[0].value, 'user@example.com');
 // buildAutofillPrompt
 const prompt = buildAutofillPrompt(good);
 assert.strictEqual(typeof prompt, 'string');
-assert.ok(prompt.includes('selector: #email'));
+assert.ok(prompt.includes('#email|'));
+
+// prefillHeuristics
+const { actions: pref, remaining } = prefillHeuristics(good.elements);
+assert.strictEqual(Array.isArray(pref), true);
+assert.ok(pref.length >= 1);
+assert.strictEqual(pref[0].selector, '#email');
+assert.strictEqual(pref[0].value, 'user@example.com');
+assert.strictEqual(Array.isArray(remaining), true);
 
 // normalizeAutofillResponse
 const parsedGood = { actions: [ { selector: '#email', value: 'user@example.com' }, { selector: 'javascript:alert(1)', value: 'x' } ] };

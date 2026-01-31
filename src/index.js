@@ -223,46 +223,98 @@ function validateAutofillBody(body) {
   }
 }
 
-function generateAutofillStub(elements) {
-  const actions = [];
-  for (const el of elements.slice(0, 50)) {
+// Prefill heurísticas: tenta preencher localmente os campos óbvios (email, phone, name, postal_code, linkedin, cpf/cep simples)
+function prefillHeuristics(elements, max = 200) {
+  const filled = [];
+  const remaining = [];
+  for (const el of (elements || []).slice(0, max)) {
+    if (!el || typeof el !== 'object') continue;
     try {
-      const selector = sanitizeString(el.selector, 500);
+      const selector = String(el.selector || '').trim();
       if (!isValidSelector(selector)) continue;
+      const name = String(el.name || '').toLowerCase();
+      const label = String(el.label || '').toLowerCase();
+      const placeholder = String(el.placeholder || '').toLowerCase();
+      const type = String(el.type || '').toLowerCase();
+      const semantic = String(el.semantic || '').toLowerCase();
 
-      const name = sanitizeString(el.name || '', 200);
-      const label = sanitizeString(el.label || '', 200);
+      const combined = `${selector} ${name} ${label} ${placeholder} ${type} ${semantic}`.toLowerCase();
+
+      // email
+      if (type === 'email' || combined.includes('email') || combined.includes('e-mail')) {
+        filled.push({ selector: sanitizeString(selector, 500), value: 'user@example.com', simulate: false });
+        continue;
+      }
+      // phone
+      if (type === 'tel' || combined.includes('phone') || combined.includes('telephone') || combined.includes('telefone') || combined.includes('cel')) {
+        filled.push({ selector: sanitizeString(selector, 500), value: '+5511999999999', simulate: false });
+        continue;
+      }
+      // name
+      if (combined.includes('name') || combined.includes('nome') || semantic === 'name') {
+        filled.push({ selector: sanitizeString(selector, 500), value: 'João Tester', simulate: false });
+        continue;
+      }
+      // postal / zipcode
+      if (combined.includes('cep') || combined.includes('zip') || semantic === 'postal_code' || combined.includes('postal')) {
+        filled.push({ selector: sanitizeString(selector, 500), value: '00000-000', simulate: false });
+        continue;
+      }
+      // linkedin / url
+      if (combined.includes('linkedin') || combined.includes('linkedinProfile') || combined.includes('linkedinprofile') || combined.includes('url')) {
+        filled.push({ selector: sanitizeString(selector, 500), value: 'https://www.linkedin.com/in/example', simulate: false });
+        continue;
+      }
+      // small heuristics for email-like placeholders
+      if (placeholder && placeholder.includes('@')) {
+        filled.push({ selector: sanitizeString(selector, 500), value: 'user@example.com', simulate: false });
+        continue;
+      }
+
+      // fallback: leave for AI
+      remaining.push(el);
+    } catch (e) {
+      remaining.push(el);
+    }
+  }
+  return { actions: filled, remaining };
+}
+
+function generateAutofillStub(elements) {
+  // keep backwards compatible behavior but reuse prefill heuristics for stronger coverage
+  const { actions: filled, remaining } = prefillHeuristics(elements, 50);
+  // for any remaining, just generate a generic short value
+  for (const el of (remaining || []).slice(0, 50)) {
+    try {
+      const selector = sanitizeString(el.selector || '', 500);
+      if (!isValidSelector(selector)) continue;
       const placeholder = sanitizeString(el.placeholder || '', 200);
-      const type = sanitizeString(el.type || '', 50) || '';
-
+      const type = String(el.type || '').toLowerCase();
       let value = '';
-      const lower = (selector + ' ' + name + ' ' + label + ' ' + placeholder + ' ' + type).toLowerCase();
-      if (lower.includes('email') || type === 'email') value = 'user@example.com';
-      else if (lower.includes('phone') || lower.includes('tel')) value = '+5511999999999';
-      else if (lower.includes('name')) value = 'João Tester';
+      if (type === 'email') value = 'user@example.com';
+      else if (type === 'tel') value = '+5511999999999';
       else if (placeholder) value = placeholder;
       else value = 'test';
-
-      actions.push({ selector, value, simulate: false });
+      filled.push({ selector, value, simulate: false });
     } catch (e) {
       continue;
     }
   }
-  return actions;
+  return filled;
 }
 
-function buildAutofillPrompt(body) {
-  const elems = (body.elements || []).slice(0, 200).map((e, i) => {
-    const parts = [];
-    parts.push(`selector: ${e.selector || ''}`);
-    if (e.name) parts.push(`name: ${e.name}`);
-    if (e.label) parts.push(`label: ${e.label}`);
-    if (e.placeholder) parts.push(`placeholder: ${e.placeholder}`);
-    if (e.type) parts.push(`type: ${e.type}`);
-    return `${i + 1}) ${parts.join('; ')}`;
+function buildAutofillPrompt(body, maxElems = 50) {
+  // compact prompt: one line per element as selector|type|name|placeholder|semantic
+  const list = (body.elements || []).slice(0, maxElems).map((e) => {
+    const selector = (e.selector || '').replace(/\s+/g, ' ').trim();
+    const type = (e.type || '').replace(/\s+/g, ' ').trim();
+    const name = (e.name || '').replace(/\s+/g, ' ').trim();
+    const placeholder = (e.placeholder || '').replace(/\s+/g, ' ').trim();
+    const semantic = (e.semantic || '').replace(/\s+/g, ' ').trim();
+    return `${selector}|${type}|${name}|${placeholder}|${semantic}`;
   }).join('\n');
 
-  return `Você é um assistente especialista em preenchimento de formulários. Recebe a página: ${body.url}\nDeve responder SOMENTE JSON com o formato: { "actions": [ { "selector": "string", "value": "string", "simulate": false } ] }\nAnalise cada elemento e gere um valor aceitável e curto para \"value\" quando aplicável. Use emails para campos de email, telefones para telefone, nomes para name, e respeite regras: não inclua javascript:, não inclua HTML, limite de valor 2000 chars. Elementos:\n${elems}`;
+  return `Você é um assistente de preenchimento de formulários. Responda SOMENTE JSON com formato: {"actions":[{"selector":"...","value":"...","simulate":false}]}. Gere valores curtos e seguros (max 200 chars), sem HTML ou javascript:, use emails para campos de email, telefones para phone, nomes para name. Página: ${body.url}\nElementos (cada linha: selector|type|name|placeholder|semantic):\n${list}`;
 }
 
 function normalizeAutofillResponse(parsed) {
@@ -314,14 +366,16 @@ async function handleAutofill(req, env) {
 
   log('autofill', { token: safeId(token), url: sanitizeString(body.url, 2000), elements: Math.min(200, (body.elements || []).length) });
 
-  if (!env?.OPENAI_API_KEY) {
-    const actions = generateAutofillStub(body.elements || []);
-    return json({ actions, meta: { mode: 'stub' } }, { headers: corsHeaders(req, env) });
+  // First apply fast heuristics
+  const { actions: prefilled, remaining } = prefillHeuristics(body.elements || [], Number(env.AUTOFILL_HEUR_MAX_ELEMENTS || 200));
+  if (!remaining || remaining.length === 0) {
+    return json({ actions: prefilled, meta: { mode: 'heuristic' } }, { headers: corsHeaders(req, env) });
   }
 
-  // Build prompt and call OpenAI Responses API
-  const prompt = buildAutofillPrompt(body);
-  const model = body?.settings?.model || "gpt-4o-mini";
+  // Build prompt only for remaining elements (compact)
+  const promptBody = { url: body.url, elements: remaining };
+  const prompt = buildAutofillPrompt(promptBody, Number(env.AUTOFILL_MAX_ELEMS || 50));
+  const model = env.AUTOFILL_MODEL || body?.settings?.model || "gpt-3.5-turbo";
   const openaiUrl = "https://api.openai.com/v1/responses";
   const openaiInit = {
     method: "POST",
@@ -336,7 +390,8 @@ async function handleAutofill(req, env) {
         { role: "user", content: [{ type: "input_text", text: prompt }] },
       ],
       text: { format: { type: "json_object" } },
-      temperature: 0.1,
+      temperature: Number(env.AUTOFILL_TEMPERATURE || 0.0),
+      max_output_tokens: Number(env.AUTOFILL_MAX_TOKENS || 300),
     }),
   };
 
@@ -393,14 +448,17 @@ async function handleAutofill(req, env) {
     throw err;
   }
 
-  const actions = normalizeAutofillResponse(parsed);
-  if (!actions) {
+  const aiActions = normalizeAutofillResponse(parsed);
+  if (!aiActions) {
     const err = new Error("Resposta da LLM inválida (actions ausente).");
     err.status = 502;
     throw err;
   }
 
-  return json({ actions, meta: { mode: "ai", model } }, { headers: corsHeaders(req, env) });
+  // combine prefilled + aiActions, aiActions may be subset
+  const combined = [...prefilled, ...aiActions];
+
+  return json({ actions: combined, meta: { mode: "ai", model, prefilled: prefilled.length } }, { headers: corsHeaders(req, env) });
 }
 
 
@@ -892,6 +950,7 @@ export {
   validateGenerateTestsBody,
   validateAutofillBody,
   generateAutofillStub,
+  prefillHeuristics,
   buildAutofillPrompt,
   normalizeAutofillResponse,
   sanitizeString,
