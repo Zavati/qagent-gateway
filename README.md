@@ -202,3 +202,14 @@ Implementação incremental / testes
 - Rota /v1/autofill no Worker que valida e retorna actions (mock).
 - Test local: apontar iaFillUrl no popup → habilitar iaAssist → acionar preenchimento; ver logs do SW (service worker) e devolver ações mock (ex.: set value para alguns selectors).
 - Validar flow end-to-end: popup → SW QAGENT_AUTOFILL → backend → SW retorna actions → popup aplica via QAGENT_FILL.
+
+Testando localmente com mock SW
+
+- Inicie o Worker localmente (ex.: `npx wrangler dev --local --port 8787`).
+- Execute o mock do SW para simular o background chamando o endpoint:
+
+```bash
+QAGENT_AUTOFILL_URL=http://127.0.0.1:8787/v1/autofill QAGENT_TEST_TOKEN=<token> npm run mock-sw
+```
+
+- O script exibirá status e o JSON retornado. Ajuste `QAGENT_TEST_TOKEN` para um token válido (>= 24 chars) para evitar validação de token no backend.

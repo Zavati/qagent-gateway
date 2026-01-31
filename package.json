@@ -4,7 +4,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node test/run-tests.js"
+    "test": "node test/run-tests.js",
+    "mock-sw": "node test/mock-sw.js"
   },
   "keywords": [],
   "author": "",

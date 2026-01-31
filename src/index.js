@@ -342,8 +342,9 @@ async function handleAutofill(req, env) {
 
   const timeoutMs = Number(env.OPENAI_TIMEOUT_MS || 30000);
 
+  // retry até 3x com backoff simples
   let last = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     last = await fetchTextWithTimeout(openaiUrl, openaiInit, timeoutMs);
 
     if (!last.ok && (last.status === 429 || last.status >= 500 || last.status === 0)) {
@@ -354,13 +355,16 @@ async function handleAutofill(req, env) {
   }
 
   if (!last?.ok) {
+    const errInfo = last?.error ? `${last.error.name}: ${last.error.message}` : (last?.status ? `HTTP ${last.status}` : 'unknown');
     log("autofill_openai_error", {
       status: last?.status,
       error: last?.error || null,
       bodyHead: (last?.text || "").slice(0, 400),
+      detail: errInfo,
     });
-    const err = new Error(`Falha ao chamar LLM (HTTP ${last?.status || "?"}).`);
+    const err = new Error(`Falha ao chamar LLM (${errInfo}).`);
     err.status = 502;
+    err._detail = last?.error?.message || null;
     throw err;
   }
 
@@ -570,9 +574,9 @@ ${(ctx.expected || "").trim() || "(vazio)"}`;
 
   const timeoutMs = Number(env.OPENAI_TIMEOUT_MS || 90000);
 
-  // retry 1x
+  // retry até 3x com backoff simples
   let last = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     last = await fetchTextWithTimeout(openaiUrl, openaiInit, timeoutMs);
 
     if (!last.ok && (last.status === 429 || last.status >= 500 || last.status === 0)) {
@@ -583,13 +587,16 @@ ${(ctx.expected || "").trim() || "(vazio)"}`;
   }
 
   if (!last?.ok) {
+    const errInfo = last?.error ? `${last.error.name}: ${last.error.message}` : (last?.status ? `HTTP ${last.status}` : 'unknown');
     log("openai_error", {
       status: last?.status,
       error: last?.error || null,
       bodyHead: (last?.text || "").slice(0, 400),
+      detail: errInfo,
     });
-    const err = new Error(`Falha ao chamar LLM (HTTP ${last?.status || "?"}).`);
+    const err = new Error(`Falha ao chamar LLM (${errInfo}).`);
     err.status = 502;
+    err._detail = last?.error?.message || null;
     throw err;
   }
 
