@@ -185,6 +185,220 @@ function validateGenerateTestsBody(body) {
   }
 }
 
+// Sanitiza strings simples: trim, corta, recusa javascript: schemes e caracteres de controle
+function sanitizeString(input, maxLen = 2000) {
+  if (input == null) return input;
+  let s = String(input);
+  // remove control chars
+  s = s.replace(/[\x00-\x1F\x7F]+/g, " ").trim();
+  if (/^javascript:/i.test(s)) throw Object.assign(new Error("Valor inválido (javascript: proibido)."), { status: 400 });
+  if (s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
+}
+
+function isValidSelector(sel) {
+  if (!sel || typeof sel !== 'string') return false;
+  if (/^javascript:/i.test(sel)) return false;
+  if (sel.length > 500) return false;
+  return true;
+}
+
+function validateAutofillBody(body) {
+  if (!body || typeof body !== 'object') {
+    const err = new Error('Body inválido.'); err.status = 400; throw err;
+  }
+  if (!body.url || typeof body.url !== 'string') {
+    const err = new Error("'url' obrigatório e deve ser string."); err.status = 400; throw err;
+  }
+  if (!body.elements || !Array.isArray(body.elements) || body.elements.length === 0) {
+    const err = new Error("'elements' obrigatório e deve ser array não vazia."); err.status = 400; throw err;
+  }
+  for (const el of body.elements) {
+    if (!el || typeof el !== 'object') {
+      const err = new Error('Elemento inválido.'); err.status = 400; throw err;
+    }
+    if (!el.selector || !isValidSelector(String(el.selector))) {
+      const err = new Error("Elemento inválido: 'selector' obrigatório e válido."); err.status = 400; throw err;
+    }
+  }
+}
+
+function generateAutofillStub(elements) {
+  const actions = [];
+  for (const el of elements.slice(0, 50)) {
+    try {
+      const selector = sanitizeString(el.selector, 500);
+      if (!isValidSelector(selector)) continue;
+
+      const name = sanitizeString(el.name || '', 200);
+      const label = sanitizeString(el.label || '', 200);
+      const placeholder = sanitizeString(el.placeholder || '', 200);
+      const type = sanitizeString(el.type || '', 50) || '';
+
+      let value = '';
+      const lower = (selector + ' ' + name + ' ' + label + ' ' + placeholder + ' ' + type).toLowerCase();
+      if (lower.includes('email') || type === 'email') value = 'user@example.com';
+      else if (lower.includes('phone') || lower.includes('tel')) value = '+5511999999999';
+      else if (lower.includes('name')) value = 'João Tester';
+      else if (placeholder) value = placeholder;
+      else value = 'test';
+
+      actions.push({ selector, value, simulate: false });
+    } catch (e) {
+      continue;
+    }
+  }
+  return actions;
+}
+
+function buildAutofillPrompt(body) {
+  const elems = (body.elements || []).slice(0, 200).map((e, i) => {
+    const parts = [];
+    parts.push(`selector: ${e.selector || ''}`);
+    if (e.name) parts.push(`name: ${e.name}`);
+    if (e.label) parts.push(`label: ${e.label}`);
+    if (e.placeholder) parts.push(`placeholder: ${e.placeholder}`);
+    if (e.type) parts.push(`type: ${e.type}`);
+    return `${i + 1}) ${parts.join('; ')}`;
+  }).join('\n');
+
+  return `Você é um assistente especialista em preenchimento de formulários. Recebe a página: ${body.url}\nDeve responder SOMENTE JSON com o formato: { "actions": [ { "selector": "string", "value": "string", "simulate": false } ] }\nAnalise cada elemento e gere um valor aceitável e curto para \"value\" quando aplicável. Use emails para campos de email, telefones para telefone, nomes para name, e respeite regras: não inclua javascript:, não inclua HTML, limite de valor 2000 chars. Elementos:\n${elems}`;
+}
+
+function normalizeAutofillResponse(parsed) {
+  if (!parsed || !Array.isArray(parsed.actions)) return null;
+  const out = [];
+  for (const a of parsed.actions.slice(0, 200)) {
+    if (!a || typeof a.selector !== 'string') continue;
+    if (!isValidSelector(a.selector)) continue;
+    let selector;
+    try {
+      selector = sanitizeString(a.selector, 500);
+    } catch {
+      continue;
+    }
+    let value;
+    if (a.value != null) {
+      try {
+        value = sanitizeString(a.value, 2000);
+      } catch {
+        continue;
+      }
+      if (/^javascript:/i.test(value)) continue;
+    }
+    const action = { selector };
+    if (value !== undefined) action.value = value;
+    if (a.simulate) action.simulate = !!a.simulate;
+    if (a.delayMs != null) action.delayMs = Number(a.delayMs);
+    if (a.check) action.check = !!a.check;
+    if (a.radio) action.radio = !!a.radio;
+    if (a.hint) action.hint = a.hint;
+    out.push(action);
+  }
+  return out.length ? out : null;
+}
+
+async function handleAutofill(req, env) {
+  const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
+  validateToken(env, token);
+  const license = await getOrCreateLicense(env, token);
+  assertPremiumAllowed(license);
+
+  const windowMs = getEnvNum(env, 'RATE_LIMIT_WINDOW_MS', 60_000);
+  const max = getEnvNum(env, 'RATE_LIMIT_MAX', 20);
+  const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 25_000);
+  rateLimitOrThrow({ key: `a:${safeId(token)}`, windowMs, max });
+
+  const body = await readJsonWithLimit(req, maxBytes);
+  validateAutofillBody(body);
+
+  log('autofill', { token: safeId(token), url: sanitizeString(body.url, 2000), elements: Math.min(200, (body.elements || []).length) });
+
+  if (!env?.OPENAI_API_KEY) {
+    const actions = generateAutofillStub(body.elements || []);
+    return json({ actions, meta: { mode: 'stub' } }, { headers: corsHeaders(req, env) });
+  }
+
+  // Build prompt and call OpenAI Responses API
+  const prompt = buildAutofillPrompt(body);
+  const model = body?.settings?.model || "gpt-4o-mini";
+  const openaiUrl = "https://api.openai.com/v1/responses";
+  const openaiInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: "Você é um assistente que gera valores para preenchimento de formulários." }] },
+        { role: "user", content: [{ type: "input_text", text: prompt }] },
+      ],
+      text: { format: { type: "json_object" } },
+      temperature: 0.1,
+    }),
+  };
+
+  const timeoutMs = Number(env.OPENAI_TIMEOUT_MS || 30000);
+
+  let last = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    last = await fetchTextWithTimeout(openaiUrl, openaiInit, timeoutMs);
+
+    if (!last.ok && (last.status === 429 || last.status >= 500 || last.status === 0)) {
+      await new Promise((r) => setTimeout(r, 300 + attempt * 700));
+      continue;
+    }
+    break;
+  }
+
+  if (!last?.ok) {
+    log("autofill_openai_error", {
+      status: last?.status,
+      error: last?.error || null,
+      bodyHead: (last?.text || "").slice(0, 400),
+    });
+    const err = new Error(`Falha ao chamar LLM (HTTP ${last?.status || "?"}).`);
+    err.status = 502;
+    throw err;
+  }
+
+  let contentText = "";
+  try {
+    const obj = JSON.parse(last.text);
+    const out = obj?.output || [];
+    const msg = out.find((x) => x.type === "message") || out[0];
+    const c = msg?.content || [];
+    contentText = c.find((x) => x.type === "output_text")?.text
+      || c.find((x) => x.type === "text")?.text
+      || "";
+  } catch {
+    const err = new Error("OpenAI retornou resposta não-JSON (Responses API).");
+    err.status = 502;
+    throw err;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(contentText);
+  } catch {
+    log("autofill_openai_non_json", { head: (contentText || "").slice(0, 400) });
+    const err = new Error("Resposta da LLM não veio em JSON válido.");
+    err.status = 502;
+    throw err;
+  }
+
+  const actions = normalizeAutofillResponse(parsed);
+  if (!actions) {
+    const err = new Error("Resposta da LLM inválida (actions ausente).");
+    err.status = 502;
+    throw err;
+  }
+
+  return json({ actions, meta: { mode: "ai", model } }, { headers: corsHeaders(req, env) });
+}
+
 
 // ✅ fetch com timeout + captura REAL de erro (inclusive quando status=0)
 async function fetchTextWithTimeout(url, init, timeoutMs) {
@@ -649,6 +863,10 @@ Em caso de dúvidas, entre em contato pelo e-mail:
         return await handleGenerateTests(req, env);
       }
 
+      // autofill: POST /v1/autofill
+      if (url.pathname === "/v1/autofill" && req.method === "POST") {
+        return await handleAutofill(req, env);
+      }
 
 
 
@@ -665,6 +883,11 @@ Em caso de dúvidas, entre em contato pelo e-mail:
 export {
   corsHeaders,
   validateGenerateTestsBody,
+  validateAutofillBody,
+  generateAutofillStub,
+  buildAutofillPrompt,
+  normalizeAutofillResponse,
+  sanitizeString,
   safeId,
   normalizeCases,
   daysLeft,

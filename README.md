@@ -148,3 +148,57 @@ rate limit
 chama OpenAI
 
 Volta JSON com os casos → popup renderiza → exporta
+
+---
+
+4) Novo endpoint: POST /v1/autofill (contrato e testes)
+
+Resumo do contrato (obrigatório)
+
+Endpoint: POST /v1/autofill
+Headers:
+- Content-Type: application/json
+- Optional: Authorization: Bearer <token> (mesma lógica que /v1/generate-tests)
+- Optional: X-QAgent-License: <license> (o SW pode enviar o token por esse header)
+Timeout: 20–30s (Worker aborta com timeout)
+
+Payload esperado (do popup → background → backend)
+{
+  url: string,
+  title?: string,
+  elements: [
+    {
+      selector: string,
+      label?: string,
+      name?: string,
+      id?: string,
+      placeholder?: string,
+      kind?: "input"|"textarea"|"select",
+      type?: string|null,
+      semantic?: string|null,
+      maxlength?: number|null,
+      minlength?: number|null,
+      min?: string|null,
+      max?: string|null,
+      pattern?: string|null
+    },
+    ...
+  ],
+  meta?: { source: "popup.autofill", ts: number }
+}
+
+Resposta esperada do backend
+Success (200): { actions: [ { selector: string, value?: string, simulate?: boolean, delayMs?: number, check?: boolean, radio?: boolean, hint?: {...} }, ... ] }
+Em erros: status apropriado (4xx/5xx) e um body JSON com message.
+
+Regras / validação no backend
+- Validar cada ação: selector obrigatório, tipo e tamanho do value razoável (ex: < 2000 chars), não permitir código JS embutido (recusar javascript:), sanitizar strings.
+- Retornar apenas ações com selectors válidos (ou explicar quais foram descartadas nos logs).
+- Rate-limit e autenticação: mesma política que /v1/generate-tests.
+- CORS: permitir requisições vindas do popup (ou deixar o SW chamar direto ao mesmo domínio, mas CORS precisa estar ok para debugging).
+- Logging minimal (req id, url, decisões) para diagnóstico.
+
+Implementação incremental / testes
+- Rota /v1/autofill no Worker que valida e retorna actions (mock).
+- Test local: apontar iaFillUrl no popup → habilitar iaAssist → acionar preenchimento; ver logs do SW (service worker) e devolver ações mock (ex.: set value para alguns selectors).
+- Validar flow end-to-end: popup → SW QAGENT_AUTOFILL → backend → SW retorna actions → popup aplica via QAGENT_FILL.

@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders } from '../src/index.js';
+import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse } from '../src/index.js';
 
 console.log('Running quick unit tests...');
 
@@ -29,6 +29,42 @@ try {
   assert.strictEqual(e.status, 400);
 }
 assert.ok(thrown, 'expected validation to throw for empty payload');
+
+// validateAutofillBody
+thrown = false;
+try {
+  validateAutofillBody({});
+} catch (e) {
+  thrown = true;
+  assert.strictEqual(e.status, 400);
+}
+assert.ok(thrown, 'expected autofill validation to throw for empty payload');
+
+const good = {
+  url: 'https://example.com',
+  elements: [ { selector: '#email', type: 'email' }, { selector: 'input[name=phone]' } ]
+};
+validateAutofillBody(good);
+
+// generateAutofillStub
+const actions = generateAutofillStub(good.elements);
+assert.strictEqual(Array.isArray(actions), true);
+assert.ok(actions.length >= 1);
+assert.strictEqual(actions[0].selector, '#email');
+assert.strictEqual(actions[0].value, 'user@example.com');
+
+// buildAutofillPrompt
+const prompt = buildAutofillPrompt(good);
+assert.strictEqual(typeof prompt, 'string');
+assert.ok(prompt.includes('selector: #email'));
+
+// normalizeAutofillResponse
+const parsedGood = { actions: [ { selector: '#email', value: 'user@example.com' }, { selector: 'javascript:alert(1)', value: 'x' } ] };
+const norm = normalizeAutofillResponse(parsedGood);
+assert.strictEqual(Array.isArray(norm), true);
+assert.strictEqual(norm.length, 1);
+assert.strictEqual(norm[0].selector, '#email');
+assert.strictEqual(norm[0].value, 'user@example.com');
 
 // corsHeaders with allowed origin
 const fakeReq = { headers: { get: () => 'https://example.com' } };
