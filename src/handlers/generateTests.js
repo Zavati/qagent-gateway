@@ -37,17 +37,39 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
   // Model selection
   const model = getAutofillModel(body, env);
 
-  // Prompt atualizado: pede nota (score) e justificativa, exige JSON com cases e score
+  // Prompt atualizado: pede nota (score) e justificativa, exige JSON com cases e score, e especifica o formato exato dos campos de cada case
   const userPrompt = `Você é um especialista em QA. Analise a tarefa do Jira abaixo e:
 
-- Gere de 5 a 10 casos de teste (cobrindo happy path, validações, negativos, bordas, autorização).
-- Avalie a complexidade da tarefa de 1 a 8 (padrão Scrum) e justifique a nota.
+  - Gere de 5 a 10 casos de teste (cobrindo happy path, validações, negativos, bordas, autorização).
+  - Avalie a complexidade da tarefa de 1 a 8 (padrão Scrum) e justifique a nota.
 
 Responda SOMENTE JSON, no seguinte formato:
 {
-  "cases": [ ... ],
+  "cases": [
+    {
+      "id": "TC-001",
+      "title": "Título do caso de teste",
+      "objective": "Objetivo do teste",
+      "preconditions": ["Pré-condição 1", "Pré-condição 2"],
+      "steps": [
+        {
+          "action": "Ação a ser executada",
+          "data": "Payload ou dados relevantes (string JSON)",
+          "expected": "Resultado esperado"
+        }
+      ],
+      "tags": ["tag1", "tag2"],
+      "priority": "High | Medium | Low"
+    }
+  ],
   "score": { "value": <1-8>, "reason": "..." }
 }
+
+Garanta que cada caso de teste contenha TODOS os campos acima, mesmo que precise preencher com valores padrão.
+Os campos steps, preconditions e tags devem ser arrays.
+O campo steps deve ser um array de objetos com action, data e expected.
+O campo priority deve ser High, Medium ou Low.
+O campo id deve ser único por caso, no formato TC-00X.
 
 Tarefa:
 - Key: ${issueKey}
@@ -87,18 +109,34 @@ ${expected}`;
     }
   }
   const durationMs = Date.now() - t0;
-  // Garante que sempre retorna cases e score
+  // Garante que sempre retorna cases e score, e normaliza cada case para o padrão esperado
   let cases = Array.isArray(result?.cases) ? result.cases : [];
   let score = result?.score && typeof result.score === 'object' ? result.score : null;
-  // fallback se IA não respondeu score
   if (!score) score = { value: 1, reason: 'IA não retornou score.' };
-  const normalized = normalizeCases({ cases });
-  const caseCount = normalized?.cases?.length || 0;
+
+  // Função para garantir que cada case siga o padrão esperado
+  function normalizeTestCase(tc, idx = 0) {
+    return {
+      id: typeof tc.id === 'string' && tc.id ? tc.id : `TC-${(idx+1).toString().padStart(3, '0')}`,
+      title: typeof tc.title === 'string' && tc.title ? tc.title : 'Caso de teste',
+      objective: typeof tc.objective === 'string' && tc.objective ? tc.objective : '',
+      preconditions: Array.isArray(tc.preconditions) ? tc.preconditions.map(String) : [],
+      steps: Array.isArray(tc.steps) ? tc.steps.map(s => ({
+        action: typeof s.action === 'string' ? s.action : '',
+        data: typeof s.data === 'string' ? s.data : '',
+        expected: typeof s.expected === 'string' ? s.expected : ''
+      })) : [],
+      tags: Array.isArray(tc.tags) ? tc.tags.map(String) : [],
+      priority: ['High','Medium','Low'].includes(tc.priority) ? tc.priority : 'Medium',
+    };
+  }
+  const normalizedCases = cases.map((tc, idx) => normalizeTestCase(tc, idx));
+  const caseCount = normalizedCases.length;
 
   const meta = { mode, model, caseCount, repairAttempts, durationMs, promptSize: userPrompt.length };
   if (mode === 'stub' && rawText) meta.rawText = rawText;
   return {
-    cases: normalized?.cases || [],
+    cases: normalizedCases,
     score,
     meta,
   };
