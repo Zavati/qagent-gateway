@@ -534,6 +534,8 @@ async function handleGetLicense(req, env) {
 
 export default {
   async fetch(req, env) {
+    // LOG TEMPORÁRIO: Verifica se a OPENAI_API_KEY está presente no ambiente
+    log('env_openai_key_present', { present: !!env.OPENAI_API_KEY });
     try {
       const url = new URL(req.url);
       // Página de Política de Privacidade
