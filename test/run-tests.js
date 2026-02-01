@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics } from '../src/index.js';
+import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics, normalizeIncomingElement, extractJsonFromText } from '../src/index.js';
 
 console.log('Running quick unit tests...');
 
@@ -66,13 +66,26 @@ assert.strictEqual(pref[0].selector, '#email');
 assert.strictEqual(pref[0].value, 'user@example.com');
 assert.strictEqual(Array.isArray(remaining), true);
 
+// normalizeIncomingElement
+const sampleEl = { selector: '#email', originalSelector: '#email', name: 'email', placeholder: 'your@mail.com', value: 'a@b.c', visible: true };
+const normalized = normalizeIncomingElement(sampleEl);
+assert.strictEqual(normalized.selector, '#email');
+assert.strictEqual(normalized.name, 'email');
+assert.strictEqual(normalized.value, 'a@b.c');
+
+// extractJsonFromText
+const messy = 'Some text\n\n {"actions":[{"selector":"#a","value":"1"}]} \n trailing';
+const ex = extractJsonFromText(messy);
+assert.strictEqual(typeof ex, 'object');
+assert.strictEqual(Array.isArray(ex.actions), true);
+assert.strictEqual(ex.actions[0].selector, '#a');
 // normalizeAutofillResponse
 const parsedGood = { actions: [ { selector: '#email', value: 'user@example.com' }, { selector: 'javascript:alert(1)', value: 'x' } ] };
-const norm = normalizeAutofillResponse(parsedGood);
-assert.strictEqual(Array.isArray(norm), true);
-assert.strictEqual(norm.length, 1);
-assert.strictEqual(norm[0].selector, '#email');
-assert.strictEqual(norm[0].value, 'user@example.com');
+const normResp = normalizeAutofillResponse(parsedGood);
+assert.strictEqual(Array.isArray(normResp), true);
+assert.strictEqual(normResp.length, 1);
+assert.strictEqual(normResp[0].selector, '#email');
+assert.strictEqual(normResp[0].value, 'user@example.com');
 
 // corsHeaders with allowed origin
 const fakeReq = { headers: { get: () => 'https://example.com' } };

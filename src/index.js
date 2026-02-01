@@ -203,6 +203,58 @@ function isValidSelector(sel) {
   return true;
 }
 
+function normalizeIncomingElement(el) {
+  if (!el || typeof el !== 'object') return null;
+  // pick normalized fields with fallbacks
+  const selector = sanitizeString(el.selector || el.originalSelector || el.original || '', 500);
+  const name = sanitizeString(el.name || el.testId || '', 200);
+  const label = sanitizeString(el.label || el.ariaLabel || '', 200);
+  const placeholder = sanitizeString(el.placeholder || '', 200);
+  const type = sanitizeString(el.type || (el.kindDetail && el.kindDetail.includes('email') ? 'email' : '') || '', 50);
+  const semantic = sanitizeString(el.semantic || '', 50);
+  const text = sanitizeString(el.text || el.value || '', 2000);
+  const value = sanitizeString(el.value || '', 2000);
+  const kind = sanitizeString(el.kind || el.kindDetail || '', 50);
+  const visible = !!el.visible;
+  return { selector, name, label, placeholder, type, semantic, text, value, kind, visible, id: el.id || '' };
+}
+
+// Attempts to find and parse a JSON object inside arbitrary text, returns parsed object or null
+function extractJsonFromText(text) {
+  if (!text || typeof text !== 'string') return null;
+  const s = text;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let stringChar = '';
+    let esc = false;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (inString) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === stringChar) { inString = false; stringChar = ''; }
+      } else {
+        if (c === '"' || c === "'") { inString = true; stringChar = c; }
+        else if (c === '{') depth++;
+        else if (c === '}') {
+          depth--;
+          if (depth === 0) {
+            const sub = s.slice(i, j + 1);
+            try {
+              return JSON.parse(sub);
+            } catch (e) {
+              break; // try next opening brace
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function validateAutofillBody(body) {
   if (!body || typeof body !== 'object') {
     const err = new Error('Body inválido.'); err.status = 400; throw err;
@@ -227,16 +279,23 @@ function validateAutofillBody(body) {
 function prefillHeuristics(elements, max = 200) {
   const filled = [];
   const remaining = [];
-  for (const el of (elements || []).slice(0, max)) {
-    if (!el || typeof el !== 'object') continue;
+  const normalized = (elements || []).map(normalizeIncomingElement).filter(Boolean).slice(0, max);
+  for (const el of normalized) {
     try {
-      const selector = String(el.selector || '').trim();
+      const selector = el.selector;
       if (!isValidSelector(selector)) continue;
-      const name = String(el.name || '').toLowerCase();
-      const label = String(el.label || '').toLowerCase();
-      const placeholder = String(el.placeholder || '').toLowerCase();
-      const type = String(el.type || '').toLowerCase();
-      const semantic = String(el.semantic || '').toLowerCase();
+      const name = (el.name || '').toLowerCase();
+      const label = (el.label || '').toLowerCase();
+      const placeholder = (el.placeholder || '').toLowerCase();
+      const type = (el.type || '').toLowerCase();
+      const semantic = (el.semantic || '').toLowerCase();
+      const value = (el.value || el.text || '').toString();
+
+      // If value already present and visible, accept it (but sanitize/trim)
+      if (value && el.visible) {
+        filled.push({ selector: sanitizeString(selector, 500), value: sanitizeString(value, 2000), simulate: false });
+        continue;
+      }
 
       const combined = `${selector} ${name} ${label} ${placeholder} ${type} ${semantic}`.toLowerCase();
 
@@ -438,27 +497,67 @@ async function handleAutofill(req, env) {
     throw err;
   }
 
-  let parsed;
+  let parsed = null;
+  let repairAttempts = 0;
+  // 1) try direct parse
   try {
     parsed = JSON.parse(contentText);
-  } catch {
-    log("autofill_openai_non_json", { head: (contentText || "").slice(0, 400) });
-    const err = new Error("Resposta da LLM não veio em JSON válido.");
-    err.status = 502;
-    throw err;
+  } catch (e) {
+    // 2) try extract JSON blob from text
+    parsed = extractJsonFromText(contentText);
+    if (!parsed) {
+      // 3) attempt a short repair call to OpenAI (extract JSON only)
+      if (env?.OPENAI_API_KEY) {
+        try {
+          repairAttempts += 1;
+          log('autofill_repair_attempt', { head: (contentText || '').slice(0, 200) });
+          const repairPrompt = `The previous model response contained extra text. Extract and RETURN ONLY the JSON object that represents the response. Input:\n${contentText}`;
+          const repairInit = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+            body: JSON.stringify({
+              model,
+              input: [ { role: 'user', content: [{ type: 'input_text', text: repairPrompt }] } ],
+              text: { format: { type: 'json_object' } },
+              temperature: 0.0,
+            }),
+          };
+          const repairTimeout = Math.min(5000, Number(env.OPENAI_TIMEOUT_MS || 30000));
+          const rep = await fetchTextWithTimeout(openaiUrl, repairInit, repairTimeout);
+          if (rep && rep.ok) {
+            let repairText = '';
+            try {
+              const o = JSON.parse(rep.text);
+              const out = o?.output || [];
+              const msg = out.find((x) => x.type === 'message') || out[0];
+              const c = msg?.content || [];
+              repairText = c.find((x) => x.type === 'output_text')?.text || c.find((x) => x.type === 'text')?.text || '';
+            } catch (e) {
+              repairText = rep.text || '';
+            }
+            parsed = extractJsonFromText(repairText) || (() => { try { return JSON.parse(repairText); } catch { return null; } })();
+          } else {
+            log('autofill_repair_failed', { status: rep?.status, error: rep?.error || null });
+          }
+        } catch (e) {
+          log('autofill_repair_exception', { message: e?.message || String(e) });
+        }
+      }
+    }
   }
 
-  const aiActions = normalizeAutofillResponse(parsed);
+  const aiActions = parsed ? normalizeAutofillResponse(parsed) : null;
   if (!aiActions) {
-    const err = new Error("Resposta da LLM inválida (actions ausente).");
-    err.status = 502;
-    throw err;
+    // fallback: return prefilled heuristics only and report repairAttempts
+    log('autofill_fallback', { prefilled: prefilled.length, repairAttempts });
+
+    return json({ actions: prefilled, meta: { mode: 'heuristic', prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
   }
 
   // combine prefilled + aiActions, aiActions may be subset
   const combined = [...prefilled, ...aiActions];
 
-  return json({ actions: combined, meta: { mode: "ai", model, prefilled: prefilled.length } }, { headers: corsHeaders(req, env) });
+  return json({ actions: combined, meta: { mode: 'ai', model, prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
 }
 
 
@@ -951,6 +1050,8 @@ export {
   validateAutofillBody,
   generateAutofillStub,
   prefillHeuristics,
+  normalizeIncomingElement,
+  extractJsonFromText,
   buildAutofillPrompt,
   normalizeAutofillResponse,
   sanitizeString,
