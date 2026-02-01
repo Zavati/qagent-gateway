@@ -58,11 +58,7 @@ function corsHeaders(req = null, env = {}, extra = {}) {
   };
 } 
 
-function getEnvNum(env, key, fallback) {
-  const v = env?.[key];
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
+import { getEnvNum } from './lib/config.js';
 
 function getBearerToken(req) {
   const h = req.headers.get("Authorization") || "";
@@ -156,221 +152,25 @@ function validateToken(env, token) {
 }
 
 
-function normalizeCases(payload) {
-  if (!payload) return null;
-  if (Array.isArray(payload.cases)) return payload;
-  if (payload.result && Array.isArray(payload.result.cases)) {
-    return { ...payload.result, cases: payload.result.cases };
-  }
-  return null;
-}
+// normalizeCases and validateGenerateTestsBody moved to ./lib/validators.js
 
-function validateGenerateTestsBody(body) {
-  if (!body || typeof body !== "object") {
-    const err = new Error("Body inválido.");
-    err.status = 400;
-    throw err;
-  }
-  const hasJira = body.jira && (body.jira.key || body.jira.title || body.jira.description);
-  const hasSource = body.source && body.source.issueKey;
-  if (!hasJira && !hasSource) {
-    const err = new Error("Payload inválido: faltando 'jira' ou 'source.issueKey'.");
-    err.status = 400;
-    throw err;
-  }
-  if (body.format && !["step", "bdd"].includes(String(body.format).toLowerCase())) {
-    const err = new Error("Formato inválido.");
-    err.status = 400;
-    throw err;
-  }
-}
 
 // Sanitiza strings simples: trim, corta, recusa javascript: schemes e caracteres de controle
-function sanitizeString(input, maxLen = 2000) {
-  if (input == null) return input;
-  let s = String(input);
-  // remove control chars
-  s = s.replace(/[\x00-\x1F\x7F]+/g, " ").trim();
-  if (/^javascript:/i.test(s)) throw Object.assign(new Error("Valor inválido (javascript: proibido)."), { status: 400 });
-  if (s.length > maxLen) s = s.slice(0, maxLen);
-  return s;
-}
+import { sanitizeString, isValidSelector } from './lib/sanitize.js';
 
-function isValidSelector(sel) {
-  if (!sel || typeof sel !== 'string') return false;
-  if (/^javascript:/i.test(sel)) return false;
-  if (sel.length > 500) return false;
-  return true;
-}
-
-function normalizeIncomingElement(el) {
-  if (!el || typeof el !== 'object') return null;
-  // pick normalized fields with fallbacks
-  const selector = sanitizeString(el.selector || el.originalSelector || el.original || '', 500);
-  const name = sanitizeString(el.name || el.testId || '', 200);
-  const label = sanitizeString(el.label || el.ariaLabel || '', 200);
-  const placeholder = sanitizeString(el.placeholder || '', 200);
-  const type = sanitizeString(el.type || (el.kindDetail && el.kindDetail.includes('email') ? 'email' : '') || '', 50);
-  const semantic = sanitizeString(el.semantic || '', 50);
-  const text = sanitizeString(el.text || el.value || '', 2000);
-  const value = sanitizeString(el.value || '', 2000);
-  const kind = sanitizeString(el.kind || el.kindDetail || '', 50);
-  const visible = !!el.visible;
-  return { selector, name, label, placeholder, type, semantic, text, value, kind, visible, id: el.id || '' };
-}
+import { normalizeIncomingElement, prefillHeuristics, generateAutofillStub, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement } from './lib/heuristics.js';
 
 // Attempts to find and parse a JSON object inside arbitrary text, returns parsed object or null
-function extractJsonFromText(text) {
-  if (!text || typeof text !== 'string') return null;
-  const s = text;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] !== '{') continue;
-    let depth = 0;
-    let inString = false;
-    let stringChar = '';
-    let esc = false;
-    for (let j = i; j < s.length; j++) {
-      const c = s[j];
-      if (inString) {
-        if (esc) esc = false;
-        else if (c === '\\') esc = true;
-        else if (c === stringChar) { inString = false; stringChar = ''; }
-      } else {
-        if (c === '"' || c === "'") { inString = true; stringChar = c; }
-        else if (c === '{') depth++;
-        else if (c === '}') {
-          depth--;
-          if (depth === 0) {
-            const sub = s.slice(i, j + 1);
-            try {
-              return JSON.parse(sub);
-            } catch (e) {
-              break; // try next opening brace
-            }
-          }
-        }
-      }
-    }
-  }
-  return null;
-}
+import { fetchTextWithTimeout, parseResponsesContent, extractJsonFromText } from './lib/openai.js';
 
-// Escolhe o modelo para autofill. Precedência: body.meta.model -> body.settings.model -> env.AUTOFILL_MODEL -> default
-function getAutofillModel(body, env) {
-  const candidate = (body?.meta?.model || body?.settings?.model || env?.AUTOFILL_MODEL || "gpt-3.5-turbo");
-  try {
-    return sanitizeString(candidate, 200);
-  } catch (e) {
-    return "gpt-3.5-turbo";
-  }
-}
+import { getAutofillModel } from './lib/config.js';
 
-function validateAutofillBody(body) {
-  if (!body || typeof body !== 'object') {
-    const err = new Error('Body inválido.'); err.status = 400; throw err;
-  }
-  if (!body.url || typeof body.url !== 'string') {
-    const err = new Error("'url' obrigatório e deve ser string."); err.status = 400; throw err;
-  }
-  if (!body.elements || !Array.isArray(body.elements) || body.elements.length === 0) {
-    const err = new Error("'elements' obrigatório e deve ser array não vazia."); err.status = 400; throw err;
-  }
-  for (const el of body.elements) {
-    if (!el || typeof el !== 'object') {
-      const err = new Error('Elemento inválido.'); err.status = 400; throw err;
-    }
-    if (!el.selector || !isValidSelector(String(el.selector))) {
-      const err = new Error("Elemento inválido: 'selector' obrigatório e válido."); err.status = 400; throw err;
-    }
-  }
-} 
+import { validateGenerateTestsBody, validateAutofillBody, normalizeCases } from './lib/validators.js';
 
-// Prefill heurísticas: tenta preencher localmente os campos óbvios (email, phone, name, postal_code, linkedin, cpf/cep simples)
-function prefillHeuristics(elements, max = 200) {
-  const filled = [];
-  const remaining = [];
-  const normalized = (elements || []).map(normalizeIncomingElement).filter(Boolean).slice(0, max);
-  for (const el of normalized) {
-    try {
-      const selector = el.selector;
-      if (!isValidSelector(selector)) continue;
-      const name = (el.name || '').toLowerCase();
-      const label = (el.label || '').toLowerCase();
-      const placeholder = (el.placeholder || '').toLowerCase();
-      const type = (el.type || '').toLowerCase();
-      const semantic = (el.semantic || '').toLowerCase();
-      const value = (el.value || el.text || '').toString();
+// (validators are imported from ./lib/validators.js) 
 
-      // If value already present and visible, accept it (but sanitize/trim)
-      if (value && el.visible) {
-        filled.push({ selector: sanitizeString(selector, 500), value: sanitizeString(value, 2000), simulate: false });
-        continue;
-      }
+// heuristics implementation moved to ./lib/heuristics.js
 
-      const combined = `${selector} ${name} ${label} ${placeholder} ${type} ${semantic}`.toLowerCase();
-
-      // email
-      if (type === 'email' || combined.includes('email') || combined.includes('e-mail')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'user@example.com', simulate: false });
-        continue;
-      }
-      // phone
-      if (type === 'tel' || combined.includes('phone') || combined.includes('telephone') || combined.includes('telefone') || combined.includes('cel')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: '+5511999999999', simulate: false });
-        continue;
-      }
-      // name
-      if (combined.includes('name') || combined.includes('nome') || semantic === 'name') {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'QA Tester', simulate: false });
-        continue;
-      }
-      // postal / zipcode
-      if (combined.includes('cep') || combined.includes('zip') || semantic === 'postal_code' || combined.includes('postal')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: '00000-000', simulate: false });
-        continue;
-      }
-      // linkedin / url
-      if (combined.includes('linkedin') || combined.includes('linkedinProfile') || combined.includes('linkedinprofile') || combined.includes('url')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'https://www.linkedin.com/in/example', simulate: false });
-        continue;
-      }
-      // small heuristics for email-like placeholders
-      if (placeholder && placeholder.includes('@')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'user@example.com', simulate: false });
-        continue;
-      }
-
-      // fallback: leave for AI
-      remaining.push(el);
-    } catch (e) {
-      remaining.push(el);
-    }
-  }
-  return { actions: filled, remaining };
-}
-
-function generateAutofillStub(elements) {
-  // keep backwards compatible behavior but reuse prefill heuristics for stronger coverage
-  const { actions: filled, remaining } = prefillHeuristics(elements, 50);
-  // for any remaining, just generate a generic short value
-  for (const el of (remaining || []).slice(0, 50)) {
-    try {
-      const selector = sanitizeString(el.selector || '', 500);
-      if (!isValidSelector(selector)) continue;
-      const placeholder = sanitizeString(el.placeholder || '', 200);
-      const type = String(el.type || '').toLowerCase();
-      let value = '';
-      if (type === 'email') value = 'user@example.com';
-      else if (type === 'tel') value = '+5511999999999';
-      else if (placeholder) value = placeholder;
-      else value = 'test';
-      filled.push({ selector, value, simulate: false });
-    } catch (e) {
-      continue;
-    }
-  }
-  return filled;
-}
 
 function buildAutofillPrompt(body, maxElems = 50) {
   // compact prompt: one line per element as selector|type|name|placeholder|semantic
@@ -419,61 +219,11 @@ function normalizeAutofillResponse(parsed) {
   return out.length ? out : null;
 }
 
-// Gera CPF válido (formatado 000.000.000-00)
-function generateCpf() {
-  const nums = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += nums[i] * (10 - i);
-  let d1 = sum % 11;
-  d1 = d1 < 2 ? 0 : 11 - d1;
-  sum = 0;
-  for (let i = 0; i < 9; i++) sum += nums[i] * (11 - i);
-  sum += d1 * 2;
-  let d2 = sum % 11;
-  d2 = d2 < 2 ? 0 : 11 - d2;
-  const full = nums.concat([d1, d2]).join('');
-  return `${full.slice(0,3)}.${full.slice(3,6)}.${full.slice(6,9)}-${full.slice(9,11)}`;
-}
+// CPF/CNPJ gens moved to ./lib/heuristics.js
 
-// Gera CNPJ válido (formatado 00.000.000/0000-00)
-function generateCnpj() {
-  const nums = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
-  const weights1 = [5,4,3,2,9,8,7,6,5,4,3,2];
-  let sum = nums.reduce((acc, d, i) => acc + d * weights1[i], 0);
-  let d1 = sum % 11;
-  d1 = d1 < 2 ? 0 : 11 - d1;
-  const nums2 = nums.concat([d1]);
-  const weights2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
-  sum = nums2.reduce((acc, d, i) => acc + d * weights2[i], 0);
-  let d2 = sum % 11;
-  d2 = d2 < 2 ? 0 : 11 - d2;
-  const full = nums.concat([d1, d2]).join('');
-  return `${full.slice(0,2)}.${full.slice(2,5)}.${full.slice(5,8)}/${full.slice(8,12)}-${full.slice(12,14)}`;
-}
 
-function detectCpfCnpjField(el) {
-  if (!el) return null;
-  const s = `${el.selector || ''} ${el.name || ''} ${el.label || ''} ${el.placeholder || ''} ${el.type || ''} ${el.semantic || ''}`.toLowerCase();
-  if (s.includes('cpf')) return 'cpf';
-  if (s.includes('cnpj')) return 'cnpj';
-  return null;
-}
+// detectCpfCnpjField & applyCpfCnpjReplacement moved to ./lib/heuristics.js
 
-function applyCpfCnpjReplacement(actions, normalizedElements) {
-  if (!Array.isArray(actions) || !Array.isArray(normalizedElements)) return actions;
-  const map = new Map(normalizedElements.map(e => [e.selector, e]));
-  return actions.map(a => {
-    try {
-      const el = map.get(a.selector);
-      const kind = detectCpfCnpjField(el);
-      if (kind === 'cpf') return { ...a, value: sanitizeString(generateCpf(), 2000) };
-      if (kind === 'cnpj') return { ...a, value: sanitizeString(generateCnpj(), 2000) };
-    } catch (e) {
-      // ignore and keep original
-    }
-    return a;
-  });
-}
 
 async function handleAutofill(req, env) {
   const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
@@ -635,33 +385,7 @@ async function handleAutofill(req, env) {
 }
 
 
-// ✅ fetch com timeout + captura REAL de erro (inclusive quando status=0)
-async function fetchTextWithTimeout(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    const text = await res.text();
-    return {
-      ok: res.ok,
-      status: res.status,
-      text,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      text: "",
-      error: {
-        name: e?.name || "Error",
-        message: e?.message || String(e),
-      },
-    };
-  } finally {
-    clearTimeout(t);
-  }
-}
+// fetchTextWithTimeout moved to ./lib/openai.js (common helper)
 
 // ✅ Diagnóstico: dá pra chamar e ver se o Worker consegue falar com OpenAI e qual status vem.
 async function handleDebugOpenAIModels(env) {
@@ -1129,6 +853,7 @@ export {
   buildAutofillPrompt,
   normalizeAutofillResponse,
   sanitizeString,
+  isValidSelector,
   safeId,
   normalizeCases,
   daysLeft,
@@ -1138,6 +863,9 @@ export {
   generateCnpj,
   detectCpfCnpjField,
   applyCpfCnpjReplacement,
+  // openai helpers
+  fetchTextWithTimeout,
+  parseResponsesContent,
   // model helper
   getAutofillModel,
 };
