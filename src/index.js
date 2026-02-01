@@ -409,6 +409,62 @@ function normalizeAutofillResponse(parsed) {
   return out.length ? out : null;
 }
 
+// Gera CPF válido (formatado 000.000.000-00)
+function generateCpf() {
+  const nums = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += nums[i] * (10 - i);
+  let d1 = sum % 11;
+  d1 = d1 < 2 ? 0 : 11 - d1;
+  sum = 0;
+  for (let i = 0; i < 9; i++) sum += nums[i] * (11 - i);
+  sum += d1 * 2;
+  let d2 = sum % 11;
+  d2 = d2 < 2 ? 0 : 11 - d2;
+  const full = nums.concat([d1, d2]).join('');
+  return `${full.slice(0,3)}.${full.slice(3,6)}.${full.slice(6,9)}-${full.slice(9,11)}`;
+}
+
+// Gera CNPJ válido (formatado 00.000.000/0000-00)
+function generateCnpj() {
+  const nums = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
+  const weights1 = [5,4,3,2,9,8,7,6,5,4,3,2];
+  let sum = nums.reduce((acc, d, i) => acc + d * weights1[i], 0);
+  let d1 = sum % 11;
+  d1 = d1 < 2 ? 0 : 11 - d1;
+  const nums2 = nums.concat([d1]);
+  const weights2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
+  sum = nums2.reduce((acc, d, i) => acc + d * weights2[i], 0);
+  let d2 = sum % 11;
+  d2 = d2 < 2 ? 0 : 11 - d2;
+  const full = nums.concat([d1, d2]).join('');
+  return `${full.slice(0,2)}.${full.slice(2,5)}.${full.slice(5,8)}/${full.slice(8,12)}-${full.slice(12,14)}`;
+}
+
+function detectCpfCnpjField(el) {
+  if (!el) return null;
+  const s = `${el.selector || ''} ${el.name || ''} ${el.label || ''} ${el.placeholder || ''} ${el.type || ''} ${el.semantic || ''}`.toLowerCase();
+  if (s.includes('cpf')) return 'cpf';
+  if (s.includes('cnpj')) return 'cnpj';
+  return null;
+}
+
+function applyCpfCnpjReplacement(actions, normalizedElements) {
+  if (!Array.isArray(actions) || !Array.isArray(normalizedElements)) return actions;
+  const map = new Map(normalizedElements.map(e => [e.selector, e]));
+  return actions.map(a => {
+    try {
+      const el = map.get(a.selector);
+      const kind = detectCpfCnpjField(el);
+      if (kind === 'cpf') return { ...a, value: sanitizeString(generateCpf(), 2000) };
+      if (kind === 'cnpj') return { ...a, value: sanitizeString(generateCnpj(), 2000) };
+    } catch (e) {
+      // ignore and keep original
+    }
+    return a;
+  });
+}
+
 async function handleAutofill(req, env) {
   const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
   validateToken(env, token);
@@ -425,10 +481,14 @@ async function handleAutofill(req, env) {
 
   log('autofill', { token: safeId(token), url: sanitizeString(body.url, 2000), elements: Math.min(200, (body.elements || []).length) });
 
+  // Normalize input elements once (map used later for CPF/CNPJ replacement)
+  const normalizedElements = (body.elements || []).map(normalizeIncomingElement).filter(Boolean);
+
   // First apply fast heuristics
   const { actions: prefilled, remaining } = prefillHeuristics(body.elements || [], Number(env.AUTOFILL_HEUR_MAX_ELEMENTS || 200));
   if (!remaining || remaining.length === 0) {
-    return json({ actions: prefilled, meta: { mode: 'heuristic' } }, { headers: corsHeaders(req, env) });
+    const final = applyCpfCnpjReplacement(prefilled, normalizedElements);
+    return json({ actions: final, meta: { mode: 'heuristic' } }, { headers: corsHeaders(req, env) });
   }
 
   // Build prompt only for remaining elements (compact)
@@ -556,8 +616,9 @@ async function handleAutofill(req, env) {
 
   // combine prefilled + aiActions, aiActions may be subset
   const combined = [...prefilled, ...aiActions];
+  const finalActions = applyCpfCnpjReplacement(combined, normalizedElements);
 
-  return json({ actions: combined, meta: { mode: 'ai', model, prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
+  return json({ actions: finalActions, meta: { mode: 'ai', model, prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
 }
 
 
@@ -1059,4 +1120,9 @@ export {
   normalizeCases,
   daysLeft,
   isAdminToken,
+  // CPF/CNPJ helpers
+  generateCpf,
+  generateCnpj,
+  detectCpfCnpjField,
+  applyCpfCnpjReplacement,
 };

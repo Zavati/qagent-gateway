@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics, normalizeIncomingElement, extractJsonFromText } from '../src/index.js';
+import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics, normalizeIncomingElement, extractJsonFromText, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement } from '../src/index.js';
 
 console.log('Running quick unit tests...');
 
@@ -86,6 +86,26 @@ assert.strictEqual(Array.isArray(normResp), true);
 assert.strictEqual(normResp.length, 1);
 assert.strictEqual(normResp[0].selector, '#email');
 assert.strictEqual(normResp[0].value, 'user@example.com');
+
+// CPF/CNPJ generators + replacement
+const cpf = generateCpf();
+assert.ok(/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(cpf));
+const cnpj = generateCnpj();
+assert.ok(/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(cnpj));
+
+const elCpf = { selector: '#idcpf', name: 'cpf', label: 'CPF' };
+const norm = normalizeIncomingElement(elCpf);
+assert.strictEqual(detectCpfCnpjField(norm), 'cpf');
+let cpfActions = [{ selector: '#idcpf', value: 'x' }];
+cpfActions = applyCpfCnpjReplacement(cpfActions, [norm]);
+assert.ok(/^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(cpfActions[0].value));
+
+const elCnpj = { selector: '#idcnpj', name: 'cnpj' };
+const normCnpj = normalizeIncomingElement(elCnpj);
+assert.strictEqual(detectCpfCnpjField(normCnpj), 'cnpj');
+let cnpjActions = [{ selector: '#idcnpj', value: 'x' }];
+cnpjActions = applyCpfCnpjReplacement(cnpjActions, [normCnpj]);
+assert.ok(/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(cnpjActions[0].value));
 
 // corsHeaders with allowed origin
 const fakeReq = { headers: { get: () => 'https://example.com' } };
