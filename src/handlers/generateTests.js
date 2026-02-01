@@ -42,13 +42,14 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
 
   // OpenAI call + repair
   const t0 = Date.now();
-  let result, repairAttempts = 0, mode = 'ai';
+  let result, repairAttempts = 0, mode = 'ai', rawText = '';
   try {
     result = await openaiClient.callJsonResponse(model, userPrompt, { retries: 3, timeoutMs: 90000 });
   } catch (e) {
     // Try repair if not JSON
     repairAttempts++;
-    result = await openaiClient.repairJsonResponse(model, userPrompt, e.rawText || '', { timeoutMs: 10000 });
+    rawText = e.rawText || '';
+    result = await openaiClient.repairJsonResponse(model, userPrompt, rawText, { timeoutMs: 10000 });
     if (!result) {
       mode = 'stub';
       result = { cases: [{ id: 'TC-001', title: 'Stub', steps: [] }] };
@@ -58,8 +59,10 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
   const normalized = normalizeCases(result);
   const caseCount = normalized?.cases?.length || 0;
 
+  const meta = { mode, model, caseCount, repairAttempts, durationMs, promptSize: userPrompt.length };
+  if (mode === 'stub' && rawText) meta.rawText = rawText;
   return {
     cases: normalized?.cases || [],
-    meta: { mode, model, caseCount, repairAttempts, durationMs, promptSize: userPrompt.length },
+    meta,
   };
 }
