@@ -66,12 +66,21 @@ ${expected}`;
   const t0 = Date.now();
   let result, repairAttempts = 0, mode = 'ai', rawText = '';
   try {
-    result = await openaiClient.callJsonResponse(model, userPrompt, { apiKey: env.OPENAI_API_KEY, retries: 3, timeoutMs: 90000 });
+    result = await openaiClient.callJsonResponse(
+      model,
+      userPrompt,
+      { apiKey: env.OPENAI_API_KEY, retries: 3, timeoutMs: 90000, max_output_tokens: 1200 }
+    );
   } catch (e) {
     // Try repair if not JSON
     repairAttempts++;
     rawText = e.rawText || '';
-    result = await openaiClient.repairJsonResponse(model, userPrompt, rawText, { apiKey: env.OPENAI_API_KEY, timeoutMs: 10000 });
+    result = await openaiClient.repairJsonResponse(
+      model,
+      userPrompt,
+      rawText,
+      { apiKey: env.OPENAI_API_KEY, timeoutMs: 10000, max_output_tokens: 1200 }
+    );
     if (!result) {
       mode = 'stub';
       result = { cases: [{ id: 'TC-001', title: 'Stub', steps: [] }], score: { value: 1, reason: 'Stub: IA não respondeu.' } };

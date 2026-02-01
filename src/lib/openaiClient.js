@@ -10,9 +10,8 @@ export const openaiClient = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${opts.apiKey || ''}`,
     };
-    // Monta o payload igual ao handler de autofill
+    // Envia só o prompt do handler como mensagem de user
     const input = [
-      { role: 'system', content: [{ type: 'input_text', text: 'Você é um especialista em QA. Gere casos de teste para a tarefa do Jira abaixo.' }] },
       { role: 'user', content: [{ type: 'input_text', text: userPrompt }] },
     ];
     const body = JSON.stringify({
@@ -20,7 +19,7 @@ export const openaiClient = {
       input,
       text: { format: { type: 'json_object' } },
       temperature: typeof opts.temperature === 'number' ? opts.temperature : 0.0,
-      max_output_tokens: typeof opts.max_output_tokens === 'number' ? opts.max_output_tokens : 600,
+      max_output_tokens: typeof opts.max_output_tokens === 'number' ? opts.max_output_tokens : 1200,
     });
     let lastText = '', lastErr;
     for (let attempt = 0; attempt <= retries; attempt++) {
