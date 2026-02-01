@@ -255,6 +255,16 @@ function extractJsonFromText(text) {
   return null;
 }
 
+// Escolhe o modelo para autofill. Precedência: body.meta.model -> body.settings.model -> env.AUTOFILL_MODEL -> default
+function getAutofillModel(body, env) {
+  const candidate = (body?.meta?.model || body?.settings?.model || env?.AUTOFILL_MODEL || "gpt-3.5-turbo");
+  try {
+    return sanitizeString(candidate, 200);
+  } catch (e) {
+    return "gpt-3.5-turbo";
+  }
+}
+
 function validateAutofillBody(body) {
   if (!body || typeof body !== 'object') {
     const err = new Error('Body inválido.'); err.status = 400; throw err;
@@ -273,7 +283,7 @@ function validateAutofillBody(body) {
       const err = new Error("Elemento inválido: 'selector' obrigatório e válido."); err.status = 400; throw err;
     }
   }
-}
+} 
 
 // Prefill heurísticas: tenta preencher localmente os campos óbvios (email, phone, name, postal_code, linkedin, cpf/cep simples)
 function prefillHeuristics(elements, max = 200) {
@@ -311,7 +321,7 @@ function prefillHeuristics(elements, max = 200) {
       }
       // name
       if (combined.includes('name') || combined.includes('nome') || semantic === 'name') {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'João Tester', simulate: false });
+        filled.push({ selector: sanitizeString(selector, 500), value: 'QA Tester', simulate: false });
         continue;
       }
       // postal / zipcode
@@ -484,17 +494,20 @@ async function handleAutofill(req, env) {
   // Normalize input elements once (map used later for CPF/CNPJ replacement)
   const normalizedElements = (body.elements || []).map(normalizeIncomingElement).filter(Boolean);
 
+  // Escolhe o modelo a ser usado (pode vir de body.meta.model)
+  const model = getAutofillModel(body, env);
+
   // First apply fast heuristics
   const { actions: prefilled, remaining } = prefillHeuristics(body.elements || [], Number(env.AUTOFILL_HEUR_MAX_ELEMENTS || 200));
   if (!remaining || remaining.length === 0) {
     const final = applyCpfCnpjReplacement(prefilled, normalizedElements);
-    return json({ actions: final, meta: { mode: 'heuristic' } }, { headers: corsHeaders(req, env) });
+    return json({ actions: final, meta: { mode: 'heuristic', model } }, { headers: corsHeaders(req, env) });
   }
 
   // Build prompt only for remaining elements (compact)
   const promptBody = { url: body.url, elements: remaining };
   const prompt = buildAutofillPrompt(promptBody, Number(env.AUTOFILL_MAX_ELEMS || 50));
-  const model = env.AUTOFILL_MODEL || body?.settings?.model || "gpt-3.5-turbo";
+  /* model is selected earlier (getAutofillModel) */
   const openaiUrl = "https://api.openai.com/v1/responses";
   const openaiInit = {
     method: "POST",
@@ -611,7 +624,7 @@ async function handleAutofill(req, env) {
     // fallback: return prefilled heuristics only and report repairAttempts
     log('autofill_fallback', { prefilled: prefilled.length, repairAttempts });
 
-    return json({ actions: prefilled, meta: { mode: 'heuristic', prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
+    return json({ actions: prefilled, meta: { mode: 'heuristic', model, prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
   }
 
   // combine prefilled + aiActions, aiActions may be subset
@@ -1125,4 +1138,6 @@ export {
   generateCnpj,
   detectCpfCnpjField,
   applyCpfCnpjReplacement,
+  // model helper
+  getAutofillModel,
 };

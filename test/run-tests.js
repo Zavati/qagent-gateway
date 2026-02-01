@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics, normalizeIncomingElement, extractJsonFromText, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement } from '../src/index.js';
+import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics, normalizeIncomingElement, extractJsonFromText, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement, getAutofillModel } from '../src/index.js';
 
 console.log('Running quick unit tests...');
 
@@ -106,6 +106,11 @@ assert.strictEqual(detectCpfCnpjField(normCnpj), 'cnpj');
 let cnpjActions = [{ selector: '#idcnpj', value: 'x' }];
 cnpjActions = applyCpfCnpjReplacement(cnpjActions, [normCnpj]);
 assert.ok(/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(cnpjActions[0].value));
+
+// getAutofillModel precedence
+assert.strictEqual(getAutofillModel({ meta: { model: 'gpt-3.5-turbo' } }, {}).startsWith('gpt-3.5-turbo'), true);
+assert.strictEqual(getAutofillModel({ settings: { model: 'gpt-4' } }, {}).startsWith('gpt-4'), true);
+assert.strictEqual(getAutofillModel({}, { AUTOFILL_MODEL: 'gpt-3.5-test' }).startsWith('gpt-3.5-test'), true);
 
 // corsHeaders with allowed origin
 const fakeReq = { headers: { get: () => 'https://example.com' } };
