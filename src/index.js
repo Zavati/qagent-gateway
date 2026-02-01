@@ -661,9 +661,17 @@ Em caso de dúvidas, entre em contato pelo e-mail:
 
       return json({ status: "not_found", message: "Endpoint inexistente." }, { status: 404, headers: corsHeaders(req, env) });
     } catch (e) {
+      // Log detalhado de erro para debug
+      log('error_catch', {
+        message: e?.message || String(e),
+        status: e?.status || 500,
+        stack: e?.stack || null,
+        retryAfterMs: e?.retryAfterMs || null,
+        detail: e?._detail || null,
+      });
       const status = e?.status || 500;
       const headers = corsHeaders(req, env, status === 429 && e.retryAfterMs ? { "Retry-After": String(Math.ceil(e.retryAfterMs / 1000)) } : {});
-      return json({ status: "error", message: e?.message || String(e) }, { status, headers });
+      return json({ status: "error", message: e?.message || String(e), stack: e?.stack || null, detail: e?._detail || null }, { status, headers });
     }
   },
 };
