@@ -162,6 +162,8 @@ import { normalizeIncomingElement, prefillHeuristics, generateAutofillStub, gene
 
 // Attempts to find and parse a JSON object inside arbitrary text, returns parsed object or null
 import { fetchTextWithTimeout, parseResponsesContent, extractJsonFromText } from './lib/openai.js';
+import { openaiClient } from './lib/openaiClient.js';
+import { handleGenerateTests as generateTestsHandler } from './handlers/generateTests.js';
 
 import { getAutofillModel } from './lib/config.js';
 
@@ -410,190 +412,7 @@ async function handleDebugOpenAIModels(env) {
   );
 }
 
-async function handleGenerateTests(req, env) {
-  const token = getBearerToken(req);
-  validateToken(env, token);
-  const license = await getOrCreateLicense(env, token);
-  assertPremiumAllowed(license);
 
-  const windowMs = getEnvNum(env, "RATE_LIMIT_WINDOW_MS", 60_000);
-  const max = getEnvNum(env, "RATE_LIMIT_MAX", 20);
-  const maxBytes = getEnvNum(env, "MAX_BODY_BYTES", 25_000);
-
-  rateLimitOrThrow({ key: `t:${safeId(token)}`, windowMs, max });
-
-  const body = await readJsonWithLimit(req, maxBytes);
-
-  // Validate payload early to avoid unnecessary OpenAI calls
-  validateGenerateTestsBody(body);
-
-  const issueKey = body?.jira?.key || body?.source?.issueKey || "";
-  const format = (body?.format || "step").toLowerCase();
-  const jiraTitle = body?.jira?.title || "";
-  const jiraDesc = body?.jira?.description || "";
-  const ctx = body?.context || {};
-
-  log("generate-tests", {
-    token: safeId(token),
-    issue: issueKey ? safeId(issueKey) : "none",
-    format,
-    hasCurl: !!ctx.curl,
-    hasDoc: !!ctx.docLink,
-    hasExpected: !!ctx.expected,
-  });
-
-  // Stub útil se key não estiver setada
-  if (!env?.OPENAI_API_KEY) {
-    return json(
-      {
-        cases: [
-          {
-            id: "TC-001",
-            title: "Gateway funcionando (sem OPENAI_API_KEY)",
-            objective: "Validar integração extensão → backend",
-            preconditions: ["Extensão carregada", "Worker rodando"],
-            steps: [
-              { action: "Clicar em gerar casos", data: "payload enviado", expected: "Backend responde corretamente" },
-            ],
-            tags: ["gateway", "local"],
-            priority: "Low",
-          },
-        ],
-        meta: { mode: "stub", issueKey },
-      },
-      { headers: corsHeaders(req, env) }
-    );
-  }
-
-  // Prompt (reutiliza seu bom prompt)
-  const userPrompt = `Você é um especialista em QA. Gere casos de teste para a tarefa do Jira abaixo.
-
-Regras:
-- Gere de 5 a 10 casos.
-- Cubra: happy path, validações, negativos, bordas, autorização.
-- Use o CONTEXTO ADICIONAL (cURL, documentação e esperado) para refinar os casos.
-- Saída DEVE ser JSON puro, sem texto extra.
-- Schema de saída:
-{
-  "cases": [
-    {
-      "id": "string",
-      "title": "string",
-      "objective": "string",
-      "preconditions": ["string"],
-      "steps": [{"action":"string","data":"string","expected":"string"}],
-      "tags": ["string"],
-      "priority": "Low|Medium|High"
-    }
-  ]
-}
-
-Tarefa:
-- Key: ${issueKey}
-- Title: ${jiraTitle}
-- Description: ${jiraDesc}
-
-Formato preferido: ${format === "bdd" ? "BDD (Given/When/Then)" : "Step-by-step"}.
-
-CONTEXTO ADICIONAL (QA):
-- cURL:
-${(ctx.curl || "").trim() || "(vazio)"}
-
-- Link de documentação:
-${(ctx.docLink || "").trim() || "(vazio)"}
-
-- Resultado esperado:
-${(ctx.expected || "").trim() || "(vazio)"}`;
-
-  const model = body?.settings?.model || "gpt-4o-mini";
-
-  // ✅ Troca para Responses API (mais atual)
-  const openaiUrl = "https://api.openai.com/v1/responses";
-  const openaiInit = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: "Você é um gerador de casos de teste." }] },
-        { role: "user", content: [{ type: "input_text", text: userPrompt }] },
-      ],
-      // força o modelo a responder em JSON (não garante 100%, mas ajuda MUITO)
-      text: { format: { type: "json_object" } },
-      temperature: 0.2,
-    }),
-  };
-
-  const timeoutMs = Number(env.OPENAI_TIMEOUT_MS || 90000);
-
-  // retry até 3x com backoff simples
-  let last = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    last = await fetchTextWithTimeout(openaiUrl, openaiInit, timeoutMs);
-
-    if (!last.ok && (last.status === 429 || last.status >= 500 || last.status === 0)) {
-      await new Promise((r) => setTimeout(r, 300 + attempt * 700));
-      continue;
-    }
-    break;
-  }
-
-  if (!last?.ok) {
-    const errInfo = last?.error ? `${last.error.name}: ${last.error.message}` : (last?.status ? `HTTP ${last.status}` : 'unknown');
-    log("openai_error", {
-      status: last?.status,
-      error: last?.error || null,
-      bodyHead: (last?.text || "").slice(0, 400),
-      detail: errInfo,
-    });
-    const err = new Error(`Falha ao chamar LLM (${errInfo}).`);
-    err.status = 502;
-    err._detail = last?.error?.message || null;
-    throw err;
-  }
-
-  // Parse do Responses API:
-  // a resposta vem em output[].content[].text
-  let contentText = "";
-  try {
-    const obj = JSON.parse(last.text);
-    // tenta extrair o texto final
-    const out = obj?.output || [];
-    const msg = out.find((x) => x.type === "message") || out[0];
-    const c = msg?.content || [];
-    const t = c.find((x) => x.type === "output_text")?.text
-      || c.find((x) => x.type === "text")?.text
-      || "";
-    contentText = t;
-  } catch {
-    // se não for JSON, já é erro
-    const err = new Error("OpenAI retornou resposta não-JSON (Responses API).");
-    err.status = 502;
-    throw err;
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(contentText);
-  } catch {
-    log("openai_non_json_output_head", { head: (contentText || "").slice(0, 400) });
-    const err = new Error("Resposta da LLM não veio em JSON válido.");
-    err.status = 502;
-    throw err;
-  }
-
-  const normalized = normalizeCases(parsed);
-  if (!normalized) {
-    const err = new Error("Resposta inválida do servidor (cases ausente).");
-    err.status = 502;
-    throw err;
-  }
-
-  return json(normalized, { headers: corsHeaders(req, env) });
-}
 
 function nowIso() {
   return new Date().toISOString();
@@ -822,7 +641,13 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       }
       // generate-tests: só POST
       if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
-        return await handleGenerateTests(req, env);
+        // Inject openaiClient and rateLimiter
+        const rateLimiter = (token, windowMs, max) => rateLimitOrThrow({ key: `t:${safeId(token)}`, windowMs, max });
+        const resp = await generateTestsHandler(req, env, { openaiClient, rateLimiter });
+        // Garante que meta.model está presente no response
+        if (!resp.meta) resp.meta = {};
+        resp.meta.model = resp.meta.model || resp.model || (resp.meta.engine || null);
+        return json(resp, { headers: corsHeaders(req, env) });
       }
 
       // autofill: POST /v1/autofill
