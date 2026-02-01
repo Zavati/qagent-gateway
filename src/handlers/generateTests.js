@@ -1,6 +1,14 @@
+
 import { sanitizeString } from '../lib/sanitize.js';
 import { validateGenerateTestsBody, normalizeCases } from '../lib/validators.js';
 import { getEnvNum, getAutofillModel } from '../lib/config.js';
+
+// Função log deve ser passada pelo env ou contexto, ou fallback para console.log
+function getLogger(env) {
+  if (typeof env?.log === 'function') return env.log;
+  if (typeof globalThis.log === 'function') return globalThis.log;
+  return (...args) => { try { console.log(...args); } catch {} };
+}
 
 // openaiClient: { callJsonResponse(model, prompt, opts) }
 export async function handleGenerateTests(req, env, { openaiClient, rateLimiter }) {
@@ -87,6 +95,7 @@ ${expected}`;
   // OpenAI call + repair
   const t0 = Date.now();
   let result, repairAttempts = 0, mode = 'ai', rawText = '';
+  const log = getLogger(env);
   try {
     result = await openaiClient.callJsonResponse(
       model,
