@@ -37,8 +37,30 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
   // Model selection
   const model = getAutofillModel(body, env);
 
-  // Prompt
-  const userPrompt = `Você é um especialista em QA. Gere casos de teste para a tarefa do Jira abaixo.\n\nRegras:\n- Gere de 5 a 10 casos.\n- Cubra: happy path, validações, negativos, bordas, autorização.\n- Use o CONTEXTO ADICIONAL (cURL, documentação e esperado) para refinar os casos.\n- Saída DEVE ser JSON puro, sem texto extra.\n- Schema de saída:\n{\n  "cases": [ ... ]\n}\nTarefa:\n- Key: ${issueKey}\n- Title: ${jiraTitle}\n- Description: ${jiraDesc}\nFormato preferido: ${format === 'bdd' ? 'BDD (Given/When/Then)' : 'Step-by-step'}.\nCONTEXTO ADICIONAL (QA):\n- cURL:\n${curl}\n- Link de documentação:\n${docLink}\n- Resultado esperado:\n${expected}`;
+  // Prompt atualizado: pede nota (score) e justificativa, exige JSON com cases e score
+  const userPrompt = `Você é um especialista em QA. Analise a tarefa do Jira abaixo e:
+
+- Gere de 5 a 10 casos de teste (cobrindo happy path, validações, negativos, bordas, autorização).
+- Avalie a complexidade da tarefa de 1 a 8 (padrão Scrum) e justifique a nota.
+
+Responda SOMENTE JSON, no seguinte formato:
+{
+  "cases": [ ... ],
+  "score": { "value": <1-8>, "reason": "..." }
+}
+
+Tarefa:
+- Key: ${issueKey}
+- Title: ${jiraTitle}
+- Description: ${jiraDesc}
+Formato preferido: ${format === 'bdd' ? 'BDD (Given/When/Then)' : 'Step-by-step'}.
+CONTEXTO ADICIONAL (QA):
+- cURL:
+${curl}
+- Link de documentação:
+${docLink}
+- Resultado esperado:
+${expected}`;
 
   // OpenAI call + repair
   const t0 = Date.now();
@@ -52,17 +74,23 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
     result = await openaiClient.repairJsonResponse(model, userPrompt, rawText, { apiKey: env.OPENAI_API_KEY, timeoutMs: 10000 });
     if (!result) {
       mode = 'stub';
-      result = { cases: [{ id: 'TC-001', title: 'Stub', steps: [] }] };
+      result = { cases: [{ id: 'TC-001', title: 'Stub', steps: [] }], score: { value: 1, reason: 'Stub: IA não respondeu.' } };
     }
   }
   const durationMs = Date.now() - t0;
-  const normalized = normalizeCases(result);
+  // Garante que sempre retorna cases e score
+  let cases = Array.isArray(result?.cases) ? result.cases : [];
+  let score = result?.score && typeof result.score === 'object' ? result.score : null;
+  // fallback se IA não respondeu score
+  if (!score) score = { value: 1, reason: 'IA não retornou score.' };
+  const normalized = normalizeCases({ cases });
   const caseCount = normalized?.cases?.length || 0;
 
   const meta = { mode, model, caseCount, repairAttempts, durationMs, promptSize: userPrompt.length };
   if (mode === 'stub' && rawText) meta.rawText = rawText;
   return {
     cases: normalized?.cases || [],
+    score,
     meta,
   };
 }
