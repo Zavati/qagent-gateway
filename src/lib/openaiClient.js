@@ -2,7 +2,7 @@ import { fetchTextWithTimeout, parseResponsesContent, extractJsonFromText } from
 
 // Robust OpenAI Responses API client for JSON output
 export const openaiClient = {
-  async callJsonResponse(model, prompt, opts = {}) {
+  async callJsonResponse(model, userPrompt, opts = {}) {
     const url = 'https://api.openai.com/v1/responses';
     const timeoutMs = opts.timeoutMs || 60000;
     const retries = opts.retries || 2;
@@ -10,7 +10,18 @@ export const openaiClient = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${opts.apiKey || ''}`,
     };
-    const body = JSON.stringify({ model, prompt });
+    // Monta o payload igual ao handler de autofill
+    const input = [
+      { role: 'system', content: [{ type: 'input_text', text: 'Você é um especialista em QA. Gere casos de teste para a tarefa do Jira abaixo.' }] },
+      { role: 'user', content: [{ type: 'input_text', text: userPrompt }] },
+    ];
+    const body = JSON.stringify({
+      model,
+      input,
+      text: { format: { type: 'json_object' } },
+      temperature: typeof opts.temperature === 'number' ? opts.temperature : 0.0,
+      max_output_tokens: typeof opts.max_output_tokens === 'number' ? opts.max_output_tokens : 600,
+    });
     let lastText = '', lastErr;
     for (let attempt = 0; attempt <= retries; attempt++) {
       const res = await fetchTextWithTimeout(url, { method: 'POST', headers, body }, timeoutMs);
