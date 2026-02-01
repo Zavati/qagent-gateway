@@ -93,16 +93,20 @@ ${expected}`;
       userPrompt,
       { apiKey: env.OPENAI_API_KEY, retries: 3, timeoutMs: 90000, max_output_tokens: 1200 }
     );
+    // Log do retorno bruto e do parsing
+    log('generateTests_openai_raw', { raw: JSON.stringify(result).slice(0, 2000) });
   } catch (e) {
     // Try repair if not JSON
     repairAttempts++;
     rawText = e.rawText || '';
+    log('generateTests_openai_error', { error: e.message, rawText: rawText.slice(0, 2000) });
     result = await openaiClient.repairJsonResponse(
       model,
       userPrompt,
       rawText,
       { apiKey: env.OPENAI_API_KEY, timeoutMs: 10000, max_output_tokens: 1200 }
     );
+    log('generateTests_openai_repair', { repaired: JSON.stringify(result).slice(0, 2000) });
     if (!result) {
       mode = 'stub';
       result = { cases: [{ id: 'TC-001', title: 'Stub', steps: [] }], score: { value: 1, reason: 'Stub: IA não respondeu.' } };
