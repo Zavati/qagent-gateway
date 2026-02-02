@@ -8,7 +8,7 @@ const rateLimiter = () => {};
 
 async function testStubResponse() {
   // Should return stub if no token or invalid
-  const req = { headers: new Map([['Authorization', 'Bearer admin_token']]), json: async () => ({}) };
+  const req = { headers: new Map([['Authorization', 'Bearer admin_token_12345678901234567890']]), json: async () => ({}) };
   try {
     await handleGenerateTests(req, env, { openaiClient, rateLimiter });
   } catch (e) {
@@ -22,12 +22,12 @@ async function testValidPayload() {
   const mockOpenaiClient = {
     async callJsonResponse(model, prompt, opts) {
       called = true;
-      return { cases: [{ id: 'TC-001', title: 'Test', steps: [] }] };
+      return { json: { cases: [{ id: 'TC-001', title: 'Test', steps: [] }], score: { value: 3, reason: 'ok' } } };
     },
     async repairJsonResponse() { return null; },
   };
   const req = {
-    headers: new Map([['Authorization', 'Bearer admin_token']]),
+    headers: new Map([['Authorization', 'Bearer admin_token_12345678901234567890']]),
     json: async () => ({ jira: { key: 'JIRA-1', title: 'Title', description: 'Desc' }, format: 'step', context: {} })
   };
   const resp = await handleGenerateTests(req, env, { openaiClient: mockOpenaiClient, rateLimiter });

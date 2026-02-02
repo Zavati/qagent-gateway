@@ -97,23 +97,40 @@ ${expected}`;
   let result, repairAttempts = 0, mode = 'ai', rawText = '';
   const log = getLogger(env);
   try {
-    result = await openaiClient.callJsonResponse(
+    const out = await openaiClient.callJsonResponse(
       model,
       userPrompt,
       { apiKey: env.OPENAI_API_KEY, retries: 3, timeoutMs: 90000, max_output_tokens: 1200 }
     );
+    result = out?.json;
+    rawText = out?.contentText || out?.rawText || '';
     // Log do retorno bruto e do parsing
-    log('generateTests_openai_raw', { raw: JSON.stringify(result).slice(0, 2000) });
+    log('generateTests_openai_raw', { raw: JSON.stringify(result).slice(0, 2000), hasRaw: Boolean(rawText) });
+
+    // Se a IA retornou JSON mas no formato errado, tenta reparo também (não apenas em exceptions)
+    const missingCases = !Array.isArray(result?.cases);
+    const missingScore = !(result?.score && typeof result.score === 'object' && typeof result.score.value === 'number');
+    if (missingCases || missingScore) {
+      repairAttempts++;
+      log('generateTests_openai_invalid_shape', { missingCases, missingScore });
+      const repaired = await openaiClient.repairJsonResponse(
+        model,
+        userPrompt,
+        rawText,
+        { apiKey: env.OPENAI_API_KEY, timeoutMs: 20000, max_output_tokens: 1200 }
+      );
+      if (repaired) result = repaired;
+    }
   } catch (e) {
     // Try repair if not JSON
     repairAttempts++;
-    rawText = e.rawText || '';
+    rawText = e.contentText || e.rawText || '';
     log('generateTests_openai_error', { error: e.message, rawText: rawText.slice(0, 2000) });
     result = await openaiClient.repairJsonResponse(
       model,
       userPrompt,
       rawText,
-      { apiKey: env.OPENAI_API_KEY, timeoutMs: 10000, max_output_tokens: 1200 }
+      { apiKey: env.OPENAI_API_KEY, timeoutMs: 20000, max_output_tokens: 1200 }
     );
     log('generateTests_openai_repair', { repaired: JSON.stringify(result).slice(0, 2000) });
     if (!result) {

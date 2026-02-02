@@ -7,10 +7,10 @@ export function getEnvNum(env, key, fallback) {
 }
 
 export function getAutofillModel(body, env) {
-  const candidate = (body?.meta?.model || body?.settings?.model || env?.AUTOFILL_MODEL || "gpt-3.5-turbo");
+  const candidate = (body?.meta?.model || body?.settings?.model || env?.AUTOFILL_MODEL || "gpt-4o-mini");
   try {
     return sanitizeString(candidate, 200);
   } catch (e) {
-    return "gpt-3.5-turbo";
+    return "gpt-4o-mini";
   }
 }
