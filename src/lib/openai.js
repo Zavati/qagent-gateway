@@ -109,3 +109,8 @@ export function extractJsonFromText(text) {
   }
   return null;
 }
+
+// Backward-compat: versões antigas importam parseResponsesContent
+export function parseResponsesContent(bodyText) {
+  return parseResponsesOutput(bodyText);
+}
