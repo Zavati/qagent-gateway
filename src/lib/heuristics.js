@@ -16,6 +16,24 @@ export function normalizeIncomingElement(el) {
   return { selector, name, label, placeholder, type, semantic, text, value, kind, visible, id: el.id || '' };
 }
 
+// Lista de CEPs reais (amostra, pode ser expandida ou buscar de API)
+const REAL_CEPS = [
+  '01001-000', // São Paulo - SP
+  '20040-002', // Rio de Janeiro - RJ
+  '30130-010', // Belo Horizonte - MG
+  '40010-000', // Salvador - BA
+  '60010-270', // Fortaleza - CE
+  '70040-010', // Brasília - DF
+  '80010-000', // Curitiba - PR
+  '90010-320', // Porto Alegre - RS
+  '64000-080', // Teresina - PI
+  '66010-090', // Belém - PA
+];
+
+function getRandomRealCep() {
+  return REAL_CEPS[Math.floor(Math.random() * REAL_CEPS.length)];
+}
+
 export function prefillHeuristics(elements, max = 200) {
   const filled = [];
   const remaining = [];
@@ -51,7 +69,7 @@ export function prefillHeuristics(elements, max = 200) {
         continue;
       }
       if (combined.includes('cep') || combined.includes('zip') || semantic === 'postal_code' || combined.includes('postal')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: '00000-000', simulate: false });
+        filled.push({ selector: sanitizeString(selector, 500), value: getRandomRealCep(), simulate: false });
         continue;
       }
       if (combined.includes('linkedin') || combined.includes('linkedinProfile') || combined.includes('linkedinprofile') || combined.includes('url')) {
