@@ -133,12 +133,29 @@ export function detectCpfCnpjField(el) {
 export function applyCpfCnpjReplacement(actions, normalizedElements) {
   if (!Array.isArray(actions) || !Array.isArray(normalizedElements)) return actions;
   const map = new Map(normalizedElements.map(e => [e.selector, e]));
+  function generateCnpjSP() {
+    // CNPJ de SP: prefixo 01 a 08
+    const prefixos = [1,2,3,4,5,6,7,8];
+    const prefix = prefixos[Math.floor(Math.random() * prefixos.length)].toString().padStart(2, '0');
+    const nums = [parseInt(prefix[0]), parseInt(prefix[1])].concat(Array.from({ length: 10 }, () => Math.floor(Math.random() * 10)));
+    const weights1 = [5,4,3,2,9,8,7,6,5,4,3,2];
+    let sum = nums.reduce((acc, d, i) => acc + d * weights1[i], 0);
+    let d1 = sum % 11;
+    d1 = d1 < 2 ? 0 : 11 - d1;
+    const nums2 = nums.concat([d1]);
+    const weights2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
+    sum = nums2.reduce((acc, d, i) => acc + d * weights2[i], 0);
+    let d2 = sum % 11;
+    d2 = d2 < 2 ? 0 : 11 - d2;
+    const full = nums.concat([d1, d2]).join('');
+    return `${full.slice(0,2)}.${full.slice(2,5)}.${full.slice(5,8)}/${full.slice(8,12)}-${full.slice(12,14)}`;
+  }
   return actions.map(a => {
     try {
       const el = map.get(a.selector);
       const kind = detectCpfCnpjField(el);
       if (kind === 'cpf') return { ...a, value: sanitizeString(generateCpf(), 2000) };
-      if (kind === 'cnpj') return { ...a, value: sanitizeString(generateCnpj(), 2000) };
+      if (kind === 'cnpj') return { ...a, value: sanitizeString(generateCnpjSP(), 2000) };
     } catch (e) {
       // ignore and keep original
     }
