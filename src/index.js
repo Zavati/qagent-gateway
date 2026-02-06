@@ -538,8 +538,9 @@ export default {
     log('env_openai_key_present', { present: !!env.OPENAI_API_KEY });
     try {
       const url = new URL(req.url);
-      // Página de Política de Privacidade
-      if (url.pathname === "/privacy-policy") {
+      
+      // Página de Política de Privacidade (público, sem token)
+      if (url.pathname === "/privacy-policy" && req.method === "GET") {
         return new Response(`
 <!DOCTYPE html>
 <html lang="pt-BR">
