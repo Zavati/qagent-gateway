@@ -44,7 +44,7 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
 
   const basePrompt = `Você é um especialista em QA. Analise a tarefa do Jira abaixo e:
 
-- Gere EXATAMENTE 6 casos de teste (happy path, validações, negativos, bordas, autorização).
+- Gere EXATAMENTE 5 a 20 casos de teste (happy path, validações, negativos, bordas, autorização, cenários possíveis).
 - Avalie a complexidade da tarefa de 1 a 8 (padrão Scrum) e justifique.
 
 IMPORTANTE:
@@ -69,7 +69,7 @@ Formato (JSON):
       "priority": "High | Medium | Low"
     }
   ],
-  "score": { "value": 5, "reason": "..." }
+  "score": { "value": "...", "reason": "..." }
 }
 
 Regras:

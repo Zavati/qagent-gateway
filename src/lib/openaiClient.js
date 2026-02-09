@@ -11,7 +11,7 @@ export const openaiClient = {
    */
   async callJsonResponse(model, userPrompt, opts = {}) {
     const url = 'https://api.openai.com/v1/responses';
-    const timeoutMs = opts.timeoutMs || 60000;
+    const timeoutMs = opts.timeoutMs || 90000;
     const retries = opts.retries || 2;
     const headers = {
       'Content-Type': 'application/json',

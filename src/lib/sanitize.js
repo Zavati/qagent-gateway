@@ -11,6 +11,6 @@ export function sanitizeString(input, maxLen = 2000) {
 export function isValidSelector(sel) {
   if (!sel || typeof sel !== 'string') return false;
   if (/^javascript:/i.test(sel)) return false;
-  if (sel.length > 500) return false;
+  if (sel.length > 1000) return false;
   return true;
 }
