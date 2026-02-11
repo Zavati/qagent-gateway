@@ -13,7 +13,16 @@ export function normalizeIncomingElement(el) {
   const value = sanitizeString(el.value || '', 2000);
   const kind = sanitizeString(el.kind || el.kindDetail || '', 50);
   const visible = !!el.visible;
-  return { selector, name, label, placeholder, type, semantic, text, value, kind, visible, id: el.id || '' };
+  const tableContext = el.tableContext && typeof el.tableContext === 'object'
+    ? {
+      cellText: sanitizeString(el.tableContext.cellText || '', 2000),
+      rowText: sanitizeString(el.tableContext.rowText || '', 2000),
+      innerTableText: sanitizeString(el.tableContext.innerTableText || '', 2000),
+      outerTableText: sanitizeString(el.tableContext.outerTableText || '', 2000),
+      tableDepth: Number.isFinite(el.tableContext.tableDepth) ? Number(el.tableContext.tableDepth) : undefined,
+    }
+    : null;
+  return { selector, name, label, placeholder, type, semantic, text, value, kind, visible, id: el.id || '', tableContext };
 }
 
 // Lista de CEPs reais (amostra, pode ser expandida ou buscar de API)
@@ -61,11 +70,11 @@ export function prefillHeuristics(elements, max = 200) {
         continue;
       }
       if (type === 'tel' || combined.includes('phone') || combined.includes('telephone') || combined.includes('telefone') || combined.includes('cel')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: '+5511999999999', simulate: false });
+        filled.push({ selector: sanitizeString(selector, 500), value: '+119991130669', simulate: false });
         continue;
       }
       if (combined.includes('name') || combined.includes('nome') || semantic === 'name') {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'QA Tester', simulate: false });
+        filled.push({ selector: sanitizeString(selector, 500), value: 'QAgent Tester', simulate: false });
         continue;
       }
       if (combined.includes('cep') || combined.includes('zip') || semantic === 'postal_code' || combined.includes('postal')) {
@@ -142,7 +151,10 @@ export function generateCnpj() {
 
 export function detectCpfCnpjField(el) {
   if (!el) return null;
-  const s = `${el.selector || ''} ${el.name || ''} ${el.label || ''} ${el.placeholder || ''} ${el.type || ''} ${el.semantic || ''}`.toLowerCase();
+  const tableText = el.tableContext
+    ? `${el.tableContext.cellText || ''} ${el.tableContext.rowText || ''} ${el.tableContext.innerTableText || ''} ${el.tableContext.outerTableText || ''}`
+    : '';
+  const s = `${el.selector || ''} ${el.name || ''} ${el.label || ''} ${el.placeholder || ''} ${el.type || ''} ${el.semantic || ''} ${tableText}`.toLowerCase();
   if (s.includes('cpf')) return 'cpf';
   if (s.includes('cnpj')) return 'cnpj';
   return null;

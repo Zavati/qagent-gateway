@@ -175,17 +175,23 @@ import { validateGenerateTestsBody, validateAutofillBody, normalizeCases } from 
 
 
 function buildAutofillPrompt(body, maxElems = 50) {
-  // compact prompt: one line per element as selector|type|name|placeholder|semantic
+  // compact prompt: one line per element as selector|type|name|placeholder|semantic|tableContext
   const list = (body.elements || []).slice(0, maxElems).map((e) => {
     const selector = (e.selector || '').replace(/\s+/g, ' ').trim();
     const type = (e.type || '').replace(/\s+/g, ' ').trim();
     const name = (e.name || '').replace(/\s+/g, ' ').trim();
     const placeholder = (e.placeholder || '').replace(/\s+/g, ' ').trim();
     const semantic = (e.semantic || '').replace(/\s+/g, ' ').trim();
-    return `${selector}|${type}|${name}|${placeholder}|${semantic}`;
+    const tableContext = e.tableContext && typeof e.tableContext === 'object'
+      ? sanitizeString(
+        `${e.tableContext.cellText || ''} ${e.tableContext.rowText || ''} ${e.tableContext.innerTableText || ''} ${e.tableContext.outerTableText || ''}`,
+        800
+      ).replace(/\s+/g, ' ').trim()
+      : '';
+    return `${selector}|${type}|${name}|${placeholder}|${semantic}|${tableContext}`;
   }).join('\n');
 
-  return `Você é um assistente de preenchimento de formulários. Responda SOMENTE JSON com formato: {"actions":[{"selector":"...","value":"...","simulate":false}]}. Gere valores curtos e seguros (max 200 chars), sem HTML ou javascript:, use emails para campos de email, telefones para phone, nomes para name. Página: ${body.url}\nElementos (cada linha: selector|type|name|placeholder|semantic):\n${list}`;
+  return `Você é um assistente de preenchimento de formulários. Responda SOMENTE JSON com formato: {"actions":[{"selector":"...","value":"...","simulate":false}]}. Gere valores curtos e seguros (max 200 chars), sem HTML ou javascript:, use emails para campos de email, telefones para phone, nomes para name. Página: ${body.url}\nElementos (cada linha: selector|type|name|placeholder|semantic|tableContext):\n${list}`;
 }
 
 function normalizeAutofillResponse(parsed) {
@@ -275,7 +281,7 @@ async function handleAutofill(req, env) {
       ],
       text: { format: { type: "json_object" } },
       temperature: Number(env.AUTOFILL_TEMPERATURE || 0.0),
-      max_output_tokens: Number(env.AUTOFILL_MAX_TOKENS || 300),
+      max_output_tokens: Number(env.AUTOFILL_MAX_TOKENS || 600),
     }),
   };
 
