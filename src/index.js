@@ -174,7 +174,7 @@ import { validateGenerateTestsBody, validateAutofillBody, normalizeCases } from 
 // heuristics implementation moved to ./lib/heuristics.js
 
 
-function buildAutofillPrompt(body, maxElems = 50) {
+function buildAutofillPrompt(body, maxElems = 150) {
   // compact prompt: one line per element as selector|type|name|placeholder|semantic|tableContext
   const list = (body.elements || []).slice(0, maxElems).map((e) => {
     const selector = (e.selector || '').replace(/\s+/g, ' ').trim();
