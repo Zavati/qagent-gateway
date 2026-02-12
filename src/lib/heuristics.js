@@ -1,6 +1,7 @@
 import { sanitizeString } from './sanitize.js';
 import { isValidSelector } from './sanitize.js';
 
+// Normalize and sanitize incoming element payloads for downstream heuristics and prompts.
 export function normalizeIncomingElement(el) {
   if (!el || typeof el !== 'object') return null;
   const selector = sanitizeString(el.selector || el.originalSelector || el.original || '', 500);
@@ -39,10 +40,12 @@ const REAL_CEPS = [
   '66010-090', // Belém - PA
 ];
 
+// Pick a random CEP from a curated list of real Brazilian postal codes.
 function getRandomRealCep() {
   return REAL_CEPS[Math.floor(Math.random() * REAL_CEPS.length)];
 }
 
+// Apply fast, deterministic heuristics to prefill common field types.
 export function prefillHeuristics(elements, max = 200) {
   const filled = [];
   const remaining = [];
@@ -73,20 +76,8 @@ export function prefillHeuristics(elements, max = 200) {
         filled.push({ selector: sanitizeString(selector, 500), value: '+119991130669', simulate: false });
         continue;
       }
-      if (combined.includes('name') || combined.includes('nome') || semantic === 'name') {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'QAgent Tester', simulate: false });
-        continue;
-      }
       if (combined.includes('cep') || combined.includes('zip') || semantic === 'postal_code' || combined.includes('postal')) {
         filled.push({ selector: sanitizeString(selector, 500), value: getRandomRealCep(), simulate: false });
-        continue;
-      }
-      if (combined.includes('linkedin') || combined.includes('linkedinProfile') || combined.includes('linkedinprofile') || combined.includes('url')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'https://www.linkedin.com/in/example', simulate: false });
-        continue;
-      }
-      if (placeholder && placeholder.includes('@')) {
-        filled.push({ selector: sanitizeString(selector, 500), value: 'user@example.com', simulate: false });
         continue;
       }
 
@@ -98,6 +89,7 @@ export function prefillHeuristics(elements, max = 200) {
   return { actions: filled, remaining };
 }
 
+// Generate a minimal fallback set of autofill actions when LLM is not used.
 export function generateAutofillStub(elements) {
   const { actions: filled, remaining } = prefillHeuristics(elements, 50);
   for (const el of (remaining || []).slice(0, 50)) {
@@ -108,7 +100,7 @@ export function generateAutofillStub(elements) {
       const type = String(el.type || '').toLowerCase();
       let value = '';
       if (type === 'email') value = 'user@example.com';
-      else if (type === 'tel') value = '+5511999999999';
+      else if (type === 'tel') value = '1199113-0669';
       else if (placeholder) value = placeholder;
       else value = 'test';
       filled.push({ selector, value, simulate: false });
@@ -119,6 +111,7 @@ export function generateAutofillStub(elements) {
   return filled;
 }
 
+// Generate a valid random CPF with check digits.
 export function generateCpf() {
   const nums = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
   let sum = 0;
@@ -134,6 +127,7 @@ export function generateCpf() {
   return `${full.slice(0,3)}.${full.slice(3,6)}.${full.slice(6,9)}-${full.slice(9,11)}`;
 }
 
+// Generate a valid random CNPJ with check digits.
 export function generateCnpj() {
   const nums = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
   const weights1 = [5,4,3,2,9,8,7,6,5,4,3,2];
@@ -149,6 +143,7 @@ export function generateCnpj() {
   return `${full.slice(0,2)}.${full.slice(2,5)}.${full.slice(5,8)}/${full.slice(8,12)}-${full.slice(12,14)}`;
 }
 
+// Detect CPF/CNPJ intent by inspecting element metadata and table context.
 export function detectCpfCnpjField(el) {
   if (!el) return null;
   const tableText = el.tableContext
@@ -160,6 +155,7 @@ export function detectCpfCnpjField(el) {
   return null;
 }
 
+// Replace values with CPF/CNPJ where intent is detected, preserving other actions.
 export function applyCpfCnpjReplacement(actions, normalizedElements) {
   if (!Array.isArray(actions) || !Array.isArray(normalizedElements)) return actions;
   const map = new Map(normalizedElements.map(e => [e.selector, e]));
