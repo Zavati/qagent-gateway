@@ -1,8 +1,10 @@
 {
 	"name": "qagent-gateway",
-	"compatibility_date": "2026-01-19",
+	"compatibility_date": "2026-01-14",
 	"main": "src/index.js",
 	"vars": {
+		// Environment
+		"ENVIRONMENT": "development",
 		// Tokens válidos (dev). Em produção, migre para KV/DB.
 		"OPENAI_TIMEOUT_MS": "90000",
 		// Rate limit simples (por token): 20 req / 60s
@@ -10,14 +12,18 @@
 		"RATE_LIMIT_MAX": "200",
 		// Limite de payload (bytes)
 		"MAX_BODY_BYTES": "250000",
+		// Migração de credencial (BE-3002)
+		"ALLOW_LEGACY_LICENSE_TOKEN": "true",
+		"LEGACY_TOKEN_MIGRATION_UNTIL": "",
+		"MIGRATION_REQUIRE_CLIENTKEY_TENANTS": "",
+		"MIGRATION_REQUIRE_CLIENTKEY_COHORTS": "",
+		// Métricas de adoção (BE-3003)
+		"MIGRATION_METRICS_ENABLED": "true",
 		"QAGENT_ADMIN_TOKENS": "dev-token-123",
-		"kv_namespaces": [
-			{
-				"binding": "QAGENT_KV",
-				"id": "b701fa48f0ec4e14970843f0c6294d47",
-				"preview_id": "<ID_OF_PREVIEW_KV_NAMESPACE_FOR_LOCAL_DEVELOPMENT>"
-			}
-		]
+		// Webhooks (BE-2001, BE-2002)
+		"WEBHOOK_SIGNING_SECRET": "dev-webhook-secret-change-in-production",
+		"CLIENT_KEY_MODE": "test",
+		"EMAIL_DISPATCH_WEBHOOK_URL": ""
 	},
 	"kv_namespaces": [
 		{

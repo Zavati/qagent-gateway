@@ -1,7 +1,53 @@
 # qagent-gateway
 
+## Blueprint técnico
 
-npm install --pasta backend
+- Veja o plano de evolução de autenticação + pagamento em `docs/blueprint-auth-billing.md`.
+- Veja a decomposição em tickets por fase em `docs/tickets-auth-billing-rollout.md`.
+- Veja o plano de kickoff para início da implementação em `docs/implementation-kickoff-auth-billing.md`.
+
+## Métricas de migração (BE-3003)
+
+As métricas de adoção de credencial são armazenadas diariamente no KV com estrutura:
+
+**Chave KV:** `metrics:migration:{YYYY-MM-DD}:tenant:{tenant-id}:cohort:{cohort-id}`
+
+**Valores rastreados:**
+- `requestsTotal` — total de requests no endpoint `/v1/license`
+- `requestsSuccess` — requests com status 2xx
+- `credentialClientKey` — contagem de novas `clientKey`
+- `credentialLegacyToken` — contagem de tokens legados
+- `errors401` / `errors403` — erros de autenticação
+- `legacyAccepted` / `legacyBlocked` — tokens legados aceitos ou bloqueados pela janela
+
+**Agregados:**
+- Tenant/cohort específico: `tenant:{id}:cohort:{id}`
+- Global: `tenant:all:cohort:all`
+
+**Query exemplo (CLI):**
+```bash
+wrangler kv:key get --namespace-id=<KV_ID> "metrics:migration:2026-02-19:tenant:all:cohort:all"
+```
+
+**Exemplo de resposta:**
+```json
+{
+  "day": "2026-02-19",
+  "tenant": "all",
+  "cohort": "all",
+  "requestsTotal": 150,
+  "requestsSuccess": 145,
+  "credentialClientKey": 80,
+  "credentialLegacyToken": 70,
+  "errors401": 2,
+  "errors403": 3,
+  "legacyAccepted": 67,
+  "legacyBlocked": 3,
+  "updatedAt": "2026-02-19T14:30:12.345Z"
+}
+```
+
+---npm install --pasta backend
 Run backend remote 
 npx wrangler dev --remote
 
@@ -213,3 +259,28 @@ QAGENT_AUTOFILL_URL=http://127.0.0.1:8787/v1/autofill QAGENT_TEST_TOKEN=<token> 
 ```
 
 - O script exibirá status e o JSON retornado. Ajuste `QAGENT_TEST_TOKEN` para um token válido (>= 24 chars) para evitar validação de token no backend.
+
+
+
+
+
+rodar local 19/02
+cd C:\git\qagent-gateway
+npm install
+$env:STRIPE_SECRET_KEY="sk_test_..."
+$env:STRIPE_WEBHOOK_SECRET="whsec_..."
+$env:WEBHOOK_SIGNING_SECRET="dev-webhook-secret"
+$env:STRIPE_PRICE_ID="price_..."
+$env:STRIPE_SUCCESS_URL="https://example.com/success"
+$env:STRIPE_CANCEL_URL="https://example.com/cancel"
+$env:BASE_URL="http://localhost:8787"
+$env:CLIENT_KEY="qagent_live_xxx"   # do signup
+npx wrangler dev
+npm run dev
+
+
+
+teste web hook 
+$env:WEBHOOK_SIGNING_SECRET='dev-webhook-secret-change-in-production'
+$env:CLIENT_KEY = $env:CLIENT_KEY
+.\test\sign-and-send.ps1

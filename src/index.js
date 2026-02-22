@@ -13,15 +13,6 @@
 
 const PROD_HOST = "api.apiqagent.com";
 
-const TRIAL_DAYS = 6;
-const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
-
-function isAdminToken(env, token) {
-  const raw = (env?.QAGENT_ADMIN_TOKENS || "").trim();
-  if (!raw) return false;
-  return raw.split(",").map(s => s.trim()).filter(Boolean).includes(token);
-}
-
 function isProdAllowedHost(request, env) {
   const host = (request.headers.get("host") || "").toLowerCase();
 
@@ -52,13 +43,22 @@ function corsHeaders(req = null, env = {}, extra = {}) {
 
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-QAgent-Signature, X-QAgent-Tenant, X-QAgent-Cohort",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     ...extra,
   };
 } 
 
 import { getEnvNum } from './lib/config.js';
+import { safeId, isAdminToken, generateClientKey, hashClientKey, validateClientKeyFormat, generateAccessToken, hashAccessToken } from './lib/keyService.js';
+import { getOrCreateLicense, assertPremiumAllowed, daysLeft, createTrialLicenseForKeyHash, getLicenseByKeyHash, applyPaymentToLicense } from './lib/licenseService.js';
+import { createCustomer, getCustomerByEmail, getCustomerById } from './lib/customerService.js';
+import { buildSignupEmailEvent, savePendingEmailEvent, markEmailEventStatus, saveEmailDispatchAck } from './lib/emailEventService.js';
+import { sendEmailEvent } from './lib/emailDispatcher.js';
+import { verifyWebhookSignatureOrThrow } from './lib/webhookSecurity.js';
+import { savePaymentEvent } from './lib/paymentEventService.js';
+import { trackMigrationMetric } from './lib/migrationMetricsService.js';
+import { createCheckoutSession, verifyStripeWebhook, normalizeStripeEvent } from './lib/stripeService.js';
 
 function getBearerToken(req) {
   const h = req.headers.get("Authorization") || "";
@@ -93,13 +93,6 @@ function rateLimitOrThrow({ key, windowMs, max }) {
     throw err;
   }
   st.count += 1;
-}
-
-function safeId(value) {
-  const s = String(value || "");
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h.toString(16).padStart(8, "0");
 }
 
 async function readJsonWithLimit(req, maxBytes) {
@@ -151,6 +144,79 @@ function validateToken(env, token) {
   }
 }
 
+function isLegacyLicenseMigrationWindowOpen(env) {
+  const rawFlag = String(env?.ALLOW_LEGACY_LICENSE_TOKEN ?? 'true').trim().toLowerCase();
+  if (rawFlag === 'false' || rawFlag === '0' || rawFlag === 'off' || rawFlag === 'no') {
+    return { allowed: false, legacySunsetAt: String(env?.LEGACY_TOKEN_MIGRATION_UNTIL || '').trim() || null };
+  }
+
+  const untilRaw = String(env?.LEGACY_TOKEN_MIGRATION_UNTIL || '').trim();
+  if (!untilRaw) {
+    return { allowed: true, legacySunsetAt: null };
+  }
+
+  const untilMs = Date.parse(untilRaw);
+  if (!Number.isFinite(untilMs)) {
+    return { allowed: true, legacySunsetAt: null };
+  }
+
+  return {
+    allowed: Date.now() <= untilMs,
+    legacySunsetAt: new Date(untilMs).toISOString(),
+  };
+}
+
+function parseCsvSet(raw) {
+  const source = String(raw || '').trim();
+  if (!source) return new Set();
+  return new Set(
+    source
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function resolveLegacyPolicyForRequest(req, env) {
+  const migrationWindow = isLegacyLicenseMigrationWindowOpen(env);
+  const tenantId = String(req.headers.get('X-QAgent-Tenant') || '').trim().toLowerCase();
+  const cohortId = String(req.headers.get('X-QAgent-Cohort') || '').trim().toLowerCase();
+
+  const forcedTenantSet = parseCsvSet(env?.MIGRATION_REQUIRE_CLIENTKEY_TENANTS);
+  const forcedCohortSet = parseCsvSet(env?.MIGRATION_REQUIRE_CLIENTKEY_COHORTS);
+
+  const tenantForced = Boolean(tenantId && forcedTenantSet.has(tenantId));
+  const cohortForced = Boolean(cohortId && forcedCohortSet.has(cohortId));
+
+  if (tenantForced) {
+    return {
+      legacyAllowed: false,
+      reason: 'tenant_enforced',
+      legacySunsetAt: migrationWindow.legacySunsetAt,
+      tenantId,
+      cohortId,
+    };
+  }
+
+  if (cohortForced) {
+    return {
+      legacyAllowed: false,
+      reason: 'cohort_enforced',
+      legacySunsetAt: migrationWindow.legacySunsetAt,
+      tenantId,
+      cohortId,
+    };
+  }
+
+  return {
+    legacyAllowed: migrationWindow.allowed,
+    reason: migrationWindow.allowed ? 'global_allowed' : 'global_denied',
+    legacySunsetAt: migrationWindow.legacySunsetAt,
+    tenantId,
+    cohortId,
+  };
+}
+
 
 // normalizeCases and validateGenerateTestsBody moved to ./lib/validators.js
 
@@ -167,7 +233,8 @@ import { handleGenerateTests as generateTestsHandler } from './handlers/generate
 
 import { getAutofillModel } from './lib/config.js';
 
-import { validateGenerateTestsBody, validateAutofillBody, normalizeCases } from './lib/validators.js';
+import { validateGenerateTestsBody, validateAutofillBody, normalizeCases, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
+import { API_CONTRACT_VERSION } from './lib/contracts.js';
 
 // (validators are imported from ./lib/validators.js) 
 
@@ -418,114 +485,83 @@ async function handleDebugOpenAIModels(env) {
   );
 }
 
-
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function addMsToIso(ms) {
-  return new Date(Date.now() + ms).toISOString();
-}
-
-function daysLeft(expiresAt) {
-  const exp = Date.parse(expiresAt || "");
-  if (!Number.isFinite(exp)) return 0;
-  const diff = exp - Date.now();
-  return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
-}
-
-function licenseKeyForToken(token) {
-  // usa safeId(token) que você já tem (hash)
-  return `license:t:${safeId(token)}`;
-}
-
-async function kvGetJson(env, key) {
-  const raw = await env.QAGENT_KV.get(key);
-  return raw ? JSON.parse(raw) : null;
-}
-
-async function kvPutJson(env, key, value) {
-  await env.QAGENT_KV.put(key, JSON.stringify(value));
-}
-
-function normalizeLicenseStatus(lic) {
-  // expira automaticamente se passou do expiresAt
-  if (!lic?.expiresAt) return lic;
-
-  const exp = Date.parse(lic.expiresAt);
-  if (Number.isFinite(exp) && Date.now() > exp && lic.status !== "expired") {
-    return { ...lic, status: "expired", updatedAt: nowIso() };
-  }
-  return lic;
-}
-
-async function getOrCreateLicense(env, token) {
-  if (isAdminToken(env, token)) {
-    return {
-      licenseId: "admin",
-      status: "active",
-      plan: "pro",
-      expiresAt: "2999-01-01T00:00:00.000Z",
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    };
-  }
+async function handleDebugPaymentEvent(req, env, provider, eventId) {
   if (!env?.QAGENT_KV) {
-    const err = new Error("KV não configurado (env.QAGENT_KV ausente).");
-    err.status = 500;
-    throw err;
+    return json({ ok: false, message: 'KV não configurado (env.QAGENT_KV ausente).' }, { status: 500, headers: corsHeaders(req, env) });
   }
 
-  const key = licenseKeyForToken(token);
-  let lic = await kvGetJson(env, key);
+  try {
+    const paymentKey = `payment_event:${provider}:${eventId}`;
+    const paymentRaw = await env.QAGENT_KV.get(paymentKey);
+    const payment = paymentRaw ? JSON.parse(paymentRaw) : null;
 
-  if (!lic) {
-    const createdAt = nowIso();
-    lic = {
-      licenseId: `lic_${crypto.randomUUID()}`,
-      status: "trial",
-      plan: "pro", // trial normalmente libera tudo
-      expiresAt: addMsToIso(TRIAL_MS),
-      createdAt,
-      updatedAt: createdAt,
-    };
-    await kvPutJson(env, key, lic);
-    return lic;
-  }
+    const emailRaw = await env.QAGENT_KV.get(`email_event:${eventId}`);
+    const email = emailRaw ? JSON.parse(emailRaw) : null;
 
-  const updated = normalizeLicenseStatus(lic);
-  if (updated.status !== lic.status) {
-    await kvPutJson(env, key, updated);
-    return updated;
-  }
+    let clientKeyRecord = null;
+    try {
+      const keyHash = payment?.keyHash || null;
+      if (keyHash) {
+        const ckRaw = await env.QAGENT_KV.get(`clientkey:${keyHash}`);
+        clientKeyRecord = ckRaw ? JSON.parse(ckRaw) : null;
+      }
+    } catch (e) {
+      // ignore
+    }
 
-  return lic;
-}
-
-function assertPremiumAllowed(license) {
-  if (!license) {
-    const err = new Error("Licença não encontrada.");
-    err.status = 403;
-    throw err;
-  }
-
-  if (license.status !== "trial" && license.status !== "active") {
-    const err = new Error("Seu trial expirou. Ative o plano para continuar usando recursos premium.");
-    err.status = 403;
-    throw err;
+    return json({ ok: true, payment, email, clientKeyRecord }, { status: 200, headers: corsHeaders(req, env) });
+  } catch (e) {
+    return json({ ok: false, message: e?.message || String(e) }, { status: 500, headers: corsHeaders(req, env) });
   }
 }
+
+
 
 async function handleGetLicense(req, env) {
   const token = getBearerToken(req);
   validateToken(env, token); // mantém seu modelo atual de tokens permitidos
 
+  const credentialType = validateClientKeyFormat(token) ? 'client_key' : 'legacy_token';
+  const migrationPolicy = resolveLegacyPolicyForRequest(req, env);
+
+  if (credentialType === 'legacy_token' && !migrationPolicy.legacyAllowed) {
+    await trackMigrationMetric(env, {
+      tenant: migrationPolicy.tenantId,
+      cohort: migrationPolicy.cohortId,
+      credentialType,
+      statusCode: 403,
+      legacyAccepted: false,
+      legacyBlocked: true,
+    });
+    const err = new Error('Token legado desabilitado. Atualize para clientKey.');
+    err.status = 403;
+    throw err;
+  }
+
   const lic = await getOrCreateLicense(env, token);
+
+  await trackMigrationMetric(env, {
+    tenant: migrationPolicy.tenantId,
+    cohort: migrationPolicy.cohortId,
+    credentialType,
+    statusCode: 200,
+    legacyAccepted: credentialType === 'legacy_token',
+    legacyBlocked: false,
+  });
 
   return json(
     {
       status: "ok",
+      credential: {
+        type: credentialType,
+      },
+      migration: {
+        legacyAccepted: credentialType === 'legacy_token',
+        legacySunsetAt: migrationPolicy.legacySunsetAt,
+        policy: migrationPolicy.reason,
+        tenant: migrationPolicy.tenantId || null,
+        cohort: migrationPolicy.cohortId || null,
+      },
       license: {
         status: lic.status,
         plan: lic.plan,
@@ -537,9 +573,384 @@ async function handleGetLicense(req, env) {
   );
 }
 
+async function handleSignupTrial(req, env) {
+  const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 25_000);
+  const body = await readJsonWithLimit(req, maxBytes);
+  validateSignupTrialBody(body);
+
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  const email = String(body.email || '').trim().toLowerCase();
+  const existing = await getCustomerByEmail(env, email);
+  if (existing?.keyHash) {
+    const existingLicense = await getLicenseByKeyHash(env, existing.keyHash);
+    if (existingLicense) {
+      const existingExpiry = existingLicense.trialEndsAt || existingLicense.expiresAt;
+      const activeTrial = existingLicense.status === 'trial' && daysLeft(existingExpiry) > 0;
+      if (activeTrial || existingLicense.status === 'active') {
+        return json(
+          { status: 'error', message: 'Email já cadastrado com trial ativo.' },
+          { status: 409, headers: corsHeaders(req, env) }
+        );
+      }
+    }
+  }
+
+  const keyMode = String(env?.CLIENT_KEY_MODE || '').toLowerCase() || ((env.ENVIRONMENT || 'production') === 'production' ? 'live' : 'test');
+  const clientKey = generateClientKey(keyMode === 'test' ? 'test' : 'live');
+  const keyHash = await hashClientKey(clientKey);
+
+  const customer = await createCustomer(env, {
+    email,
+    name: body.name,
+    company: body.company,
+    source: body.source || 'landing-page',
+    keyHash,
+  });
+
+  const createdAt = new Date().toISOString();
+  await env.QAGENT_KV.put(`clientkey:${keyHash}`, JSON.stringify({
+    keyHash,
+    customerId: customer.customerId,
+    label: 'signup-trial',
+    createdAt,
+    lastUsedAt: null,
+    revokedAt: null,
+  }));
+
+  const license = await createTrialLicenseForKeyHash(env, {
+    keyHash,
+    customerId: customer.customerId,
+    plan: 'pro',
+  });
+
+  const emailEvent = buildSignupEmailEvent({
+    customerId: customer.customerId,
+    email: customer.email,
+    keyHash,
+    template: 'trial_welcome',
+  });
+  await savePendingEmailEvent(env, emailEvent);
+
+  const dispatchPromise = sendEmailEvent(env, emailEvent);
+
+  return {
+    response: json(
+      {
+        status: 'ok',
+        version: API_CONTRACT_VERSION,
+        customer: {
+          customerId: customer.customerId,
+          email: customer.email,
+        },
+        license: {
+          status: license.status,
+          plan: license.plan,
+          trialEndsAt: license.trialEndsAt || license.expiresAt,
+          daysLeft: daysLeft(license.trialEndsAt || license.expiresAt),
+        },
+        credentials: {
+          clientKey,
+          delivery: 'webhook:email',
+        },
+      },
+      { status: 201, headers: corsHeaders(req, env) }
+    ),
+    dispatchPromise,
+  };
+}
+
+async function handleEmailDispatchedWebhook(req, env) {
+  const rawBody = await req.clone().text();
+  await verifyWebhookSignatureOrThrow({
+    env,
+    route: '/v1/webhooks/email-dispatched',
+    signatureHeader: req.headers.get('X-QAgent-Signature') || '',
+    rawBody,
+  });
+
+  const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 25_000);
+  const body = await readJsonWithLimit(req, maxBytes);
+  validateEmailDispatchedBody(body);
+
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  const saved = await saveEmailDispatchAck(env, body);
+  if (!saved.created) {
+    return json({ status: 'ok', processed: false, idempotent: true }, { status: 200, headers: corsHeaders(req, env) });
+  }
+
+  await markEmailEventStatus(env, body.eventId, 'confirmed', {
+    confirmedAt: new Date().toISOString(),
+    template: body.template,
+  });
+
+  return json({ status: 'ok', processed: true }, { status: 200, headers: corsHeaders(req, env) });
+}
+
+async function handleBillingCheckout(req, env) {
+  const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 12_000);
+  const body = await readJsonWithLimit(req, maxBytes);
+
+  const clientKey = body.clientKey || getBearerToken(req) || null;
+  if (!clientKey) {
+    const err = new Error('clientKey ausente para criar Checkout Session.');
+    err.status = 400;
+    throw err;
+  }
+
+  const priceId = body.priceId || env.STRIPE_PRICE_ID;
+  if (!priceId) {
+    const err = new Error('priceId ausente (body.priceId ou env.STRIPE_PRICE_ID).');
+    err.status = 500;
+    throw err;
+  }
+
+  const successUrl = body.successUrl || env.STRIPE_SUCCESS_URL || `${new URL(req.url).origin}/billing/success`;
+  const cancelUrl = body.cancelUrl || env.STRIPE_CANCEL_URL || `${new URL(req.url).origin}/billing/cancel`;
+
+  const quantity = Number(body.quantity || 1);
+
+  const session = await createCheckoutSession(env, { clientKey, priceId, successUrl, cancelUrl, quantity, metadata: body.metadata || {} });
+
+  return json({ status: 'ok', sessionId: session.id, url: session.url || null }, { headers: corsHeaders(req, env) });
+}
+
+async function handlePaymentWebhook(req, env) {
+  // Support Stripe webhooks when STRIPE_WEBHOOK_SECRET is configured and header present
+  const stripeSig = req.headers.get('Stripe-Signature') || req.headers.get('stripe-signature');
+  let body = null;
+  if (stripeSig && env.STRIPE_WEBHOOK_SECRET) {
+    const verify = await verifyStripeWebhook(req, env);
+    if (!verify.ok) {
+      const err = new Error('Stripe webhook signature inválida: ' + (verify.reason || 'unknown'));
+      err.status = 403;
+      throw err;
+    }
+    try {
+      const parsed = JSON.parse(verify.payloadText);
+      body = normalizeStripeEvent(parsed);
+    } catch (e) {
+      const err = new Error('Falha ao parsear payload Stripe.');
+      err.status = 400;
+      throw err;
+    }
+  } else {
+    const rawBody = await req.clone().text();
+    await verifyWebhookSignatureOrThrow({
+      env,
+      route: '/v1/webhooks/payment',
+      signatureHeader: req.headers.get('X-QAgent-Signature') || '',
+      rawBody,
+    });
+
+    const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 25_000);
+    body = await readJsonWithLimit(req, maxBytes);
+
+    // If occurredAt missing/empty, default to now so validation passes for test clients
+    if (!body.occurredAt) body.occurredAt = new Date().toISOString();
+
+    // Allow supplying clientKey via HTTP header for testing convenience
+    try {
+      const headerClientKey = req.headers.get('clientKey') || req.headers.get('ClientKey') || req.headers.get('x-client-key');
+      if (headerClientKey && (!body.reference || !body.reference.clientKey)) {
+        body.reference = body.reference || {};
+        body.reference.clientKey = headerClientKey;
+      }
+    } catch (e) {
+      // ignore header parse errors
+    }
+
+    validatePaymentWebhookBody(body);
+  }
+
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  let keyHash = null;
+  if (body?.reference?.clientKey) {
+    try {
+      keyHash = await hashClientKey(body.reference.clientKey);
+    } catch {
+      keyHash = null;
+    }
+  }
+
+  // If the webhook didn't include clientKey, attempt KV reconciliation
+  // by looking up stripe:cust:<providerCustomerId> or stripe:sub:<providerSubscriptionId>
+  // which may have been written previously when a checkout/session included metadata.clientKey.
+  if (!keyHash && env?.QAGENT_KV) {
+    try {
+      const provCust = body?.reference?.providerCustomerId || null;
+      const provSub = body?.reference?.providerSubscriptionId || null;
+      if (provCust) {
+        const found = await env.QAGENT_KV.get(`stripe:cust:${provCust}`);
+        if (found) keyHash = found;
+      }
+      if (!keyHash && provSub) {
+        const foundSub = await env.QAGENT_KV.get(`stripe:sub:${provSub}`);
+        if (foundSub) keyHash = foundSub;
+      }
+    } catch (e) {
+      log('stripe_mapping_lookup_error', { message: e?.message || String(e) });
+    }
+  }
+
+  // Persist mapping from Stripe customer/subscription -> keyHash when available
+  try {
+    if (env?.QAGENT_KV && keyHash) {
+      const provCust = body?.reference?.providerCustomerId || null;
+      const provSub = body?.reference?.providerSubscriptionId || null;
+      if (provCust) await env.QAGENT_KV.put(`stripe:cust:${provCust}`, keyHash);
+      if (provSub) await env.QAGENT_KV.put(`stripe:sub:${provSub}`, keyHash);
+    }
+  } catch (e) {
+    log('stripe_mapping_save_error', { message: e?.message || String(e) });
+  }
+
+  const toSave = {
+    provider: body.provider,
+    eventId: body.eventId,
+    type: body.eventType,
+    customerId: body?.customer?.customerId || null,
+    keyHash,
+    rawRef: {
+      clientKeyPrefix: body?.reference?.clientKey ? String(body.reference.clientKey).slice(0, 12) : null,
+      providerCustomerId: body?.reference?.providerCustomerId || null,
+      providerSubscriptionId: body?.reference?.providerSubscriptionId || null,
+    },
+    billing: body.billing,
+    occurredAt: body.occurredAt,
+    status: 'processed',
+  };
+
+  const transition = await applyPaymentToLicense(env, {
+    keyHash,
+    paymentPayload: body,
+  });
+
+  toSave.transition = {
+    updated: transition.updated,
+    blocked: transition.blocked,
+    reason: transition.reason,
+    finalStatus: transition.license?.status || null,
+  };
+
+  const saved = await savePaymentEvent(env, toSave);
+  if (!saved.created) {
+    return json({ status: 'ok', processed: false, idempotent: true }, { status: 200, headers: corsHeaders(req, env) });
+  }
+
+  // If payment caused a license activation, generate a 30-day access token
+  // and enqueue an email event to deliver it. Respect idempotency by relying
+  // on savePaymentEvent(created=true) which guarantees this block runs once.
+  let dispatchPromise = null;
+  try {
+    const finalStatus = transition.license?.status || null;
+    if (transition.updated && !transition.blocked && finalStatus === 'active') {
+      try {
+        const token = generateAccessToken('access', 48);
+        const tokenHash = await hashAccessToken(token);
+        const issuedAt = new Date().toISOString();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        // Persist token hash in KV
+        try {
+          await env.QAGENT_KV.put(`access_token:${tokenHash}`, JSON.stringify({ keyHash, issuedAt, expiresAt, eventId: body.eventId }));
+        } catch (e) {
+          log('access_token_kv_put_error', { message: e?.message || String(e) });
+        }
+
+        // Build email event to send token to customer email. If email is missing
+        // in the payload, attempt to lookup via customerId or clientkey mapping.
+        let email = body?.customer?.email || null;
+        let customerId = body?.customer?.customerId || null;
+
+        if (!email) {
+          // try direct lookup by customerId
+          if (customerId) {
+            try {
+              const cust = await getCustomerById(env, customerId);
+              if (cust?.email) email = cust.email;
+            } catch (e) {
+              log('customer_lookup_error', { message: e?.message || String(e), customerId });
+            }
+          }
+        }
+
+        if (!email && keyHash) {
+          try {
+            const ckRaw = await env.QAGENT_KV.get(`clientkey:${keyHash}`);
+            if (ckRaw) {
+              try {
+                const ck = JSON.parse(ckRaw);
+                if (!customerId && ck?.customerId) customerId = ck.customerId;
+              } catch {}
+            }
+            if (customerId) {
+              const cust = await getCustomerById(env, customerId);
+              if (cust?.email) email = cust.email;
+            }
+          } catch (e) {
+            log('clientkey_lookup_error', { message: e?.message || String(e), keyHash });
+          }
+        }
+
+        if (email) {
+          const evt = buildSignupEmailEvent({ customerId, email, keyHash, template: 'paid_access_token' });
+          // include raw token only in metadata for dispatcher (avoid storing elsewhere)
+          evt.metadata = { ...(evt.metadata || {}), token };
+          await savePendingEmailEvent(env, evt);
+
+          // dispatch via adapter (webhook or MailerSend)
+          dispatchPromise = sendEmailEvent(env, evt);
+        } else {
+          log('paid_access_token_no_email', { eventId: body.eventId, keyHash, customerId });
+        }
+      } catch (e) {
+        log('generate_access_token_error', { message: e?.message || String(e) });
+      }
+    }
+  } catch (e) {
+    log('access_token_flow_error', { message: e?.message || String(e) });
+  }
+
+  const response = json(
+    {
+      status: 'ok',
+      processed: true,
+      idempotent: false,
+      transition: {
+        updated: transition.updated,
+        blocked: transition.blocked,
+        reason: transition.reason,
+        finalStatus: transition.license?.status || null,
+      },
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+
+  if (dispatchPromise) {
+    return { response, dispatchPromise };
+  }
+
+  return response;
+}
+
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     // LOG TEMPORÁRIO: Verifica se a OPENAI_API_KEY está presente no ambiente
     log('env_openai_key_present', { present: !!env.OPENAI_API_KEY });
     try {
@@ -644,9 +1055,49 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       if (url.pathname === "/debug/openai-models" && req.method === "GET") {
         return await handleDebugOpenAIModels(env);
       }
+      // Debug payment event: /debug/payment-event/:provider/:eventId
+      if (url.pathname.startsWith('/debug/payment-event/') && req.method === 'GET') {
+        const segs = url.pathname.split('/').slice(1); // ['debug','payment-event','provider','eventId']
+        if (segs.length === 4 && segs[0] === 'debug' && segs[1] === 'payment-event') {
+          const provider = segs[2];
+          const eventId = segs[3];
+          return await handleDebugPaymentEvent(req, env, provider, eventId);
+        }
+        return json({ ok: false, message: 'invalid debug path' }, { status: 400, headers: corsHeaders(req, env) });
+      }
       // get pagamentos 
       if (url.pathname === "/v1/license" && req.method === "GET") {
         return await handleGetLicense(req, env);
+      }
+      if (url.pathname === "/v1/signup-trial" && req.method === "POST") {
+        const result = await handleSignupTrial(req, env);
+        if (result instanceof Response) {
+          return result;
+        }
+        if (ctx?.waitUntil && result?.dispatchPromise) {
+          ctx.waitUntil(result.dispatchPromise);
+        } else if (result?.dispatchPromise) {
+          result.dispatchPromise.catch((e) => log('email_dispatch_async_error', { message: e?.message || String(e) }));
+        }
+        return result.response;
+      }
+      if (url.pathname === "/v1/billing/checkout" && req.method === "POST") {
+        return await handleBillingCheckout(req, env);
+      }
+      if (url.pathname === "/v1/webhooks/email-dispatched" && req.method === "POST") {
+        return await handleEmailDispatchedWebhook(req, env);
+      }
+      if (url.pathname === "/v1/webhooks/payment" && req.method === "POST") {
+        const result = await handlePaymentWebhook(req, env);
+        if (result instanceof Response) {
+          return result;
+        }
+        if (ctx?.waitUntil && result?.dispatchPromise) {
+          ctx.waitUntil(result.dispatchPromise);
+        } else if (result?.dispatchPromise) {
+          result.dispatchPromise.catch((e) => log('email_dispatch_async_error', { message: e?.message || String(e) }));
+        }
+        return result.response;
       }
       // generate-tests: só POST
       if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
@@ -683,11 +1134,16 @@ Em caso de dúvidas, entre em contato pelo e-mail:
   },
 };
 
-// Named exports for testing
+// Named exports for testing - COMMENTED OUT porque Wrangler requer apenas ExportedHandler
+// Movido para test/test-utils.js se necessário
+/*
 export {
   corsHeaders,
   validateGenerateTestsBody,
   validateAutofillBody,
+  validateSignupTrialBody,
+  validateEmailDispatchedBody,
+  validatePaymentWebhookBody,
   generateAutofillStub,
   prefillHeuristics,
   normalizeIncomingElement,
@@ -710,4 +1166,7 @@ export {
   parseResponsesContent,
   // model helper
   getAutofillModel,
+  // contracts
+  API_CONTRACT_VERSION,
 };
+*/

@@ -1,0 +1,16 @@
+{
+  "provider": "stripe",
+  "eventId": "",
+  "eventType": "payment.succeeded",
+  "reference": {
+    "clientKey": "",
+    "providerCustomerId": "",
+    "providerSubscriptionId": ""
+  },
+  "billing": {
+    "amount": 4900,
+    "currency": "BRL",
+    "status": "paid"
+  },
+  "occurredAt": ""
+}

@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "node test/run-tests.js",
-    "mock-sw": "node test/mock-sw.js"
+    "mock-sw": "node test/mock-sw.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test:integration": "pwsh -File test/run-integration-tests.ps1"
   },
   "keywords": [],
   "author": "",
