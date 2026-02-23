@@ -18,11 +18,19 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Deploy
+      - name: Publish Cloudflare secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          OPENAI_API_KEY : ${{secrets.OPENAI_API_KEY}}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          MAILERSEND_API_KEY: ${{ secrets.MAILERSEND_API_KEY }}
+        run: |
+          echo "$STRIPE_SECRET_KEY" | npx wrangler secret put STRIPE_SECRET_KEY --account-id "$CLOUDFLARE_ACCOUNT_ID" --yes
+          echo "$STRIPE_WEBHOOK_SECRET" | npx wrangler secret put STRIPE_WEBHOOK_SECRET --account-id "$CLOUDFLARE_ACCOUNT_ID" --yes
+          echo "$MAILERSEND_API_KEY" | npx wrangler secret put MAILERSEND_API_KEY --account-id "$CLOUDFLARE_ACCOUNT_ID" --yes
+
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy
