@@ -26,9 +26,9 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           MAILERSEND_API_KEY: ${{ secrets.MAILERSEND_API_KEY }}
         run: |
-          echo "$STRIPE_SECRET_KEY" | npx wrangler secret put STRIPE_SECRET_KEY --account-id "$CLOUDFLARE_ACCOUNT_ID" --yes
-          echo "$STRIPE_WEBHOOK_SECRET" | npx wrangler secret put STRIPE_WEBHOOK_SECRET --account-id "$CLOUDFLARE_ACCOUNT_ID" --yes
-          echo "$MAILERSEND_API_KEY" | npx wrangler secret put MAILERSEND_API_KEY --account-id "$CLOUDFLARE_ACCOUNT_ID" --yes
+          echo "$STRIPE_SECRET_KEY" | npx wrangler secret put STRIPE_SECRET_KEY
+          echo "$STRIPE_WEBHOOK_SECRET" | npx wrangler secret put STRIPE_WEBHOOK_SECRET
+          echo "$MAILERSEND_API_KEY" | npx wrangler secret put MAILERSEND_API_KEY
 
       - name: Deploy to Cloudflare
         env:
