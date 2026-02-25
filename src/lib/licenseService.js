@@ -3,6 +3,10 @@ import { isAdminToken, safeId, hashClientKey, validateClientKeyFormat } from './
 const TRIAL_DAYS = 6;
 const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
+// Duração padrão de licença paga quando o provedor não envia período explícito
+const PAID_DAYS = 30;
+const PAID_MS = PAID_DAYS * 24 * 60 * 60 * 1000;
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -95,7 +99,13 @@ export async function applyPaymentToLicense(env, { keyHash, paymentPayload }) {
 
   const now = nowIso();
   const periodStart = paymentPayload?.billing?.periodStart || null;
-  const periodEnd = paymentPayload?.billing?.periodEnd || null;
+  let periodEnd = paymentPayload?.billing?.periodEnd || null;
+
+  // Se o provedor não informou período, para pagamentos bem-sucedidos
+  // consideramos uma janela padrão de 30 dias a partir de agora.
+  if (!periodEnd && targetStatus === 'active') {
+    periodEnd = addMsToIso(PAID_MS);
+  }
 
   if (!current) {
     const created = {
