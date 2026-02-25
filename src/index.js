@@ -4,7 +4,7 @@
 //  - GET/POST /health
 //  - GET /debug/openai-models (diagnóstico)
 // Auth:
-//  - Authorization: Bearer <licenseToken>
+//  - Authorization: Bearer <clientKey> (novo padrão; tokens legados ainda podem ser aceitos conforme janela de migração)
 // Proteções:
 //  - rate limit por token
 //  - limite de payload
@@ -303,8 +303,34 @@ function normalizeAutofillResponse(parsed) {
 async function handleAutofill(req, env) {
   const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
   validateToken(env, token);
+  const credentialType = validateClientKeyFormat(token) ? 'client_key' : 'legacy_token';
+  const migrationPolicy = resolveLegacyPolicyForRequest(req, env);
+
+  if (credentialType === 'legacy_token' && !migrationPolicy.legacyAllowed) {
+    await trackMigrationMetric(env, {
+      tenant: migrationPolicy.tenantId,
+      cohort: migrationPolicy.cohortId,
+      credentialType,
+      statusCode: 403,
+      legacyAccepted: false,
+      legacyBlocked: true,
+    });
+    const err = new Error('Token legado desabilitado. Atualize para clientKey.');
+    err.status = 403;
+    throw err;
+  }
+
   const license = await getOrCreateLicense(env, token);
   assertPremiumAllowed(license);
+
+  await trackMigrationMetric(env, {
+    tenant: migrationPolicy.tenantId,
+    cohort: migrationPolicy.cohortId,
+    credentialType,
+    statusCode: 200,
+    legacyAccepted: credentialType === 'legacy_token',
+    legacyBlocked: false,
+  });
 
   const windowMs = getEnvNum(env, 'RATE_LIMIT_WINDOW_MS', 60_000);
   const max = getEnvNum(env, 'RATE_LIMIT_MAX', 20);
@@ -1101,8 +1127,41 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       }
       // generate-tests: só POST
       if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
-        // Inject openaiClient and rateLimiter
-        const rateLimiter = (token, windowMs, max) => rateLimitOrThrow({ key: `t:${safeId(token)}`, windowMs, max });
+        // Autenticação: Authorization: Bearer <clientKey> (ou token legado, respeitando janela de migração)
+        const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
+        validateToken(env, token);
+
+        const credentialType = validateClientKeyFormat(token) ? 'client_key' : 'legacy_token';
+        const migrationPolicy = resolveLegacyPolicyForRequest(req, env);
+
+        if (credentialType === 'legacy_token' && !migrationPolicy.legacyAllowed) {
+          await trackMigrationMetric(env, {
+            tenant: migrationPolicy.tenantId,
+            cohort: migrationPolicy.cohortId,
+            credentialType,
+            statusCode: 403,
+            legacyAccepted: false,
+            legacyBlocked: true,
+          });
+          const err = new Error('Token legado desabilitado. Atualize para clientKey.');
+          err.status = 403;
+          throw err;
+        }
+
+        const license = await getOrCreateLicense(env, token);
+        assertPremiumAllowed(license);
+
+        await trackMigrationMetric(env, {
+          tenant: migrationPolicy.tenantId,
+          cohort: migrationPolicy.cohortId,
+          credentialType,
+          statusCode: 200,
+          legacyAccepted: credentialType === 'legacy_token',
+          legacyBlocked: false,
+        });
+
+        // Inject openaiClient and rateLimiter (rate-limit por clientKey/token já autenticado)
+        const rateLimiter = (_token, windowMs, max) => rateLimitOrThrow({ key: `t:${safeId(token)}`, windowMs, max });
         const resp = await generateTestsHandler(req, env, { openaiClient, rateLimiter });
         // Garante que meta.model está presente no response
         if (!resp.meta) resp.meta = {};

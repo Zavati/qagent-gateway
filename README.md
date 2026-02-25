@@ -275,12 +275,52 @@ $env:STRIPE_SUCCESS_URL="https://example.com/success"
 $env:STRIPE_CANCEL_URL="https://example.com/cancel"
 $env:BASE_URL="http://localhost:8787"
 $env:CLIENT_KEY="qagent_live_xxx"   # do signup
+$env:EMAIL_DISPATCH_WEBHOOK_URL = 'http://127.0.0.1:3030'
+$env:CLIENT_KEY = 'qag_test_gpwz8H70Dnj0cRPy36oZr81Po90WXS3Dm4MlhCUT'
+$env:WEBHOOK_SECRET = 'dev-webhook-secret-change-in-production'
+$env:MAILERSEND_API_KEY = 'mlsn.f05cba329fccb3581586bc9b505e2bd97155a76467190dd40ca7d513de4fdeb8'
 npx wrangler dev
 npm run dev
 
+
+Atualizar prod 
+# will prompt to paste the secret
+npx wrangler secret put MAILERSEND_API_KEY
 
 
 teste web hook 
 $env:WEBHOOK_SIGNING_SECRET='dev-webhook-secret-change-in-production'
 $env:CLIENT_KEY = $env:CLIENT_KEY
 .\test\sign-and-send.ps1
+
+
+20/02
+Resumo curto — status atual
+
+Pronto: integração Stripe básica, endpoint de checkout, normalização de eventos, verificação de assinatura (HMAC + Stripe fallback), persistência idempotente em KV, fallback de reconciliação (stripe:cust: / stripe:sub:), scripts test/sign-and-send.*.
+Faltando (recomendado antes de produção):
+Config ops: garantir variáveis de ambiente em produção (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_ID, STRIPE_SUCCESS_URL, STRIPE_CANCEL_URL, QAGENT_KV, WEBHOOK_SIGNING_SECRET se usado).
+Testes automatizados: unidade/integração para reconciliação e idempotência (recomendo adicionar antes do deploy).
+Endpoint de debug: GET /debug/payment-event/:provider/:eventId para inspecionar eventos processados (útil em staging/produção inicial).
+Documentação / scripts: finalizar docs/test/integration-tests.md e adicionar npm script para sign-and-send.
+Observabilidade: logs/alertas para falhas de webhook e eventos repetidos; métricas de KV erros.
+Segurança/ops: roll de segredos, validar quem tem acesso ao webhook secret, usar secret manager, revisar rate limits e retries.
+Validação final: testar em Stripe Test Mode com cartões de teste (ex.: 4242...), confirmar que o webhook chega e a licença transita para active.
+Checklist mínimo para subir e testar em produção (ou em staging real):
+
+Env: configurar todas as variáveis listadas acima no ambiente do Worker.
+Webhook no Stripe: apontar o webhook para a URL publicada e salvar o STRIPE_WEBHOOK_SECRET (o código usa isso quando presente).
+KV: confirmar binding QAGENT_KV existe e tem capacidade.
+Deploy: npx wrangler publish (ou o processo de CI/CD que você usa).
+Testes manuais: criar uma sessão de Checkout em Test Mode, completar compra com cartão de teste, observar:
+evento recebido com assinatura válida,
+evento salvo em KV (payment_event:stripe:<eventId>),
+stripe:cust:<id>/stripe:sub:<id> gravados (se aplicável),
+licença transitada para active.
+Não usar cartão real até validar comportamento de retries/erros e logs; depois, se desejar, testar com produção real e monitorar cobranças.
+Quer que eu:
+
+A) implemente agora o endpoint debug GET /debug/payment-event/:provider/:eventId, ou
+B) adicione os testes automatizados para reconciliação/idempotência, ou
+C) crie o npm script que executa sign-and-send.sh e finalize integration-tests.md?
+Responda A, B ou C (ou combine) que eu inicio a tarefa escolhida.
