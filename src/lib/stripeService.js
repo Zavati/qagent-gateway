@@ -136,7 +136,7 @@ export async function verifyStripeWebhook(req, env) {
   }
   if (!sigPairs.t || !sigPairs.v1) return { ok: false, reason: 'invalid_sig_header' };
 
-  const computed = hmacSha256Hex(secret, `${sigPairs.t}.${bodyText}`);
+  const computed = await hmacSha256Hex(secret, `${sigPairs.t}.${bodyText}`);
   if (computed !== sigPairs.v1) return { ok: false, reason: 'mismatch' };
   return { ok: true, payloadText: bodyText };
 }
