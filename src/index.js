@@ -52,15 +52,16 @@ function corsHeaders(req = null, env = {}, extra = {}) {
 import { getEnvNum } from './lib/config.js';
 import { safeId, isAdminToken, generateClientKey, hashClientKey, validateClientKeyFormat, generateAccessToken, hashAccessToken } from './lib/keyService.js';
 import { getOrCreateLicense, assertPremiumAllowed, daysLeft, createTrialLicenseForKeyHash, getLicenseByKeyHash, applyPaymentToLicense } from './lib/licenseService.js';
-import { createCustomer, getCustomerByEmail, getCustomerById } from './lib/customerService.js';
+import { createCustomer, getCustomerByEmail, getCustomerById, customerEmailIndexKey } from './lib/customerService.js';
 import { buildSignupEmailEvent, savePendingEmailEvent, markEmailEventStatus, saveEmailDispatchAck } from './lib/emailEventService.js';
 import { sendEmailEvent } from './lib/emailDispatcher.js';
 import { verifyWebhookSignatureOrThrow } from './lib/webhookSecurity.js';
 import { savePaymentEvent } from './lib/paymentEventService.js';
 import { trackMigrationMetric } from './lib/migrationMetricsService.js';
 import { createCheckoutSession, verifyStripeWebhook, normalizeStripeEvent } from './lib/stripeService.js';
-import { hashPassword } from './lib/passwords.js';
-import { createUser, getUserByEmail } from './lib/userService.js';
+import { hashPassword, verifyPassword } from './lib/passwords.js';
+import { createUser, getUserByEmail, getUserById, updateUserLoginStats } from './lib/userService.js';
+import { createSessionToken, verifySessionToken } from './lib/sessionTokens.js';
 
 function getBearerToken(req) {
   const h = req.headers.get("Authorization") || "";
@@ -601,6 +602,423 @@ async function handleGetLicense(req, env) {
   );
 }
 
+async function handleAuthLogin(req, env) {
+  const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 10_000);
+  const body = await readJsonWithLimit(req, maxBytes);
+
+  const email = String(body?.email || '').trim().toLowerCase();
+  const password = body?.password;
+  if (!email || typeof password !== 'string' || !password) {
+    const err = new Error('Credenciais inválidas.');
+    err.status = 401;
+    throw err;
+  }
+
+  const user = await getUserByEmail(env, email);
+  if (!user) {
+    const err = new Error('Credenciais inválidas.');
+    err.status = 401;
+    throw err;
+  }
+
+  const ok = await verifyPassword(password, {
+    hash: user.passwordHash,
+    salt: user.passwordSalt,
+    iterations: user.passwordIterations,
+    algo: user.passwordAlgo,
+  });
+
+  if (!ok) {
+    const err = new Error('Credenciais inválidas.');
+    err.status = 401;
+    throw err;
+  }
+
+  const nowIso = new Date().toISOString();
+  await updateUserLoginStats(env, user.userId, { lastLoginAt: nowIso });
+
+  const tokenInfo = await createSessionToken(env, {
+    sub: user.userId,
+    email: user.email,
+    ver: typeof user.tokenVersion === 'number' ? user.tokenVersion : 1,
+    iss: 'qagent-gateway',
+    aud: 'qagent-console',
+  });
+
+  const expiresAtIso = new Date(tokenInfo.exp * 1000).toISOString();
+
+  return json(
+    {
+      status: 'ok',
+      session: {
+        token: tokenInfo.token,
+        expiresAt: expiresAtIso,
+      },
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
+async function handleAuthMe(req, env) {
+  const sessionToken = getBearerToken(req);
+  if (!sessionToken) {
+    const err = new Error('Sessão ausente.');
+    err.status = 401;
+    throw err;
+  }
+
+  const verified = await verifySessionToken(env, sessionToken);
+  if (!verified.ok) {
+    const err = new Error('Sessão inválida ou expirada.');
+    err.status = 401;
+    throw err;
+  }
+
+  const payload = verified.payload;
+  const userId = payload?.sub;
+  const user = await getUserById(env, userId);
+  if (!user) {
+    const err = new Error('Sessão inválida.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (typeof user.tokenVersion === 'number' && payload?.ver !== user.tokenVersion) {
+    const err = new Error('Sessão revogada. Faça login novamente.');
+    err.status = 401;
+    throw err;
+  }
+
+  let licenseSummary = null;
+  if (user.customerId) {
+    try {
+      const customer = await getCustomerById(env, user.customerId);
+      const custEmail = customer?.email || null;
+      if (custEmail) {
+        const existing = await getCustomerByEmail(env, custEmail);
+        const keyHash = existing?.keyHash || null;
+        if (keyHash) {
+          const lic = await getLicenseByKeyHash(env, keyHash);
+          if (lic) {
+            const expiresAt = lic.expiresAt || lic.trialEndsAt || null;
+            let clientKeyPrefix = null;
+            try {
+              const ckRaw = await env.QAGENT_KV.get(`clientkey:${keyHash}`);
+              if (ckRaw) {
+                const ck = JSON.parse(ckRaw);
+                clientKeyPrefix = ck?.clientKeyPrefix || null;
+              }
+            } catch (e) {
+              log('auth_me_clientkey_lookup_error', { message: e?.message || String(e), userId: user.userId, keyHash });
+            }
+            licenseSummary = {
+              status: lic.status,
+              plan: lic.plan,
+              expiresAt,
+              daysLeft: daysLeft(expiresAt),
+              keyHash,
+              clientKeyPrefix,
+            };
+          }
+        }
+      }
+    } catch (e) {
+      log('auth_me_license_lookup_error', { message: e?.message || String(e), userId: user.userId });
+    }
+  }
+
+  const expiresAtIso = typeof payload?.exp === 'number' ? new Date(payload.exp * 1000).toISOString() : null;
+
+  return json(
+    {
+      status: 'ok',
+      user: {
+        userId: user.userId,
+        email: user.email,
+        customerId: user.customerId || null,
+      },
+      session: {
+        expiresAt: expiresAtIso,
+      },
+      license: licenseSummary,
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
+async function handleConsoleLicense(req, env) {
+  const sessionToken = getBearerToken(req);
+  if (!sessionToken) {
+    const err = new Error('Sessão ausente.');
+    err.status = 401;
+    throw err;
+  }
+
+  const verified = await verifySessionToken(env, sessionToken);
+  if (!verified.ok) {
+    const err = new Error('Sessão inválida ou expirada.');
+    err.status = 401;
+    throw err;
+  }
+
+  const payload = verified.payload;
+  const userId = payload?.sub;
+  const user = await getUserById(env, userId);
+  if (!user) {
+    const err = new Error('Sessão inválida.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (typeof user.tokenVersion === 'number' && payload?.ver !== user.tokenVersion) {
+    const err = new Error('Sessão revogada. Faça login novamente.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  if (!user.customerId) {
+    const err = new Error('Conta sem vínculo de cliente.');
+    err.status = 409;
+    throw err;
+  }
+
+  let licenseSummary = null;
+  try {
+    const customer = await getCustomerById(env, user.customerId);
+    const custEmail = customer?.email || user.email || null;
+    if (custEmail) {
+      const existing = await getCustomerByEmail(env, custEmail);
+      const keyHash = existing?.keyHash || null;
+      if (keyHash) {
+        const lic = await getLicenseByKeyHash(env, keyHash);
+        if (lic) {
+          const expiresAt = lic.expiresAt || lic.trialEndsAt || null;
+          licenseSummary = {
+            status: lic.status,
+            plan: lic.plan,
+            expiresAt,
+            daysLeft: daysLeft(expiresAt),
+          };
+        }
+      }
+    }
+  } catch (e) {
+    log('console_license_main_lookup_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  const clientKeys = [];
+  try {
+    let cursor = undefined;
+    const maxClientKeys = 500;
+
+    while (true) {
+      const page = await env.QAGENT_KV.list({ prefix: 'clientkey:', cursor });
+      const keys = page?.keys || [];
+
+      if (keys.length) {
+        const results = await Promise.all(
+          keys.map(async (k) => {
+            const raw = await env.QAGENT_KV.get(k.name);
+            return raw ? { name: k.name, raw } : null;
+          })
+        );
+
+        for (const item of results) {
+          if (!item) continue;
+          let rec = null;
+          try {
+            rec = JSON.parse(item.raw);
+          } catch {
+            continue;
+          }
+          if (rec && rec.customerId === user.customerId) {
+            clientKeys.push({
+              label: rec.label || null,
+              prefix: rec.clientKeyPrefix || null,
+              createdAt: rec.createdAt || null,
+              revokedAt: rec.revokedAt || null,
+            });
+          }
+        }
+      }
+
+      if (page.list_complete || !page.cursor || clientKeys.length >= maxClientKeys) break;
+      cursor = page.cursor;
+    }
+  } catch (e) {
+    log('console_license_clientkeys_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  return json(
+    {
+      status: 'ok',
+      license: licenseSummary,
+      clientKeys,
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
+async function handleRotateClientKey(req, env) {
+  const sessionToken = getBearerToken(req);
+  if (!sessionToken) {
+    const err = new Error('Sessão ausente.');
+    err.status = 401;
+    throw err;
+  }
+
+  const verified = await verifySessionToken(env, sessionToken);
+  if (!verified.ok) {
+    const err = new Error('Sessão inválida ou expirada.');
+    err.status = 401;
+    throw err;
+  }
+
+  const payload = verified.payload;
+  const userId = payload?.sub;
+  const user = await getUserById(env, userId);
+  if (!user) {
+    const err = new Error('Sessão inválida.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (typeof user.tokenVersion === 'number' && payload?.ver !== user.tokenVersion) {
+    const err = new Error('Sessão revogada. Faça login novamente.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (!user.customerId) {
+    const err = new Error('Conta sem vínculo de cliente para rotação de chave.');
+    err.status = 409;
+    throw err;
+  }
+
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  const customer = await getCustomerById(env, user.customerId);
+  const email = customer?.email || user.email || null;
+  if (!email) {
+    const err = new Error('Não foi possível localizar cliente para rotação de chave.');
+    err.status = 409;
+    throw err;
+  }
+
+  const existing = await getCustomerByEmail(env, email);
+  const currentKeyHash = existing?.keyHash || null;
+  if (!currentKeyHash) {
+    const err = new Error('Nenhuma clientKey ativa encontrada para esta conta.');
+    err.status = 409;
+    throw err;
+  }
+
+  const currentLicense = await getLicenseByKeyHash(env, currentKeyHash);
+  if (!currentLicense) {
+    const err = new Error('Licença não encontrada para a clientKey atual.');
+    err.status = 409;
+    throw err;
+  }
+
+  const keyMode = String(env?.CLIENT_KEY_MODE || '').toLowerCase() || ((env.ENVIRONMENT || 'production') === 'production' ? 'live' : 'test');
+  const newClientKey = generateClientKey(keyMode === 'test' ? 'test' : 'live');
+  const newKeyHash = await hashClientKey(newClientKey);
+
+  const nowIsoStr = new Date().toISOString();
+
+  // Criar novo registro de clientkey
+  try {
+    await env.QAGENT_KV.put(`clientkey:${newKeyHash}`, JSON.stringify({
+      keyHash: newKeyHash,
+      customerId: user.customerId,
+      label: 'rotated',
+      clientKeyPrefix: String(newClientKey).slice(0, 12),
+      createdAt: nowIsoStr,
+      lastUsedAt: null,
+      revokedAt: null,
+    }));
+  } catch (e) {
+    log('rotate_clientkey_new_put_error', { message: e?.message || String(e), userId: user.userId });
+    const err = new Error('Falha ao salvar nova clientKey.');
+    err.status = 500;
+    throw err;
+  }
+
+  // Marcar clientKey antiga como revogada, se existir
+  try {
+    const oldRaw = await env.QAGENT_KV.get(`clientkey:${currentKeyHash}`);
+    if (oldRaw) {
+      const old = JSON.parse(oldRaw);
+      old.revokedAt = nowIsoStr;
+      await env.QAGENT_KV.put(`clientkey:${currentKeyHash}`, JSON.stringify(old));
+    }
+  } catch (e) {
+    log('rotate_clientkey_old_mark_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  // Regravar licença para o novo keyHash, preservando status/plano/expiração
+  try {
+    const newLicense = {
+      ...currentLicense,
+      // mantém licenseId, status, plan, datas; apenas atualiza timestamps
+      updatedAt: nowIsoStr,
+    };
+
+    await env.QAGENT_KV.put(`license:${newKeyHash}`, JSON.stringify(newLicense));
+
+    // marcar antiga como revogada para evitar uso da chave anterior
+    const oldLicense = {
+      ...currentLicense,
+      status: 'revoked',
+      updatedAt: nowIsoStr,
+    };
+    await env.QAGENT_KV.put(`license:${currentKeyHash}`, JSON.stringify(oldLicense));
+  } catch (e) {
+    log('rotate_clientkey_license_error', { message: e?.message || String(e), userId: user.userId });
+    const err = new Error('Falha ao atualizar licença durante rotação de chave.');
+    err.status = 500;
+    throw err;
+  }
+
+  // Atualizar índice de email -> keyHash
+  try {
+    const idxKey = customerEmailIndexKey(email);
+    await env.QAGENT_KV.put(idxKey, JSON.stringify({
+      customerId: user.customerId,
+      keyHash: newKeyHash,
+      updatedAt: nowIsoStr,
+    }));
+  } catch (e) {
+    log('rotate_clientkey_email_index_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  const expiresAt = currentLicense.expiresAt || currentLicense.trialEndsAt || null;
+
+  return json(
+    {
+      status: 'ok',
+      clientKey: newClientKey,
+      license: {
+        status: currentLicense.status,
+        plan: currentLicense.plan,
+        expiresAt,
+        daysLeft: daysLeft(expiresAt),
+      },
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
 async function handleSignupTrial(req, env) {
   const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 25_000);
   const body = await readJsonWithLimit(req, maxBytes);
@@ -655,6 +1073,7 @@ async function handleSignupTrial(req, env) {
     keyHash,
     customerId: customer.customerId,
     label: 'signup-trial',
+    clientKeyPrefix: String(clientKey).slice(0, 12),
     createdAt,
     lastUsedAt: null,
     revokedAt: null,
@@ -1115,6 +1534,19 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       // debug: só GET
       if (url.pathname === "/debug/openai-models" && req.method === "GET") {
         return await handleDebugOpenAIModels(env);
+      }
+      // Auth: login e info da sessão
+      if (url.pathname === "/v1/auth/login" && req.method === "POST") {
+        return await handleAuthLogin(req, env);
+      }
+      if (url.pathname === "/v1/auth/me" && req.method === "GET") {
+        return await handleAuthMe(req, env);
+      }
+      if (url.pathname === "/v1/console/license" && req.method === "GET") {
+        return await handleConsoleLicense(req, env);
+      }
+      if (url.pathname === "/v1/console/rotate-clientkey" && req.method === "POST") {
+        return await handleRotateClientKey(req, env);
       }
       // Debug payment event: /debug/payment-event/:provider/:eventId
       if (url.pathname.startsWith('/debug/payment-event/') && req.method === 'GET') {
