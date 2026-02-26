@@ -1709,7 +1709,7 @@ async function handleBillingPlans(req, env) {
       url: null,
 
       // campos adicionais específicos do nosso catálogo
-      priceId: 'price_1T3TK6BjKnMOesshUJY95S2l',
+      priceId: 'price_1T3TdABjKnMOesshKptK9t27',
       price: '79,00',
       currency: 'BRL',
       mensagem: 'Produto destinado a pessoa física.'
