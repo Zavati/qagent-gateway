@@ -15,10 +15,13 @@ function stableStringify(obj) {
   return '{' + keys.map(k => `${k}:${stableStringify(obj[k])}`).join(',') + '}';
 }
 
-async function computeDeterministicIdempotencyKey(clientKey, priceId, quantity, metadata, mode) {
+async function computeDeterministicIdempotencyKey(clientKey, priceId, quantity, metadata, mode, successUrl, cancelUrl) {
   try {
     const metaStr = stableStringify(metadata || {});
-    const input = `${clientKey}|${priceId}|${String(quantity)}|${String(mode || '')}|${metaStr}`;
+    // Inclui successUrl e cancelUrl no cálculo para garantir
+    // que chamadas com URLs diferentes gerem chaves diferentes,
+    // evitando erros de idempotência do Stripe.
+    const input = `${clientKey}|${priceId}|${String(quantity)}|${String(mode || '')}|${metaStr}|${successUrl || ''}|${cancelUrl || ''}`;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
     return `idem_${(await toHex(digest)).slice(0, 32)}`;
   } catch (e) {
@@ -61,7 +64,7 @@ export async function createCheckoutSession(env, { clientKey, priceId, successUr
   // determine idempotency key: prefer provided, else compute deterministic key when clientKey present
   let idem = idempotencyKey || null;
   if (!idem && clientKey) {
-    idem = await computeDeterministicIdempotencyKey(clientKey, priceId, quantity, metadata, detectedMode);
+    idem = await computeDeterministicIdempotencyKey(clientKey, priceId, quantity, metadata, detectedMode, successUrl, cancelUrl);
   }
 
   const headers = {
