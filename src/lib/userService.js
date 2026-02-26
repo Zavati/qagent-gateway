@@ -110,3 +110,30 @@ export async function updateUserLoginStats(env, userId, { lastLoginAt = null, to
 }
 
 export { normalizeEmail };
+
+export async function updateUserPassword(env, userId, passwordBundle) {
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+  if (!userId) return null;
+
+  const key = userKey(userId);
+  const current = await kvGetJson(env, key);
+  if (!current) return null;
+
+  const now = new Date().toISOString();
+  const next = {
+    ...current,
+    passwordHash: passwordBundle?.hash || null,
+    passwordSalt: passwordBundle?.salt || null,
+    passwordAlgo: passwordBundle?.algo || null,
+    passwordIterations: passwordBundle?.iterations || null,
+    tokenVersion: (typeof current.tokenVersion === 'number' ? current.tokenVersion : 1) + 1,
+    updatedAt: now,
+  };
+
+  await kvPutJson(env, key, next);
+  return next;
+}

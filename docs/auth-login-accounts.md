@@ -352,6 +352,84 @@ Reuso do endpoint atual com campos adicionais de senha.
 
 ---
 
+## Fluxo "Esqueci minha senha" (link mágico)
+
+Objetivo: permitir que o usuário recupere o acesso à conta sem expor ou redefinir senha diretamente na tela, usando um link mágico de uso único enviado por email.
+
+### 1) Solicitar link de recuperação
+
+`POST /v1/auth/forgot-password`
+
+Body sugerido:
+
+```json
+{
+  "email": "cliente@empresa.com"
+}
+```
+
+- Sempre responde 200 com mensagem genérica (não revela se o email existe ou não).
+- Se existir `user_by_email:<email>`:
+  - Gera `tokenId = fpw_...` e payload com:
+    - `userId`, `email`, `createdAt`, `expiresAt` (ex.: 30 minutos), `usedAt: null`.
+  - Salva em KV:
+    - `forgotpw:<tokenId> -> { ...payload }`.
+  - Enfileira email com link mágico:
+    - `https://app.apiqagent.com/reset-password?token=<tokenId>`.
+- Tokens devem ser de uso único (marcar `usedAt` na primeira utilização).
+
+### 2) Consumir link mágico e criar nova senha
+
+Frontend (app web) deve:
+
+- Ler `token` da query string.
+- Chamar endpoint de backend para validar token e aceitar nova senha.
+
+`POST /v1/auth/reset-password`
+
+Body sugerido:
+
+```json
+{
+  "token": "fpw_01HYYYY...",
+  "password": "NovaSenha123",
+  "passwordConfirmation": "NovaSenha123"
+}
+```
+
+Comportamento esperado:
+
+- Valida formato do token e carrega `forgotpw:<tokenId>` do KV.
+- Rejeita se:
+  - token inexistente;
+  - `expiresAt` passado;
+  - `usedAt` já preenchido.
+- Reaproveita as mesmas regras de senha de `/v1/signup-trial`.
+- Gera novo hash de senha com `hashPassword` e atualiza o registro do usuário:
+  - `passwordHash`, `passwordSalt`, `passwordIterations`, `passwordAlgo`.
+  - Incrementa `tokenVersion` do usuário para invalidar sessões antigas.
+- Marca o token como usado (`usedAt = now`) para evitar reuso.
+- Opcionalmente emite já uma nova sessão (`sessionToken`) na resposta, para o usuário não precisar fazer login de novo:
+
+```json
+{
+  "status": "ok",
+  "session": {
+    "token": "<sessionToken>",
+    "expiresAt": "2026-03-27T04:15:00.971Z"
+  }
+}
+```
+
+Segurança:
+
+- Tokens devem ter expiração curta (15–60 minutos) e ser de uso único.
+- Não revelar, em nenhuma etapa, se o email existe ou não no sistema.
+- Rate limit em `/v1/auth/forgot-password` por IP/email, similar ao login.
+- Logs nunca devem conter o token completo (apenas prefixo para debug).
+
+---
+
 ## Compatibilidade e migração
 
 - A integração existente (extensão) continua usando apenas `clientKey` em `Authorization: Bearer`.

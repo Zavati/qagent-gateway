@@ -60,7 +60,7 @@ import { savePaymentEvent } from './lib/paymentEventService.js';
 import { trackMigrationMetric } from './lib/migrationMetricsService.js';
 import { createCheckoutSession, verifyStripeWebhook, normalizeStripeEvent } from './lib/stripeService.js';
 import { hashPassword, verifyPassword } from './lib/passwords.js';
-import { createUser, getUserByEmail, getUserById, updateUserLoginStats } from './lib/userService.js';
+import { createUser, getUserByEmail, getUserById, updateUserLoginStats, updateUserPassword } from './lib/userService.js';
 import { createSessionToken, verifySessionToken } from './lib/sessionTokens.js';
 
 function getBearerToken(req) {
@@ -82,6 +82,9 @@ function log(type, payload = {}) {
 // MVP: em memória. Em produção: Durable Object / KV.
 const rateState = new Map(); // key -> { count, resetAt }
 
+// Estado de falhas de login (lockout breve após N tentativas)
+const loginFailureState = new Map(); // key -> { failures, lockUntil }
+
 function rateLimitOrThrow({ key, windowMs, max }) {
   const now = Date.now();
   const st = rateState.get(key);
@@ -96,6 +99,56 @@ function rateLimitOrThrow({ key, windowMs, max }) {
     throw err;
   }
   st.count += 1;
+}
+
+function getClientIp(req) {
+  const cfIp = req.headers.get('CF-Connecting-IP') || req.headers.get('cf-connecting-ip');
+  if (cfIp) return cfIp;
+  const xff = req.headers.get('X-Forwarded-For') || req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0].trim();
+  return null;
+}
+
+function isLoginLocked(key) {
+  if (!key) return false;
+  const st = loginFailureState.get(key);
+  if (!st) return false;
+  const now = Date.now();
+  if (st.lockUntil && now < st.lockUntil) return true;
+  if (st.lockUntil && now >= st.lockUntil) {
+    loginFailureState.delete(key);
+  }
+  return false;
+}
+
+function registerLoginFailure(key, maxFailures, lockMs) {
+  if (!key) return;
+  const now = Date.now();
+  let st = loginFailureState.get(key);
+  if (!st || (st.lockUntil && now >= st.lockUntil)) {
+    st = { failures: 0, lockUntil: null };
+  }
+  st.failures += 1;
+  if (st.failures >= maxFailures) {
+    st.lockUntil = now + lockMs;
+    st.failures = 0;
+  }
+  loginFailureState.set(key, st);
+}
+
+function clearLoginFailures(key) {
+  if (!key) return;
+  loginFailureState.delete(key);
+}
+
+function generateRandomHex(bytes) {
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  let out = '';
+  for (let i = 0; i < buf.length; i++) {
+    out += buf[i].toString(16).padStart(2, '0');
+  }
+  return out;
 }
 
 async function readJsonWithLimit(req, maxBytes) {
@@ -603,12 +656,40 @@ async function handleGetLicense(req, env) {
 }
 
 async function handleAuthLogin(req, env) {
+  const ip = getClientIp(req);
+  const ipKey = ip ? `login-ip:${ip}` : null;
+  const windowMs = getEnvNum(env, 'LOGIN_RATE_LIMIT_WINDOW_MS', 60_000);
+  const maxReq = getEnvNum(env, 'LOGIN_RATE_LIMIT_MAX', 20);
+  if (ipKey) {
+    try {
+      rateLimitOrThrow({ key: ipKey, windowMs, max: maxReq });
+    } catch (e) {
+      // Mantém mensagem genérica de credenciais inválidas para não vazar motivo
+      const err = new Error('Credenciais inválidas.');
+      err.status = 401;
+      throw err;
+    }
+  }
+
   const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 10_000);
   const body = await readJsonWithLimit(req, maxBytes);
 
   const email = String(body?.email || '').trim().toLowerCase();
   const password = body?.password;
+  const emailKey = email ? `login-email:${email}` : null;
+
+  const maxFailures = getEnvNum(env, 'LOGIN_MAX_FAILURES', 5);
+  const lockMs = getEnvNum(env, 'LOGIN_LOCKOUT_MS', 10 * 60_000);
+
+  if (isLoginLocked(ipKey) || isLoginLocked(emailKey)) {
+    const err = new Error('Credenciais inválidas.');
+    err.status = 401;
+    throw err;
+  }
+
   if (!email || typeof password !== 'string' || !password) {
+    registerLoginFailure(ipKey, maxFailures, lockMs);
+    registerLoginFailure(emailKey, maxFailures, lockMs);
     const err = new Error('Credenciais inválidas.');
     err.status = 401;
     throw err;
@@ -616,6 +697,8 @@ async function handleAuthLogin(req, env) {
 
   const user = await getUserByEmail(env, email);
   if (!user) {
+    registerLoginFailure(ipKey, maxFailures, lockMs);
+    registerLoginFailure(emailKey, maxFailures, lockMs);
     const err = new Error('Credenciais inválidas.');
     err.status = 401;
     throw err;
@@ -629,10 +712,16 @@ async function handleAuthLogin(req, env) {
   });
 
   if (!ok) {
+    registerLoginFailure(ipKey, maxFailures, lockMs);
+    registerLoginFailure(emailKey, maxFailures, lockMs);
     const err = new Error('Credenciais inválidas.');
     err.status = 401;
     throw err;
   }
+
+  // Login bem-sucedido limpa falhas anteriores
+  clearLoginFailures(ipKey);
+  clearLoginFailures(emailKey);
 
   const nowIso = new Date().toISOString();
   await updateUserLoginStats(env, user.userId, { lastLoginAt: nowIso });
@@ -741,6 +830,230 @@ async function handleAuthMe(req, env) {
         expiresAt: expiresAtIso,
       },
       license: licenseSummary,
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
+async function handleForgotPassword(req, env) {
+  const ip = getClientIp(req);
+  const ipKey = ip ? `forgot-ip:${ip}` : null;
+  const windowMs = getEnvNum(env, 'FORGOT_RATE_LIMIT_WINDOW_MS', 60_000);
+  const maxReq = getEnvNum(env, 'FORGOT_RATE_LIMIT_MAX', 10);
+
+  if (ipKey) {
+    try {
+      rateLimitOrThrow({ key: ipKey, windowMs, max: maxReq });
+    } catch (e) {
+      // Mesmo em caso de rate limit, responder genericamente
+      return json(
+        {
+          status: 'ok',
+          message: 'Se encontrarmos uma conta com este email, enviaremos instruções de recuperação.',
+        },
+        { status: 200, headers: corsHeaders(req, env) }
+      );
+    }
+  }
+
+  let email = null;
+  try {
+    const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 10_000);
+    const body = await readJsonWithLimit(req, maxBytes);
+    email = String(body?.email || '').trim().toLowerCase();
+  } catch (e) {
+    log('forgot_password_invalid_body', { message: e?.message || String(e) });
+  }
+
+  if (!email || !env?.QAGENT_KV) {
+    return json(
+      {
+        status: 'ok',
+        message: 'Se encontrarmos uma conta com este email, enviaremos instruções de recuperação.',
+      },
+      { status: 200, headers: corsHeaders(req, env) }
+    );
+  }
+
+  try {
+    const user = await getUserByEmail(env, email);
+    if (user) {
+      const now = new Date();
+      const createdAt = now.toISOString();
+      const ttlMs = getEnvNum(env, 'FORGOT_TOKEN_TTL_MS', 30 * 60_000);
+      const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
+
+      const tokenId = `fpw_${generateRandomHex(16)}`;
+      const record = {
+        tokenId,
+        userId: user.userId,
+        email: user.email,
+        createdAt,
+        expiresAt,
+        usedAt: null,
+      };
+
+      try {
+        await env.QAGENT_KV.put(`forgotpw:${tokenId}`, JSON.stringify(record));
+      } catch (e) {
+        log('forgot_password_kv_put_error', { message: e?.message || String(e), email });
+      }
+
+      try {
+        const baseUrl = (env.PASSWORD_RESET_BASE_URL || 'https://app.apiqagent.com/reset-password').trim();
+        const resetUrl = `${baseUrl}?token=${encodeURIComponent(tokenId)}`;
+        const emailEvent = buildSignupEmailEvent({
+          customerId: user.customerId || null,
+          email: user.email,
+          keyHash: null,
+          template: 'forgot_password',
+        });
+        emailEvent.metadata = {
+          ...(emailEvent.metadata || {}),
+          resetToken: tokenId,
+          resetUrl,
+        };
+        await savePendingEmailEvent(env, emailEvent);
+        try {
+          await sendEmailEvent(env, emailEvent);
+        } catch (e) {
+          log('forgot_password_email_send_error', { message: e?.message || String(e), email });
+        }
+      } catch (e) {
+        log('forgot_password_email_build_error', { message: e?.message || String(e), email });
+      }
+    }
+  } catch (e) {
+    log('forgot_password_lookup_error', { message: e?.message || String(e), email });
+  }
+
+  return json(
+    {
+      status: 'ok',
+      message: 'Se encontrarmos uma conta com este email, enviaremos instruções de recuperação.',
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
+async function handleResetPassword(req, env) {
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 10_000);
+  const body = await readJsonWithLimit(req, maxBytes);
+
+  const token = String(body?.token || '').trim();
+  const password = body?.password;
+  const passwordConfirmation = body?.passwordConfirmation;
+
+  if (!token) {
+    const err = new Error('Token inválido ou expirado.');
+    err.status = 400;
+    throw err;
+  }
+
+  if (password == null || typeof password !== 'string' || passwordConfirmation == null || typeof passwordConfirmation !== 'string') {
+    const err = new Error("'password' e 'passwordConfirmation' devem ser informados.");
+    err.status = 400;
+    throw err;
+  }
+
+  if (password !== passwordConfirmation) {
+    const err = new Error('As senhas não conferem.');
+    err.status = 400;
+    throw err;
+  }
+
+  const pwd = String(password);
+  if (pwd.length < 8) {
+    const err = new Error('Senha muito curta (mínimo 8 caracteres).');
+    err.status = 400;
+    throw err;
+  }
+  if (!/[A-Z]/.test(pwd) || !/[a-z]/.test(pwd) || !/[0-9]/.test(pwd)) {
+    const err = new Error('Senha fraca. Use letras maiúsculas, minúsculas e números.');
+    err.status = 400;
+    throw err;
+  }
+
+  const key = `forgotpw:${token}`;
+  const raw = await env.QAGENT_KV.get(key);
+  if (!raw) {
+    const err = new Error('Token inválido ou expirado.');
+    err.status = 400;
+    throw err;
+  }
+
+  let record = null;
+  try {
+    record = JSON.parse(raw);
+  } catch {
+    const err = new Error('Token inválido ou expirado.');
+    err.status = 400;
+    throw err;
+  }
+
+  if (record.usedAt) {
+    const err = new Error('Token inválido ou expirado.');
+    err.status = 400;
+    throw err;
+  }
+
+  if (record.expiresAt) {
+    const exp = Date.parse(record.expiresAt);
+    if (Number.isFinite(exp) && Date.now() > exp) {
+      const err = new Error('Token inválido ou expirado.');
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const userId = record.userId;
+  const user = await getUserById(env, userId);
+  if (!user) {
+    const err = new Error('Token inválido ou expirado.');
+    err.status = 400;
+    throw err;
+  }
+
+  const passwordBundle = await hashPassword(pwd);
+  const updatedUser = await updateUserPassword(env, user.userId, passwordBundle);
+
+  // Marca token como usado (uso único)
+  try {
+    record.usedAt = new Date().toISOString();
+    await env.QAGENT_KV.put(key, JSON.stringify(record));
+  } catch (e) {
+    log('reset_password_mark_used_error', { message: e?.message || String(e), tokenPrefix: token.slice(0, 8) });
+  }
+
+  // Opcional: emitir nova sessão já autenticada
+  let session = null;
+  try {
+    const tokenInfo = await createSessionToken(env, {
+      sub: user.userId,
+      email: user.email,
+      ver: typeof updatedUser?.tokenVersion === 'number' ? updatedUser.tokenVersion : ((typeof user.tokenVersion === 'number' ? user.tokenVersion : 1) + 1),
+      iss: 'qagent-gateway',
+      aud: 'qagent-console',
+    });
+    const expiresAtIso = new Date(tokenInfo.exp * 1000).toISOString();
+    session = {
+      token: tokenInfo.token,
+      expiresAt: expiresAtIso,
+    };
+  } catch (e) {
+    log('reset_password_session_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  return json(
+    {
+      status: 'ok',
+      session,
     },
     { status: 200, headers: corsHeaders(req, env) }
   );
@@ -860,6 +1173,166 @@ async function handleConsoleLicense(req, env) {
       status: 'ok',
       license: licenseSummary,
       clientKeys,
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
+async function handleConsolePayments(req, env) {
+  const sessionToken = getBearerToken(req);
+  if (!sessionToken) {
+    const err = new Error('Sessão ausente.');
+    err.status = 401;
+    throw err;
+  }
+
+  const verified = await verifySessionToken(env, sessionToken);
+  if (!verified.ok) {
+    const err = new Error('Sessão inválida ou expirada.');
+    err.status = 401;
+    throw err;
+  }
+
+  const payload = verified.payload;
+  const userId = payload?.sub;
+  const user = await getUserById(env, userId);
+  if (!user) {
+    const err = new Error('Sessão inválida.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (typeof user.tokenVersion === 'number' && payload?.ver !== user.tokenVersion) {
+    const err = new Error('Sessão revogada. Faça login novamente.');
+    err.status = 401;
+    throw err;
+  }
+
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    throw err;
+  }
+
+  if (!user.customerId) {
+    const err = new Error('Conta sem vínculo de cliente.');
+    err.status = 409;
+    throw err;
+  }
+
+  // Descobre todos os keyHash associados a este customerId (incluindo chaves revogadas)
+  const keyHashes = new Set();
+  try {
+    let cursor = undefined;
+    const maxClientKeys = 500;
+
+    while (true) {
+      const page = await env.QAGENT_KV.list({ prefix: 'clientkey:', cursor });
+      const keys = page?.keys || [];
+
+      if (keys.length) {
+        const results = await Promise.all(
+          keys.map(async (k) => {
+            const raw = await env.QAGENT_KV.get(k.name);
+            return raw ? { name: k.name, raw } : null;
+          })
+        );
+
+        for (const item of results) {
+          if (!item) continue;
+          let rec = null;
+          try {
+            rec = JSON.parse(item.raw);
+          } catch {
+            continue;
+          }
+          if (rec && rec.customerId === user.customerId) {
+            if (rec.keyHash) {
+              keyHashes.add(rec.keyHash);
+            } else if (item.name.startsWith('clientkey:')) {
+              keyHashes.add(item.name.slice('clientkey:'.length));
+            }
+          }
+        }
+      }
+
+      if (page.list_complete || !page.cursor || keyHashes.size >= maxClientKeys) break;
+      cursor = page.cursor;
+    }
+  } catch (e) {
+    log('console_payments_clientkeys_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  const payments = [];
+  try {
+    let cursor = undefined;
+    const maxEvents = 100;
+    const maxScanKeys = 2000;
+    let scanned = 0;
+
+    while (true) {
+      const page = await env.QAGENT_KV.list({ prefix: 'payment_event:', cursor });
+      const keys = page?.keys || [];
+      scanned += keys.length;
+
+      if (keys.length) {
+        const results = await Promise.all(
+          keys.map(async (k) => {
+            const raw = await env.QAGENT_KV.get(k.name);
+            return raw ? raw : null;
+          })
+        );
+
+        for (const raw of results) {
+          if (!raw) continue;
+          let evt = null;
+          try {
+            evt = JSON.parse(raw);
+          } catch {
+            continue;
+          }
+          if (!evt || !evt.keyHash || !keyHashes.has(evt.keyHash)) continue;
+
+          const occurredAt = evt.occurredAt || evt.receivedAt || null;
+          const billing = evt.billing || {};
+          const provider = evt.provider || null;
+          const eventId = evt.eventId || null;
+          let link = null;
+          if (provider === 'stripe' && eventId) {
+            link = `https://dashboard.stripe.com/events/${eventId}`;
+          }
+
+          payments.push({
+            provider,
+            eventId,
+            type: evt.type || null,
+            occurredAt,
+            status: (evt.transition && evt.transition.finalStatus) || evt.status || null,
+            amount: billing.amount || null,
+            currency: billing.currency || null,
+            link,
+          });
+        }
+      }
+
+      if (page.list_complete || !page.cursor || scanned >= maxScanKeys || payments.length >= maxEvents) break;
+      cursor = page.cursor;
+    }
+  } catch (e) {
+    log('console_payments_list_error', { message: e?.message || String(e), userId: user.userId });
+  }
+
+  // Ordena do mais recente para o mais antigo
+  payments.sort((a, b) => {
+    const ta = a.occurredAt ? Date.parse(a.occurredAt) : 0;
+    const tb = b.occurredAt ? Date.parse(b.occurredAt) : 0;
+    return tb - ta;
+  });
+
+  return json(
+    {
+      status: 'ok',
+      payments,
     },
     { status: 200, headers: corsHeaders(req, env) }
   );
@@ -1539,11 +2012,20 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       if (url.pathname === "/v1/auth/login" && req.method === "POST") {
         return await handleAuthLogin(req, env);
       }
+      if (url.pathname === "/v1/auth/forgot-password" && req.method === "POST") {
+        return await handleForgotPassword(req, env);
+      }
+      if (url.pathname === "/v1/auth/reset-password" && req.method === "POST") {
+        return await handleResetPassword(req, env);
+      }
       if (url.pathname === "/v1/auth/me" && req.method === "GET") {
         return await handleAuthMe(req, env);
       }
       if (url.pathname === "/v1/console/license" && req.method === "GET") {
         return await handleConsoleLicense(req, env);
+      }
+      if (url.pathname === "/v1/console/payments" && req.method === "GET") {
+        return await handleConsolePayments(req, env);
       }
       if (url.pathname === "/v1/console/rotate-clientkey" && req.method === "POST") {
         return await handleRotateClientKey(req, env);
