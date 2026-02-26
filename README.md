@@ -278,9 +278,14 @@ $env:CLIENT_KEY="qagent_live_xxx"   # do signup
 $env:EMAIL_DISPATCH_WEBHOOK_URL = 'http://127.0.0.1:3030'
 $env:CLIENT_KEY = 'qag_test_gpwz8H70Dnj0cRPy36oZr81Po90WXS3Dm4MlhCUT'
 $env:WEBHOOK_SECRET = 'dev-webhook-secret-change-in-production'
-$env:MAILERSEND_API_KEY = 'mlsn.f05cba329fccb3581586bc9b505e2bd97155a76467190dd40ca7d513de4fdeb8'
+$env:MAILERSEND_API_KEY = 'mlsn'
 npx wrangler dev
 npm run dev
+
+
+para secrete SESSION_SECRET usar o comando 
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+Para gerar. 
 
 
 Atualizar prod 
