@@ -59,6 +59,8 @@ import { verifyWebhookSignatureOrThrow } from './lib/webhookSecurity.js';
 import { savePaymentEvent } from './lib/paymentEventService.js';
 import { trackMigrationMetric } from './lib/migrationMetricsService.js';
 import { createCheckoutSession, verifyStripeWebhook, normalizeStripeEvent } from './lib/stripeService.js';
+import { hashPassword } from './lib/passwords.js';
+import { createUser, getUserByEmail } from './lib/userService.js';
 
 function getBearerToken(req) {
   const h = req.headers.get("Authorization") || "";
@@ -611,6 +613,8 @@ async function handleSignupTrial(req, env) {
   }
 
   const email = String(body.email || '').trim().toLowerCase();
+
+  // Verifica se já existe usuário/cliente com este email e trial/active válido
   const existing = await getCustomerByEmail(env, email);
   if (existing?.keyHash) {
     const existingLicense = await getLicenseByKeyHash(env, existing.keyHash);
@@ -624,6 +628,14 @@ async function handleSignupTrial(req, env) {
         );
       }
     }
+  }
+
+  const existingUser = await getUserByEmail(env, email);
+  if (existingUser) {
+    return json(
+      { status: 'error', message: 'Conta já existente para este email.' },
+      { status: 409, headers: corsHeaders(req, env) }
+    );
   }
 
   const keyMode = String(env?.CLIENT_KEY_MODE || '').toLowerCase() || ((env.ENVIRONMENT || 'production') === 'production' ? 'live' : 'test');
@@ -654,6 +666,23 @@ async function handleSignupTrial(req, env) {
     plan: 'pro',
   });
 
+   // Se senha foi enviada, cria conta de usuário vinculada ao customerId
+  let user = null;
+  if (body.password && body.passwordConfirmation) {
+    const passwordBundle = await hashPassword(body.password);
+    try {
+      user = await createUser(env, {
+        email,
+        passwordBundle,
+        customerId: customer.customerId,
+      });
+    } catch (e) {
+      // Se falhar na criação do usuário (por exemplo, corrida de email duplicado),
+      // loga e segue apenas com trial, sem bloquear signup.
+      log('signup_user_create_error', { message: e?.message || String(e), email });
+    }
+  }
+
   const emailEvent = buildSignupEmailEvent({
     customerId: customer.customerId,
     email: customer.email,
@@ -683,6 +712,12 @@ async function handleSignupTrial(req, env) {
           clientKey,
           delivery: 'webhook:email',
         },
+        user: user
+          ? {
+              userId: user.userId,
+              email: user.email,
+            }
+          : null,
       },
       { status: 201, headers: corsHeaders(req, env) }
     ),

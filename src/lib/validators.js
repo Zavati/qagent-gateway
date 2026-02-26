@@ -67,6 +67,19 @@ export function validateSignupTrialBody(body) {
   if (body.company != null && typeof body.company !== 'string') fail("'company' deve ser string.");
   if (body.source != null && typeof body.source !== 'string') fail("'source' deve ser string.");
 
+   // Campos opcionais de senha para criação de conta
+   if (body.password != null && typeof body.password !== 'string') fail("'password' deve ser string.");
+   if (body.passwordConfirmation != null && typeof body.passwordConfirmation !== 'string') fail("'passwordConfirmation' deve ser string.");
+   if (body.password || body.passwordConfirmation) {
+     if (!body.password || !body.passwordConfirmation) fail("'password' e 'passwordConfirmation' devem ser informados juntos.");
+     if (body.password !== body.passwordConfirmation) fail('As senhas não conferem.');
+     const pwd = String(body.password);
+     if (pwd.length < 8) fail('Senha muito curta (mínimo 8 caracteres).');
+     if (!/[A-Z]/.test(pwd) || !/[a-z]/.test(pwd) || !/[0-9]/.test(pwd)) {
+       fail('Senha fraca. Use letras maiúsculas, minúsculas e números.');
+     }
+   }
+
   if (body.acceptTerms !== true) fail("'acceptTerms' deve ser true.");
   if (body.acceptPrivacy !== true) fail("'acceptPrivacy' deve ser true.");
 
