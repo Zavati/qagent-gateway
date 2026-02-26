@@ -1649,6 +1649,28 @@ async function handleEmailDispatchedWebhook(req, env) {
   return json({ status: 'ok', processed: true }, { status: 200, headers: corsHeaders(req, env) });
 }
 
+async function handleBillingPlans(req, env) {
+  // Catálogo estático inicial de planos. Pode ser evoluído futuramente
+  // para vir de configuração/Stripe, mas o formato de resposta se mantém.
+  const plans = [
+    {
+      id: 'pf_30',
+      priceId: 'price_1T3TdABjKnMOesshKptK9t27',
+      price: '79,00',
+      currency: 'BRL',
+      mensagem: 'Produto destinado a pessoa física.',
+    },
+  ];
+
+  return json(
+    {
+      status: 'ok',
+      plans,
+    },
+    { status: 200, headers: corsHeaders(req, env) }
+  );
+}
+
 async function handleBillingCheckout(req, env) {
   const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 12_000);
   const body = await readJsonWithLimit(req, maxBytes);
@@ -2055,6 +2077,9 @@ Em caso de dúvidas, entre em contato pelo e-mail:
           result.dispatchPromise.catch((e) => log('email_dispatch_async_error', { message: e?.message || String(e) }));
         }
         return result.response;
+      }
+      if (url.pathname === "/v1/billing/plans" && req.method === "GET") {
+        return await handleBillingPlans(req, env);
       }
       if (url.pathname === "/v1/billing/checkout" && req.method === "POST") {
         return await handleBillingCheckout(req, env);
