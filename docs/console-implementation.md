@@ -27,7 +27,9 @@ Console (requer `Authorization: Bearer <sessionToken>`):
 
 - `GET /v1/console/license` — retorna licença consolidada + lista de clientKeys.
 - `GET /v1/console/payments` — retorna lista de pagamentos recentes.
-- `POST /v1/console/rotate-clientkey` — gera nova clientKey e revoga anterior.
+- `POST /v1/console/rotate-clientkey` — gera nova clientKey principal e revoga a anterior.
+- `POST /v1/console/clientkeys` — cria uma clientKey **adicional** para o mesmo customerId, sem revogar as existentes.
+   - Opcional futuro: `POST /v1/console/clientkeys/revoke` para revogar uma key específica.
 
 ## 3. Stack sugerida
 

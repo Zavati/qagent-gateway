@@ -1655,12 +1655,12 @@ async function handleBillingPlans(req, env) {
   const plans = [
     {
       // espelha a estrutura principal de um produto Stripe real
-      id: 'prod_U1WMgGOpb76KGW',
+      id: 'prod_UG0Cu5h8WgxhZq',
       object: 'product',
       active: true,
       attributes: [],
       created: 1771730829,
-      default_price: 'price_1T3TK6BjKnMOesshUJY95S2l',
+      default_price: 'price_1THUBcBjKnMOesshCRjxaX0L',
       description: 'Acesso ao QAgent, plataforma de inteligência para testes de software, geração de casos de teste e automação de evidências.',
       images: [
         'https://files.stripe.com/links/MDB8YWNjdF8xVDJiSElCaktuTU9lc3NofGZsX2xpdmVfVDQ5dWpSOHVZSElRdjJsOWR0UjBkakhU0017ebV9Pt',
@@ -1679,40 +1679,10 @@ async function handleBillingPlans(req, env) {
       url: null,
 
       // campos adicionais específicos do nosso catálogo
-      priceId: 'price_1T3TK6BjKnMOesshUJY95S2l',
-      price: '79,00',
+      priceId: 'price_1THUBcBjKnMOesshCRjxaX0L',
+      price: '49,99',
       currency: 'BRL',
       mensagem: 'Produto destinado a pessoa física.',
-    },{
-      // espelha a estrutura principal de um produto Stripe real
-      id: 'prod_U1WMgGOpb76KGW',
-      object: 'product',
-      active: true,
-      attributes: [],
-      created: 1771730829,
-      default_price: 'price_1T3TdABjKnMOesshKptK9t27',
-      description: 'PRODUTO DE TESTE ao QAgent, plataforma de inteligência para testes de software, geração de casos de teste e automação de evidências.',
-      images: [
-        'https://files.stripe.com/links/MDB8YWNjdF8xVDJiSElCaktuTU9lc3NofGZsX2xpdmVfVDQ5dWpSOHVZSElRdjJsOWR0UjBkakhU0017ebV9Pt',
-      ],
-      livemode: true,
-      marketing_features: [],
-      metadata: {},
-      name: 'QAgent',
-      package_dimensions: null,
-      shippable: null,
-      statement_descriptor: null,
-      tax_code: null,
-      type: 'service',
-      unit_label: null,
-      updated: 1771730830,
-      url: null,
-
-      // campos adicionais específicos do nosso catálogo
-      priceId: 'price_1T3TdABjKnMOesshKptK9t27',
-      price: '79,00',
-      currency: 'BRL',
-      mensagem: 'Produto destinado a pessoa física.'
     }
   ];
 
