@@ -1103,21 +1103,106 @@ async function handleConsoleLicense(req, env) {
 
   let licenseSummary = null;
   try {
-    const customer = await getCustomerById(env, user.customerId);
-    const custEmail = customer?.email || user.email || null;
-    if (custEmail) {
-      const existing = await getCustomerByEmail(env, custEmail);
-      const keyHash = existing?.keyHash || null;
-      if (keyHash) {
-        const lic = await getLicenseByKeyHash(env, keyHash);
-        if (lic) {
-          const expiresAt = lic.expiresAt || lic.trialEndsAt || null;
-          licenseSummary = {
-            status: lic.status,
-            plan: lic.plan,
-            expiresAt,
-            daysLeft: daysLeft(expiresAt),
-          };
+    // Prioriza leitura por customerId do usuário, varrendo todas as clientKeys
+    // associadas ao cliente para evitar divergência quando há múltiplas chaves.
+    const keyHashes = new Set();
+    let cursor = undefined;
+    const maxClientKeys = 500;
+
+    while (true) {
+      const page = await env.QAGENT_KV.list({ prefix: 'clientkey:', cursor });
+      const keys = page?.keys || [];
+
+      if (keys.length) {
+        const results = await Promise.all(
+          keys.map(async (k) => {
+            const raw = await env.QAGENT_KV.get(k.name);
+            return raw ? { name: k.name, raw } : null;
+          })
+        );
+
+        for (const item of results) {
+          if (!item) continue;
+          let rec = null;
+          try {
+            rec = JSON.parse(item.raw);
+          } catch {
+            continue;
+          }
+          if (rec && rec.customerId === user.customerId) {
+            if (rec.keyHash) {
+              keyHashes.add(rec.keyHash);
+            } else if (item.name.startsWith('clientkey:')) {
+              keyHashes.add(item.name.slice('clientkey:'.length));
+            }
+          }
+        }
+      }
+
+      if (page.list_complete || !page.cursor || keyHashes.size >= maxClientKeys) break;
+      cursor = page.cursor;
+    }
+
+    const rankStatus = (s) => {
+      const status = String(s || '').toLowerCase();
+      if (status === 'active') return 5;
+      if (status === 'trial') return 4;
+      if (status === 'grace_period') return 3;
+      if (status === 'past_due') return 2;
+      if (status === 'expired') return 1;
+      return 0;
+    };
+
+    let best = null;
+    for (const keyHash of keyHashes) {
+      const lic = await getLicenseByKeyHash(env, keyHash);
+      if (!lic) continue;
+      const expiresAt = lic.expiresAt || lic.trialEndsAt || null;
+      const candidate = {
+        status: lic.status,
+        plan: lic.plan,
+        expiresAt,
+        daysLeft: daysLeft(expiresAt),
+      };
+
+      if (!best) {
+        best = candidate;
+        continue;
+      }
+
+      const rankA = rankStatus(candidate.status);
+      const rankB = rankStatus(best.status);
+      if (rankA > rankB) {
+        best = candidate;
+        continue;
+      }
+      if (rankA === rankB) {
+        const ta = Date.parse(candidate.expiresAt || '') || 0;
+        const tb = Date.parse(best.expiresAt || '') || 0;
+        if (ta > tb) best = candidate;
+      }
+    }
+
+    if (best) {
+      licenseSummary = best;
+    } else {
+      // fallback legado por email (mantém compatibilidade)
+      const customer = await getCustomerById(env, user.customerId);
+      const custEmail = customer?.email || user.email || null;
+      if (custEmail) {
+        const existing = await getCustomerByEmail(env, custEmail);
+        const keyHash = existing?.keyHash || null;
+        if (keyHash) {
+          const lic = await getLicenseByKeyHash(env, keyHash);
+          if (lic) {
+            const expiresAt = lic.expiresAt || lic.trialEndsAt || null;
+            licenseSummary = {
+              status: lic.status,
+              plan: lic.plan,
+              expiresAt,
+              daysLeft: daysLeft(expiresAt),
+            };
+          }
         }
       }
     }
@@ -1699,9 +1784,11 @@ async function handleBillingCheckout(req, env) {
   const maxBytes = getEnvNum(env, 'MAX_BODY_BYTES', 12_000);
   const body = await readJsonWithLimit(req, maxBytes);
 
-  const clientKey = body.clientKey || getBearerToken(req) || null;
-  if (!clientKey) {
-    const err = new Error('clientKey ausente para criar Checkout Session.');
+  const bodyClientKey = typeof body.clientKey === 'string' ? body.clientKey.trim() : '';
+  const bearerToken = (getBearerToken(req) || '').trim();
+  const clientKey = bodyClientKey || bearerToken || null;
+  if (!clientKey || !validateClientKeyFormat(clientKey)) {
+    const err = new Error('clientKey inválida/ausente para criar Checkout Session. Envie body.clientKey no formato qag_...');
     err.status = 400;
     throw err;
   }

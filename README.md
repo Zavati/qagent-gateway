@@ -328,4 +328,14 @@ Quer que eu:
 A) implemente agora o endpoint debug GET /debug/payment-event/:provider/:eventId, ou
 B) adicione os testes automatizados para reconciliação/idempotência, ou
 C) crie o npm script que executa sign-and-send.sh e finalize integration-tests.md?
-Responda A, B ou C (ou combine) que eu inicio a tarefa escolhida.
+Responda A, B ou C (ou combine) que eu inicio a tarefa escolhida.}
+
+
+
+📋 Resumo do que alterar (ordem de prioridade)
+Variável	Status	Teste	Produção	Prioridade
+STRIPE_SECRET_KEY	❌ Crítica	sk_test_...	sk_live_...	🔴 1️⃣ AGORA
+STRIPE_WEBHOOK_SECRET	❌ Crítica	whsec_test_...	whsec_live_...	🔴 1️⃣ AGORA
+STRIPE_PRICE_ID	⚠️ Funcional	price_test_...	price_live_...	🟠 2️⃣ Junto
+STRIPE_SUCCESS_URL	✅ Opcional	(vazio)	https://app.apiqagent.com/billing/success	🟡 3️⃣ Recomendado
+STRIPE_CANCEL_URL	✅ Opcional	(vazio)	https://app.apiqagent.com/billing/cancel	🟡 3️⃣ Recomendado
