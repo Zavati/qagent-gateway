@@ -22,8 +22,8 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
     throw err;
   }
 
-  const windowMs = getEnvNum(env, 'RATE_LIMIT_WINDOW_MS', 60_000);
-  const max = getEnvNum(env, 'RATE_LIMIT_MAX', 20);
+  const windowMs = getEnvNum(env, 'RATE_LIMIT_WINDOW_MS', 80_000);
+  const max = getEnvNum(env, 'RATE_LIMIT_MAX', 10);
   rateLimiter?.(token, windowMs, max);
 
   const body = await req.json();
@@ -44,7 +44,7 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
 
   const basePrompt = `Você é um especialista em QA. Analise a tarefa do Jira abaixo e:
 
-- Gere EXATAMENTE 5 a 20 casos de teste (happy path, validações, negativos, bordas, autorização, cenários possíveis).
+- Gere EXATAMENTE 5 a 10 casos de teste (happy path, validações, negativos, bordas, autorização, cenários possíveis).
 - Avalie a complexidade da tarefa de 1 a 8 (padrão Scrum) e justifique.
 
 IMPORTANTE:
