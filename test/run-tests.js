@@ -1,5 +1,12 @@
 import assert from 'node:assert';
-import { safeId, normalizeCases, daysLeft, validateGenerateTestsBody, corsHeaders, validateAutofillBody, generateAutofillStub, buildAutofillPrompt, normalizeAutofillResponse, prefillHeuristics, normalizeIncomingElement, extractJsonFromText, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement, getAutofillModel } from '../src/index.js';
+import { safeId } from '../src/lib/keyService.js';
+import { daysLeft } from '../src/lib/licenseService.js';
+import { normalizeCases, validateGenerateTestsBody, validateAutofillBody } from '../src/lib/validators.js';
+import { corsHeaders } from '../src/lib/http.js';
+import { buildAutofillPrompt, normalizeAutofillResponse } from '../src/lib/autofill.js';
+import { generateAutofillStub, prefillHeuristics, normalizeIncomingElement, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement } from '../src/lib/heuristics.js';
+import { extractJsonFromText } from '../src/lib/openai.js';
+import { getAutofillModel } from '../src/lib/config.js';
 import worker from '../src/index.js';
 import { generateClientKey, validateClientKeyFormat, hashClientKey } from '../src/lib/keyService.js';
 import { validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from '../src/lib/validators.js';

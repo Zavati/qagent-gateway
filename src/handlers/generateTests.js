@@ -1,6 +1,7 @@
 import { sanitizeString } from '../lib/sanitize.js';
 import { validateGenerateTestsBody } from '../lib/validators.js';
-import { getEnvNum, getAutofillModel } from '../lib/config.js';
+import { getEnvNum, getGenerateTestsModel } from '../lib/config.js';
+import { resolveAiRuntimeConfig } from '../services/aiRuntimeConfigService.js';
 
 function getLogger(env) {
   if (typeof env?.log === 'function') return env.log;
@@ -12,8 +13,8 @@ function safeJsonParse(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-// openaiClient: { callJsonResponse(model, prompt, opts), repairJsonResponse(model, prompt, rawText, opts) }
-export async function handleGenerateTests(req, env, { openaiClient, rateLimiter }) {
+// aiEngine: provider-agnostic structured generation interface
+export async function handleGenerateTests(req, env, { aiEngine, rateLimiter, accountId = null, resolveAiConfig = resolveAiRuntimeConfig }) {
   const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') || '';
 
   if (!token || token.length < 24 || !/^[A-Za-z0-9_\-.]+$/.test(token)) {
@@ -40,7 +41,13 @@ export async function handleGenerateTests(req, env, { openaiClient, rateLimiter 
   const docLink = sanitizeString(ctx.docLink || '', 300);
   const expected = sanitizeString(ctx.expected || '', 800); // antes 1000
 
-  const model = getAutofillModel(body, env);
+  const fallbackModel = getGenerateTestsModel(body, env);
+  const aiConfig = await resolveAiConfig(env, {
+    accountId,
+    capability: 'test-generation',
+    fallbackModel,
+  });
+  const model = aiConfig.model;
 
   const basePrompt = `Você é um especialista em QA. Analise a tarefa do Jira abaixo e:
 
@@ -103,18 +110,24 @@ ${expected}`;
   const log = getLogger(env);
 
   async function callOnce(prompt, maxOutputTokens) {
-    const out = await openaiClient.callJsonResponse(
+    const out = await aiEngine.generateJson({
+      capability: 'test-generation',
+      provider: aiConfig.provider,
+      credentials: aiConfig.credentials,
       model,
-      prompt,
-      { apiKey: env.OPENAI_API_KEY, retries: 2, timeoutMs: 90_000, max_output_tokens: maxOutputTokens }
-    );
+      userPrompt: prompt,
+      retries: 2,
+      timeoutMs: 90_000,
+      maxOutputTokens,
+      temperature: 0,
+    }, env);
 
     const raw = out?.rawText || '';
     const parsedRaw = raw ? safeJsonParse(raw) : null;
     const status = parsedRaw?.status;
     const incompleteReason = parsedRaw?.incomplete_details?.reason;
 
-    log('generateTests_openai_http', {
+    log('generateTests_ai_http', {
       statusCode: out?.status,
       ok: out?.ok,
       respStatus: status,
@@ -124,9 +137,9 @@ ${expected}`;
       hasJson: Boolean(out?.json),
     });
 
-    log('generateTests_openai_rawtext', {
-      contentTextPreview: (out?.contentText || '').slice(0, 1600),
-      rawTextPreview: (out?.rawText || '').slice(0, 1600),
+    log('generateTests_ai_payload_meta', {
+      contentTextLength: String(out?.contentText || '').length,
+      rawTextLength: String(out?.rawText || '').length,
     });
 
     return { out, status, incompleteReason };
@@ -146,7 +159,7 @@ ${expected}`;
 
     // 2) Se truncou por max_output_tokens, faz fallback pedindo menos (e mais conciso)
     if (status === 'incomplete' && incompleteReason === 'max_output_tokens') {
-      log('generateTests_openai_truncated', { note: 'Resposta truncada por max_output_tokens. Repetindo com resposta mais compacta.' });
+      log('generateTests_ai_truncated', { note: 'Resposta truncada por max_output_tokens. Repetindo com resposta mais compacta.' });
 
       const compactPrompt = basePrompt + `
 
@@ -169,17 +182,21 @@ ATENÇÃO (modo compacto):
 
     if (missingCases || missingScore) {
       repairAttempts++;
-      log('generateTests_openai_invalid_shape', { missingCases, missingScore, rawHasData: Boolean(rawText) });
+      log('generateTests_ai_invalid_shape', { missingCases, missingScore, rawHasData: Boolean(rawText) });
 
-      const repaired = await openaiClient.repairJsonResponse(
+      const repaired = await aiEngine.repairJson({
+        capability: 'test-generation',
+        provider: aiConfig.provider,
+        credentials: aiConfig.credentials,
         model,
-        basePrompt,
+        originalPrompt: basePrompt,
         rawText,
-        { apiKey: env.OPENAI_API_KEY, timeoutMs: 25_000, max_output_tokens: 2000 }
-      );
+        timeoutMs: 25_000,
+        maxOutputTokens: 2000,
+      }, env);
 
-      log('generateTests_openai_repair_result', {
-        repairedPreview: repaired ? JSON.stringify(repaired).slice(0, 1400) : '',
+      log('generateTests_ai_repair_result', {
+        repaired: Boolean(repaired),
         repairedHasCases: Array.isArray(repaired?.cases),
         repairedHasScoreValue: typeof repaired?.score?.value === 'number',
       });
@@ -190,18 +207,23 @@ ATENÇÃO (modo compacto):
     repairAttempts++;
     rawText = e?.contentText || e?.rawText || '';
 
-    log('generateTests_openai_error', {
+    log('generateTests_ai_error', {
       errorName: e?.name,
       errorMessage: e?.message,
-      rawTextPreview: String(rawText || '').slice(0, 1600),
+      upstreamStatus: e?.upstreamStatus || null,
+      rawTextLength: String(rawText || '').length,
     });
 
-    result = await openaiClient.repairJsonResponse(
+    result = await aiEngine.repairJson({
+      capability: 'test-generation',
+      provider: aiConfig.provider,
+      credentials: aiConfig.credentials,
       model,
-      basePrompt,
+      originalPrompt: basePrompt,
       rawText,
-      { apiKey: env.OPENAI_API_KEY, timeoutMs: 25_000, max_output_tokens: 2000 }
-    );
+      timeoutMs: 25_000,
+      maxOutputTokens: 2000,
+    }, env);
 
     if (!result) {
       mode = 'stub';
@@ -239,8 +261,17 @@ ATENÇÃO (modo compacto):
   const normalizedCases = cases.map((tc, idx) => normalizeTestCase(tc, idx));
   const caseCount = normalizedCases.length;
 
-  const meta = { mode, model, caseCount, repairAttempts, durationMs, promptSize: basePrompt.length };
-  if (mode === 'stub' && rawText) meta.rawText = String(rawText).slice(0, 1600);
+  const meta = {
+    mode,
+    provider: aiConfig.provider,
+    aiConfigSource: aiConfig.source,
+    model,
+    caseCount,
+    repairAttempts,
+    durationMs,
+    promptSize: basePrompt.length,
+  };
+  if (mode === 'stub' && rawText) meta.rawTextLength = String(rawText).length;
 
   return {
     cases: normalizedCases,

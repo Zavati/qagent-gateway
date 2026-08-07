@@ -30,26 +30,8 @@ function json(data, init = {}) {
   return new Response(JSON.stringify(data, null, 2), { ...init, headers });
 }
 
-function corsHeaders(req = null, env = {}, extra = {}) {
-  // env.QAGENT_ALLOWED_ORIGINS can be "*" (default) or a comma-separated list of allowed origins
-  const allowed = (env?.QAGENT_ALLOWED_ORIGINS || "*").trim();
-  let origin = "*";
-  if (allowed !== "*") {
-    const reqOrigin = req?.headers?.get?.("origin") || "";
-    const allowedList = allowed.split(",").map(s => s.trim()).filter(Boolean);
-    if (reqOrigin && allowedList.includes(reqOrigin)) origin = reqOrigin;
-    else origin = "null"; // deliberately block when origin not allowed
-  }
-
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-QAgent-Signature, X-QAgent-Tenant, X-QAgent-Cohort",
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-    ...extra,
-  };
-} 
-
 import { getEnvNum } from './lib/config.js';
+import { corsHeaders } from './lib/http.js';
 import { safeId, isAdminToken, generateClientKey, hashClientKey, validateClientKeyFormat, generateAccessToken, hashAccessToken } from './lib/keyService.js';
 import { getOrCreateLicense, assertPremiumAllowed, daysLeft, createTrialLicenseForKeyHash, getLicenseByKeyHash, applyPaymentToLicense } from './lib/licenseService.js';
 import { createCustomer, getCustomerByEmail, getCustomerById, customerEmailIndexKey } from './lib/customerService.js';
@@ -278,77 +260,21 @@ function resolveLegacyPolicyForRequest(req, env) {
 
 
 // Sanitiza strings simples: trim, corta, recusa javascript: schemes e caracteres de controle
-import { sanitizeString, isValidSelector } from './lib/sanitize.js';
-
-import { normalizeIncomingElement, prefillHeuristics, generateAutofillStub, generateCpf, generateCnpj, detectCpfCnpjField, applyCpfCnpjReplacement } from './lib/heuristics.js';
-
-// Attempts to find and parse a JSON object inside arbitrary text, returns parsed object or null
-import { fetchTextWithTimeout, parseResponsesContent, extractJsonFromText } from './lib/openai.js';
-import { openaiClient } from './lib/openaiClient.js';
+import { sanitizeString } from './lib/sanitize.js';
+import { fetchTextWithTimeout } from './lib/openai.js';
 import { handleGenerateTests as generateTestsHandler } from './handlers/generateTests.js';
+import { aiEngine } from './ai/aiEngine.js';
+import { generateAutofillActions } from './services/autofillAiService.js';
+import { getConsoleAiConfig, putConsoleAiConfig, deleteConsoleAiConfig } from './handlers/consoleAiConfig.js';
 
-import { getAutofillModel } from './lib/config.js';
-
-import { validateGenerateTestsBody, validateAutofillBody, normalizeCases, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
+import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
+import { dispatchGatewayRoute } from './routing/gatewayRouter.js';
 
 // (validators are imported from ./lib/validators.js) 
 
 // heuristics implementation moved to ./lib/heuristics.js
 
-
-function buildAutofillPrompt(body, maxElems = 150) {
-  // compact prompt: one line per element as selector|type|name|placeholder|semantic|tableContext
-  const list = (body.elements || []).slice(0, maxElems).map((e) => {
-    const selector = (e.selector || '').replace(/\s+/g, ' ').trim();
-    const type = (e.type || '').replace(/\s+/g, ' ').trim();
-    const name = (e.name || '').replace(/\s+/g, ' ').trim();
-    const placeholder = (e.placeholder || '').replace(/\s+/g, ' ').trim();
-    const semantic = (e.semantic || '').replace(/\s+/g, ' ').trim();
-    const tableContext = e.tableContext && typeof e.tableContext === 'object'
-      ? sanitizeString(
-        `${e.tableContext.cellText || ''} ${e.tableContext.rowText || ''} ${e.tableContext.innerTableText || ''} ${e.tableContext.outerTableText || ''}`,
-        800
-      ).replace(/\s+/g, ' ').trim()
-      : '';
-    return `${selector}|${type}|${name}|${placeholder}|${semantic}|${tableContext}`;
-  }).join('\n');
-
-  return `Você é um assistente de preenchimento de formulários. Responda SOMENTE JSON com formato: {"actions":[{"selector":"...","value":"...","simulate":false}]}. Gere valores curtos e seguros (max 200 chars), sem HTML ou javascript:, use emails para campos de email, telefones para phone, nomes para name. Página: ${body.url}\nElementos (cada linha: selector|type|name|placeholder|semantic|tableContext):\n${list}`;
-}
-
-function normalizeAutofillResponse(parsed) {
-  if (!parsed || !Array.isArray(parsed.actions)) return null;
-  const out = [];
-  for (const a of parsed.actions.slice(0, 200)) {
-    if (!a || typeof a.selector !== 'string') continue;
-    if (!isValidSelector(a.selector)) continue;
-    let selector;
-    try {
-      selector = sanitizeString(a.selector, 500);
-    } catch {
-      continue;
-    }
-    let value;
-    if (a.value != null) {
-      try {
-        value = sanitizeString(a.value, 2000);
-      } catch {
-        continue;
-      }
-      if (/^javascript:/i.test(value)) continue;
-    }
-    const action = { selector };
-    if (value !== undefined) action.value = value;
-    if (a.simulate) action.simulate = !!a.simulate;
-    if (a.delayMs != null) action.delayMs = Number(a.delayMs);
-    if (a.check) action.check = !!a.check;
-    if (a.radio) action.radio = !!a.radio;
-    if (a.hint) action.hint = a.hint;
-    out.push(action);
-  }
-  return out.length ? out : null;
-}
 
 // CPF/CNPJ gens moved to ./lib/heuristics.js
 
@@ -396,149 +322,15 @@ async function handleAutofill(req, env) {
   const body = await readJsonWithLimit(req, maxBytes);
   validateAutofillBody(body);
 
-  log('autofill', { token: safeId(token), url: sanitizeString(body.url, 2000), elements: Math.min(200, (body.elements || []).length) });
+  log('autofill', {
+    token: safeId(token),
+    url: sanitizeString(body.url, 2000),
+    elements: Math.min(200, (body.elements || []).length),
+    aiConfigScope: license?.customerId ? 'account' : 'environment',
+  });
 
-  // Normalize input elements once (map used later for CPF/CNPJ replacement)
-  const normalizedElements = (body.elements || []).map(normalizeIncomingElement).filter(Boolean);
-
-  // Escolhe o modelo a ser usado (pode vir de body.meta.model)
-  const model = getAutofillModel(body, env);
-
-  // First apply fast heuristics
-  const { actions: prefilled, remaining } = prefillHeuristics(body.elements || [], Number(env.AUTOFILL_HEUR_MAX_ELEMENTS || 200));
-  if (!remaining || remaining.length === 0) {
-    const final = applyCpfCnpjReplacement(prefilled, normalizedElements);
-    return json({ actions: final, meta: { mode: 'heuristic', model } }, { headers: corsHeaders(req, env) });
-  }
-
-  // Build prompt only for remaining elements (compact)
-  const promptBody = { url: body.url, elements: remaining };
-  const prompt = buildAutofillPrompt(promptBody, Number(env.AUTOFILL_MAX_ELEMS || 50));
-  /* model is selected earlier (getAutofillModel) */
-  const openaiUrl = "https://api.openai.com/v1/responses";
-  const openaiInit = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: "Você é um assistente que gera valores para preenchimento de formulários." }] },
-        { role: "user", content: [{ type: "input_text", text: prompt }] },
-      ],
-      text: { format: { type: "json_object" } },
-      temperature: Number(env.AUTOFILL_TEMPERATURE || 0.0),
-      max_output_tokens: Number(env.AUTOFILL_MAX_TOKENS || 600),
-    }),
-  };
-
-  const timeoutMs = Number(env.OPENAI_TIMEOUT_MS || 30000);
-
-  // retry até 3x com backoff simples
-  let last = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    last = await fetchTextWithTimeout(openaiUrl, openaiInit, timeoutMs);
-
-    if (!last.ok && (last.status === 429 || last.status >= 500 || last.status === 0)) {
-      await new Promise((r) => setTimeout(r, 300 + attempt * 700));
-      continue;
-    }
-    break;
-  }
-
-  if (!last?.ok) {
-    const errInfo = last?.error ? `${last.error.name}: ${last.error.message}` : (last?.status ? `HTTP ${last.status}` : 'unknown');
-    log("autofill_openai_error", {
-      status: last?.status,
-      error: last?.error || null,
-      bodyHead: (last?.text || "").slice(0, 400),
-      detail: errInfo,
-    });
-    const err = new Error(`Falha ao chamar LLM (${errInfo}).`);
-    err.status = 502;
-    err._detail = last?.error?.message || null;
-    throw err;
-  }
-
-  let contentText = "";
-  try {
-    const obj = JSON.parse(last.text);
-    const out = obj?.output || [];
-    const msg = out.find((x) => x.type === "message") || out[0];
-    const c = msg?.content || [];
-    contentText = c.find((x) => x.type === "output_text")?.text
-      || c.find((x) => x.type === "text")?.text
-      || "";
-  } catch {
-    const err = new Error("OpenAI retornou resposta não-JSON (Responses API).");
-    err.status = 502;
-    throw err;
-  }
-
-  let parsed = null;
-  let repairAttempts = 0;
-  // 1) try direct parse
-  try {
-    parsed = JSON.parse(contentText);
-  } catch (e) {
-    // 2) try extract JSON blob from text
-    parsed = extractJsonFromText(contentText);
-    if (!parsed) {
-      // 3) attempt a short repair call to OpenAI (extract JSON only)
-      if (env?.OPENAI_API_KEY) {
-        try {
-          repairAttempts += 1;
-          log('autofill_repair_attempt', { head: (contentText || '').slice(0, 200) });
-          const repairPrompt = `The previous model response contained extra text. Extract and RETURN ONLY the JSON object that represents the response. Input:\n${contentText}`;
-          const repairInit = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.OPENAI_API_KEY}` },
-            body: JSON.stringify({
-              model,
-              input: [ { role: 'user', content: [{ type: 'input_text', text: repairPrompt }] } ],
-              text: { format: { type: 'json_object' } },
-              temperature: 0.0,
-            }),
-          };
-          const repairTimeout = Math.min(5000, Number(env.OPENAI_TIMEOUT_MS || 30000));
-          const rep = await fetchTextWithTimeout(openaiUrl, repairInit, repairTimeout);
-          if (rep && rep.ok) {
-            let repairText = '';
-            try {
-              const o = JSON.parse(rep.text);
-              const out = o?.output || [];
-              const msg = out.find((x) => x.type === 'message') || out[0];
-              const c = msg?.content || [];
-              repairText = c.find((x) => x.type === 'output_text')?.text || c.find((x) => x.type === 'text')?.text || '';
-            } catch (e) {
-              repairText = rep.text || '';
-            }
-            parsed = extractJsonFromText(repairText) || (() => { try { return JSON.parse(repairText); } catch { return null; } })();
-          } else {
-            log('autofill_repair_failed', { status: rep?.status, error: rep?.error || null });
-          }
-        } catch (e) {
-          log('autofill_repair_exception', { message: e?.message || String(e) });
-        }
-      }
-    }
-  }
-
-  const aiActions = parsed ? normalizeAutofillResponse(parsed) : null;
-  if (!aiActions) {
-    // fallback: return prefilled heuristics only and report repairAttempts
-    log('autofill_fallback', { prefilled: prefilled.length, repairAttempts });
-
-    return json({ actions: prefilled, meta: { mode: 'heuristic', model, prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
-  }
-
-  // combine prefilled + aiActions, aiActions may be subset
-  const combined = [...prefilled, ...aiActions];
-  const finalActions = applyCpfCnpjReplacement(combined, normalizedElements);
-
-  return json({ actions: finalActions, meta: { mode: 'ai', model, prefilled: prefilled.length, repairAttempts } }, { headers: corsHeaders(req, env) });
+  const result = await generateAutofillActions(body, env, { aiEngine, log, accountId: license?.customerId || null });
+  return json(result, { headers: corsHeaders(req, env) });
 }
 
 
@@ -2035,10 +1827,92 @@ async function handlePaymentWebhook(req, env) {
 }
 
 
+async function settleAsyncHandlerResult(result, ctx) {
+  if (result instanceof Response) {
+    return result;
+  }
+
+  if (ctx?.waitUntil && result?.dispatchPromise) {
+    ctx.waitUntil(result.dispatchPromise);
+  } else if (result?.dispatchPromise) {
+    result.dispatchPromise.catch((e) => log('email_dispatch_async_error', { message: e?.message || String(e) }));
+  }
+
+  return result?.response || result;
+}
+
+async function handleGenerateTestsRoute(req, env) {
+  // Autenticação: Authorization: Bearer <clientKey> (ou token legado, respeitando janela de migração)
+  const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
+  validateToken(env, token);
+
+  const credentialType = validateClientKeyFormat(token) ? 'client_key' : 'legacy_token';
+  const migrationPolicy = resolveLegacyPolicyForRequest(req, env);
+
+  if (credentialType === 'legacy_token' && !migrationPolicy.legacyAllowed) {
+    await trackMigrationMetric(env, {
+      tenant: migrationPolicy.tenantId,
+      cohort: migrationPolicy.cohortId,
+      credentialType,
+      statusCode: 403,
+      legacyAccepted: false,
+      legacyBlocked: true,
+    });
+    const err = new Error('Token legado desabilitado. Atualize para clientKey.');
+    err.status = 403;
+    throw err;
+  }
+
+  const license = await getOrCreateLicense(env, token);
+  assertPremiumAllowed(license);
+
+  await trackMigrationMetric(env, {
+    tenant: migrationPolicy.tenantId,
+    cohort: migrationPolicy.cohortId,
+    credentialType,
+    statusCode: 200,
+    legacyAccepted: credentialType === 'legacy_token',
+    legacyBlocked: false,
+  });
+
+  const rateLimiter = (_token, windowMs, max) => rateLimitOrThrow({ key: `t:${safeId(token)}`, windowMs, max });
+  const resp = await generateTestsHandler(req, env, { aiEngine, rateLimiter, accountId: license?.customerId || null });
+
+  if (!resp.meta) resp.meta = {};
+  resp.meta.model = resp.meta.model || resp.model || (resp.meta.engine || null);
+
+  return json(resp, { headers: corsHeaders(req, env) });
+}
+
+const gatewayRouteHandlers = {
+  health: (req, env) => json({ ok: true }, { status: 200, headers: corsHeaders(req, env) }),
+  debugOpenAIModels: (_req, env) => handleDebugOpenAIModels(env),
+  authLogin: (req, env) => handleAuthLogin(req, env),
+  forgotPassword: (req, env) => handleForgotPassword(req, env),
+  resetPassword: (req, env) => handleResetPassword(req, env),
+  authMe: (req, env) => handleAuthMe(req, env),
+  consoleLicense: (req, env) => handleConsoleLicense(req, env),
+  consolePayments: (req, env) => handleConsolePayments(req, env),
+  consoleAiConfigGet: async (req, env) => json(await getConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
+  consoleAiConfigPut: async (req, env) => json(await putConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
+  consoleAiConfigDelete: async (req, env) => json(await deleteConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
+  rotateClientKey: (req, env) => handleRotateClientKey(req, env),
+  debugPaymentEvent: (req, env, _ctx, params) => handleDebugPaymentEvent(req, env, params.provider, params.eventId),
+  invalidDebugPaymentEvent: (req, env) => json({ ok: false, message: 'invalid debug path' }, { status: 400, headers: corsHeaders(req, env) }),
+  getLicense: (req, env) => handleGetLicense(req, env),
+  signupTrial: async (req, env, ctx) => settleAsyncHandlerResult(await handleSignupTrial(req, env), ctx),
+  billingPlans: (req, env) => handleBillingPlans(req, env),
+  billingCheckout: (req, env) => handleBillingCheckout(req, env),
+  emailDispatchedWebhook: (req, env) => handleEmailDispatchedWebhook(req, env),
+  paymentWebhook: async (req, env, ctx) => settleAsyncHandlerResult(await handlePaymentWebhook(req, env), ctx),
+  generateTests: (req, env) => handleGenerateTestsRoute(req, env),
+  autofill: (req, env) => handleAutofill(req, env),
+};
+
 export default {
   async fetch(req, env, ctx) {
     // LOG TEMPORÁRIO: Verifica se a OPENAI_API_KEY está presente no ambiente
-    log('env_openai_key_present', { present: !!env.OPENAI_API_KEY });
+    log('env_ai_provider', { provider: aiEngine.resolveProviderName(env) });
     try {
       const url = new URL(req.url);
       
@@ -2132,134 +2006,10 @@ Em caso de dúvidas, entre em contato pelo e-mail:
         return new Response(null, { status: 204, headers: corsHeaders(req, env) });
       }
 
-      // health: aceita GET ou POST
-      if (url.pathname === "/health") {
-        return json({ ok: true }, { status: 200, headers: corsHeaders(req, env) });
+      const routedResponse = await dispatchGatewayRoute(req, env, ctx, gatewayRouteHandlers);
+      if (routedResponse) {
+        return routedResponse;
       }
-
-      // debug: só GET
-      if (url.pathname === "/debug/openai-models" && req.method === "GET") {
-        return await handleDebugOpenAIModels(env);
-      }
-      // Auth: login e info da sessão
-      if (url.pathname === "/v1/auth/login" && req.method === "POST") {
-        return await handleAuthLogin(req, env);
-      }
-      if (url.pathname === "/v1/auth/forgot-password" && req.method === "POST") {
-        return await handleForgotPassword(req, env);
-      }
-      if (url.pathname === "/v1/auth/reset-password" && req.method === "POST") {
-        return await handleResetPassword(req, env);
-      }
-      if (url.pathname === "/v1/auth/me" && req.method === "GET") {
-        return await handleAuthMe(req, env);
-      }
-      if (url.pathname === "/v1/console/license" && req.method === "GET") {
-        return await handleConsoleLicense(req, env);
-      }
-      if (url.pathname === "/v1/console/payments" && req.method === "GET") {
-        return await handleConsolePayments(req, env);
-      }
-      if (url.pathname === "/v1/console/rotate-clientkey" && req.method === "POST") {
-        return await handleRotateClientKey(req, env);
-      }
-      // Debug payment event: /debug/payment-event/:provider/:eventId
-      if (url.pathname.startsWith('/debug/payment-event/') && req.method === 'GET') {
-        const segs = url.pathname.split('/').slice(1); // ['debug','payment-event','provider','eventId']
-        if (segs.length === 4 && segs[0] === 'debug' && segs[1] === 'payment-event') {
-          const provider = segs[2];
-          const eventId = segs[3];
-          return await handleDebugPaymentEvent(req, env, provider, eventId);
-        }
-        return json({ ok: false, message: 'invalid debug path' }, { status: 400, headers: corsHeaders(req, env) });
-      }
-      // get pagamentos 
-      if (url.pathname === "/v1/license" && req.method === "GET") {
-        return await handleGetLicense(req, env);
-      }
-      if (url.pathname === "/v1/signup-trial" && req.method === "POST") {
-        const result = await handleSignupTrial(req, env);
-        if (result instanceof Response) {
-          return result;
-        }
-        if (ctx?.waitUntil && result?.dispatchPromise) {
-          ctx.waitUntil(result.dispatchPromise);
-        } else if (result?.dispatchPromise) {
-          result.dispatchPromise.catch((e) => log('email_dispatch_async_error', { message: e?.message || String(e) }));
-        }
-        return result.response;
-      }
-      if (url.pathname === "/v1/billing/plans" && req.method === "GET") {
-        return await handleBillingPlans(req, env);
-      }
-      if (url.pathname === "/v1/billing/checkout" && req.method === "POST") {
-        return await handleBillingCheckout(req, env);
-      }
-      if (url.pathname === "/v1/webhooks/email-dispatched" && req.method === "POST") {
-        return await handleEmailDispatchedWebhook(req, env);
-      }
-      if (url.pathname === "/v1/webhooks/payment" && req.method === "POST") {
-        const result = await handlePaymentWebhook(req, env);
-        if (result instanceof Response) {
-          return result;
-        }
-        if (ctx?.waitUntil && result?.dispatchPromise) {
-          ctx.waitUntil(result.dispatchPromise);
-        } else if (result?.dispatchPromise) {
-          result.dispatchPromise.catch((e) => log('email_dispatch_async_error', { message: e?.message || String(e) }));
-        }
-        return result.response;
-      }
-      // generate-tests: só POST
-      if (url.pathname === "/v1/generate-tests" && req.method === "POST") {
-        // Autenticação: Authorization: Bearer <clientKey> (ou token legado, respeitando janela de migração)
-        const token = getBearerToken(req) || (req.headers.get('X-QAgent-License') || '').trim();
-        validateToken(env, token);
-
-        const credentialType = validateClientKeyFormat(token) ? 'client_key' : 'legacy_token';
-        const migrationPolicy = resolveLegacyPolicyForRequest(req, env);
-
-        if (credentialType === 'legacy_token' && !migrationPolicy.legacyAllowed) {
-          await trackMigrationMetric(env, {
-            tenant: migrationPolicy.tenantId,
-            cohort: migrationPolicy.cohortId,
-            credentialType,
-            statusCode: 403,
-            legacyAccepted: false,
-            legacyBlocked: true,
-          });
-          const err = new Error('Token legado desabilitado. Atualize para clientKey.');
-          err.status = 403;
-          throw err;
-        }
-
-        const license = await getOrCreateLicense(env, token);
-        assertPremiumAllowed(license);
-
-        await trackMigrationMetric(env, {
-          tenant: migrationPolicy.tenantId,
-          cohort: migrationPolicy.cohortId,
-          credentialType,
-          statusCode: 200,
-          legacyAccepted: credentialType === 'legacy_token',
-          legacyBlocked: false,
-        });
-
-        // Inject openaiClient and rateLimiter (rate-limit por clientKey/token já autenticado)
-        const rateLimiter = (_token, windowMs, max) => rateLimitOrThrow({ key: `t:${safeId(token)}`, windowMs, max });
-        const resp = await generateTestsHandler(req, env, { openaiClient, rateLimiter });
-        // Garante que meta.model está presente no response
-        if (!resp.meta) resp.meta = {};
-        resp.meta.model = resp.meta.model || resp.model || (resp.meta.engine || null);
-        return json(resp, { headers: corsHeaders(req, env) });
-      }
-
-      // autofill: POST /v1/autofill
-      if (url.pathname === "/v1/autofill" && req.method === "POST") {
-        return await handleAutofill(req, env);
-      }
-
-
 
       return json({ status: "not_found", message: "Endpoint inexistente." }, { status: 404, headers: corsHeaders(req, env) });
     } catch (e) {
@@ -2277,40 +2027,3 @@ Em caso de dúvidas, entre em contato pelo e-mail:
     }
   },
 };
-
-// Named exports for testing - COMMENTED OUT porque Wrangler requer apenas ExportedHandler
-// Movido para test/test-utils.js se necessário
-/*
-export {
-  corsHeaders,
-  validateGenerateTestsBody,
-  validateAutofillBody,
-  validateSignupTrialBody,
-  validateEmailDispatchedBody,
-  validatePaymentWebhookBody,
-  generateAutofillStub,
-  prefillHeuristics,
-  normalizeIncomingElement,
-  extractJsonFromText,
-  buildAutofillPrompt,
-  normalizeAutofillResponse,
-  sanitizeString,
-  isValidSelector,
-  safeId,
-  normalizeCases,
-  daysLeft,
-  isAdminToken,
-  // CPF/CNPJ helpers
-  generateCpf,
-  generateCnpj,
-  detectCpfCnpjField,
-  applyCpfCnpjReplacement,
-  // openai helpers
-  fetchTextWithTimeout,
-  parseResponsesContent,
-  // model helper
-  getAutofillModel,
-  // contracts
-  API_CONTRACT_VERSION,
-};
-*/
