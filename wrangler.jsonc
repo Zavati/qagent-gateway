@@ -30,10 +30,10 @@
 	},
 	"d1_databases": [
 		{
-			"binding": "qagent_dev",
+			"binding": "QAGENT_DB",
 			"database_name": "qagent-dev",
 			"database_id": "37f3331a-a3ea-4176-a010-901bcd8d19b8",
-			"remote": true
+			"migrations_dir": "migrations"
 		}
 	],
 	"kv_namespaces": [
