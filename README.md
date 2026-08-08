@@ -339,3 +339,33 @@ STRIPE_WEBHOOK_SECRET	❌ Crítica	whsec_test_...	whsec_live_...	🔴 1️⃣ AG
 STRIPE_PRICE_ID	⚠️ Funcional	price_test_...	price_live_...	🟠 2️⃣ Junto
 STRIPE_SUCCESS_URL	✅ Opcional	(vazio)	https://app.apiqagent.com/billing/success	🟡 3️⃣ Recomendado
 STRIPE_CANCEL_URL	✅ Opcional	(vazio)	https://app.apiqagent.com/billing/cancel	🟡 3️⃣ Recomendado
+
+## Phase 2 — AI Engine
+
+O Gateway possui uma camada interna independente de fornecedor para recursos de IA.
+
+Configuração local padrão:
+
+```text
+AI_PROVIDER=openai
+GENERATE_TESTS_MODEL=gpt-4o-mini
+AUTOFILL_MODEL=gpt-4o-mini
+```
+
+Detalhes em `docs/phase2-foundation-03-ai-engine.md`.
+
+## Phase 2 — BYOAI local foundation
+
+A configuração de IA por conta foi introduzida na Foundation 04. Veja:
+
+`docs/phase2-foundation-04-byoai-config.md`
+
+Primeiro setup local após atualizar:
+
+```bash
+npm run db:migrate:local
+npm run test:all
+npx wrangler dev --port 8787
+```
+
+A chave `AI_CREDENTIALS_KEY_V1` deve existir somente em `.dev.vars` local ou como secret no ambiente implantado.

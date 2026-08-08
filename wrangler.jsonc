@@ -5,7 +5,12 @@
 	"vars": {
 		// Environment
 		"ENVIRONMENT": "development",
-		// Tokens válidos (dev). Em produção, migre para KV/DB.
+		// AI Engine (provider default)
+		"AI_PROVIDER": "openai",
+		"AI_CONFIG_MODE": "account_preferred",
+		"AI_CREDENTIALS_ACTIVE_KEY_VERSION": "v1",
+		"GENERATE_TESTS_MODEL": "gpt-4o-mini",
+		"AUTOFILL_MODEL": "gpt-4o-mini",
 		"OPENAI_TIMEOUT_MS": "90000",
 		// Rate limit simples (por token): 20 req / 60s
 		"RATE_LIMIT_WINDOW_MS": "90000",
@@ -19,17 +24,24 @@
 		"MIGRATION_REQUIRE_CLIENTKEY_COHORTS": "",
 		// Métricas de adoção (BE-3003)
 		"MIGRATION_METRICS_ENABLED": "true",
-		"QAGENT_ADMIN_TOKENS": "dev-token-123",
 		// Webhooks (BE-2001, BE-2002)
-		"WEBHOOK_SIGNING_SECRET": "dev-webhook-secret-change-in-production",
 		"CLIENT_KEY_MODE": "test",
 		"EMAIL_DISPATCH_WEBHOOK_URL": ""
 	},
+	"d1_databases": [
+		{
+			"binding": "QAGENT_DB",
+			"database_name": "qagent-dev",
+			"database_id": "00000000-0000-0000-0000-000000000001",
+			"preview_database_id": "qagent-dev-local",
+			"migrations_dir": "migrations"
+		}
+	],
+
 	"kv_namespaces": [
 		{
 			"binding": "QAGENT_KV",
-			"id": "64fb68d7aa714061a3082d259df3cdff",
-			"remote": true
+			"id": "64fb68d7aa714061a3082d259df3cdff"
 		}
 	],
 	"observability": {

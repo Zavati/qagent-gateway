@@ -18,10 +18,11 @@ export const openaiClient = {
       'Authorization': `Bearer ${opts.apiKey || ''}`,
     };
 
-    // Envia só o prompt do handler como mensagem de user
-    const input = [
-      { role: 'user', content: [{ type: 'input_text', text: userPrompt }] },
-    ];
+    const input = [];
+    if (opts.systemPrompt) {
+      input.push({ role: 'system', content: [{ type: 'input_text', text: String(opts.systemPrompt) }] });
+    }
+    input.push({ role: 'user', content: [{ type: 'input_text', text: userPrompt }] });
 
     const body = JSON.stringify({
       model,
@@ -32,10 +33,11 @@ export const openaiClient = {
       max_output_tokens: typeof opts.max_output_tokens === 'number' ? opts.max_output_tokens : 1200,
     });
 
-    let lastText = '', lastContentText = '', lastErr;
+    let lastText = '', lastContentText = '', lastErr, lastStatus = 0;
     for (let attempt = 0; attempt <= retries; attempt++) {
       const res = await fetchTextWithTimeout(url, { method: 'POST', headers, body }, timeoutMs);
       lastText = res.text || '';
+      lastStatus = res.status || 0;
       if (!res.ok) {
         lastErr = new Error(`OpenAI error: ${res.status}`);
         continue;
@@ -43,12 +45,12 @@ export const openaiClient = {
 
       const parsed = parseResponsesOutput(lastText);
       if (parsed.json && typeof parsed.json === 'object') {
-        return { json: parsed.json, rawText: lastText, contentText: '' };
+        return { json: parsed.json, rawText: lastText, contentText: '', status: res.status, ok: true };
       }
 
       lastContentText = parsed.text || '';
       const json = extractJsonFromText(lastContentText);
-      if (json) return { json, rawText: lastText, contentText: lastContentText };
+      if (json) return { json, rawText: lastText, contentText: lastContentText, status: res.status, ok: true };
 
       lastErr = new Error('No valid JSON in response');
     }
@@ -56,6 +58,8 @@ export const openaiClient = {
     const err = new Error('Failed to get valid JSON from OpenAI');
     err.rawText = lastText;
     err.contentText = lastContentText;
+    err.upstreamStatus = lastStatus;
+    err.upstreamFailed = lastStatus === 0 || lastStatus < 200 || lastStatus >= 300;
     throw err;
   },
 
