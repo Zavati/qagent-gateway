@@ -14,6 +14,10 @@ Inventário criado durante a Phase 2 / Foundation 02.
 | GET | `/v1/auth/me` | Auth | Sessão atual |
 | GET | `/v1/console/license` | Console | Dados de licença |
 | GET | `/v1/console/payments` | Console | Histórico de pagamentos |
+| GET | `/v1/console/ai-providers` | Console/AI | Catálogo de providers e credenciais suportadas |
+| GET | `/v1/console/ai-config` | Console/AI | Configurações de IA da conta |
+| PUT | `/v1/console/ai-config` | Console/AI | Cria/atualiza configuração de IA |
+| DELETE | `/v1/console/ai-config` | Console/AI | Remove configuração de provider |
 | POST | `/v1/console/rotate-clientkey` | Console/Auth | Rotação de clientKey |
 | GET | `/v1/license` | License | Trial/licença da extensão |
 | POST | `/v1/signup-trial` | Signup | Criação de trial |

@@ -10,6 +10,7 @@ expectRoute('POST', '/health', 'health');
 expectRoute('POST', '/v1/auth/login', 'authLogin');
 expectRoute('POST', '/v1/generate-tests', 'generateTests');
 expectRoute('POST', '/v1/autofill', 'autofill');
+expectRoute('GET', '/v1/console/ai-providers', 'consoleAiProvidersGet');
 expectRoute('GET', '/v1/console/ai-config', 'consoleAiConfigGet');
 expectRoute('PUT', '/v1/console/ai-config', 'consoleAiConfigPut');
 expectRoute('DELETE', '/v1/console/ai-config', 'consoleAiConfigDelete');

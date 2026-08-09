@@ -5,13 +5,7 @@ import {
   upsertAiProviderConfig,
   deleteAiProviderConfig,
 } from '../repositories/aiProviderConfigRepository.js';
-
-const PROVIDERS = {
-  openai: {
-    credentialTypes: ['api_key'],
-  },
-  // Gemini será habilitado no próximo corte. A persistência já é provider-agnostic.
-};
+import { getProviderDefinition, getSupportedCredentialTypeIds } from '../ai/providerCatalog.js';
 
 function clean(value, max = 200) {
   return String(value || '').trim().slice(0, max);
@@ -19,7 +13,7 @@ function clean(value, max = 200) {
 
 function normalizeProvider(value) {
   const provider = clean(value, 50).toLowerCase();
-  if (!PROVIDERS[provider]) {
+  if (!getProviderDefinition(provider)) {
     const err = new Error(`Provider ainda não habilitado para configuração: ${provider || '(vazio)'}.`);
     err.status = 400;
     err.code = 'AI_PROVIDER_CONFIG_UNSUPPORTED';
@@ -30,7 +24,7 @@ function normalizeProvider(value) {
 
 function normalizeCredentialType(provider, value) {
   const credentialType = clean(value || 'api_key', 50).toLowerCase();
-  if (!PROVIDERS[provider].credentialTypes.includes(credentialType)) {
+  if (!getSupportedCredentialTypeIds(provider).includes(credentialType)) {
     const err = new Error(`Tipo de credencial não suportado para ${provider}.`);
     err.status = 400;
     err.code = 'AI_CREDENTIAL_TYPE_UNSUPPORTED';

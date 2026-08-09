@@ -265,7 +265,7 @@ import { fetchTextWithTimeout } from './lib/openai.js';
 import { handleGenerateTests as generateTestsHandler } from './handlers/generateTests.js';
 import { aiEngine } from './ai/aiEngine.js';
 import { generateAutofillActions } from './services/autofillAiService.js';
-import { getConsoleAiConfig, putConsoleAiConfig, deleteConsoleAiConfig } from './handlers/consoleAiConfig.js';
+import { getConsoleAiProviders, getConsoleAiConfig, putConsoleAiConfig, deleteConsoleAiConfig } from './handlers/consoleAiConfig.js';
 
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
@@ -1893,6 +1893,7 @@ const gatewayRouteHandlers = {
   authMe: (req, env) => handleAuthMe(req, env),
   consoleLicense: (req, env) => handleConsoleLicense(req, env),
   consolePayments: (req, env) => handleConsolePayments(req, env),
+  consoleAiProvidersGet: async (req, env) => json(await getConsoleAiProviders(req, env), { headers: corsHeaders(req, env) }),
   consoleAiConfigGet: async (req, env) => json(await getConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
   consoleAiConfigPut: async (req, env) => json(await putConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
   consoleAiConfigDelete: async (req, env) => json(await deleteConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),

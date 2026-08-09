@@ -8,6 +8,7 @@ const EXACT_ROUTES = new Map([
   ['GET /v1/auth/me', 'authMe'],
   ['GET /v1/console/license', 'consoleLicense'],
   ['GET /v1/console/payments', 'consolePayments'],
+  ['GET /v1/console/ai-providers', 'consoleAiProvidersGet'],
   ['GET /v1/console/ai-config', 'consoleAiConfigGet'],
   ['PUT /v1/console/ai-config', 'consoleAiConfigPut'],
   ['DELETE /v1/console/ai-config', 'consoleAiConfigDelete'],

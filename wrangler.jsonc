@@ -36,6 +36,7 @@
 			"migrations_dir": "migrations"
 		}
 	],
+
 	"kv_namespaces": [
 		{
 			"binding": "QAGENT_KV",

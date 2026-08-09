@@ -4,6 +4,7 @@ import {
   saveAccountAiConfig,
   removeAccountAiConfig,
 } from '../services/aiProviderConfigService.js';
+import { getAiProviderCatalog } from '../services/aiProviderCatalogService.js';
 
 async function readJson(req, maxBytes = 20_000) {
   const buf = await req.arrayBuffer();
@@ -24,6 +25,11 @@ async function readJson(req, maxBytes = 20_000) {
     err.status = 400;
     throw err;
   }
+}
+
+export async function getConsoleAiProviders(req, env) {
+  await requireConsoleUser(req, env);
+  return { status: 'ok', ...getAiProviderCatalog(env) };
 }
 
 export async function getConsoleAiConfig(req, env) {
