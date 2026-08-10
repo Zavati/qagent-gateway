@@ -1964,7 +1964,7 @@ const gatewayRouteHandlers = {
 
 export default {
   async fetch(req, env, ctx) {
-    // LOG TEMPORÁRIO: Verifica se a OPENAI_API_KEY está presente no ambiente
+    // LOG TEMPORÁRIO: registra o provider de IA resolvido no ambiente
     log('env_ai_provider', { provider: aiEngine.resolveProviderName(env) });
     try {
       const url = new URL(req.url);

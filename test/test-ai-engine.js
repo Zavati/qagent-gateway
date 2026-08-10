@@ -2,6 +2,13 @@ import assert from 'node:assert';
 import { AiEngine } from '../src/ai/aiEngine.js';
 import { ProviderRegistry } from '../src/ai/providerRegistry.js';
 
+
+async function testDefaultRegistryIncludesGemini() {
+  const engine = new AiEngine();
+  assert.strictEqual(engine.registry.has('openai'), true);
+  assert.strictEqual(engine.registry.has('gemini'), true);
+}
+
 async function testDefaultProvider() {
   let received = null;
   const mockProvider = {
@@ -56,6 +63,7 @@ async function testRepairDelegation() {
   assert.strictEqual(received.rawText, 'bad');
 }
 
+await testDefaultRegistryIncludesGemini();
 await testDefaultProvider();
 await testEnvProviderSelection();
 await testUnsupportedProvider();

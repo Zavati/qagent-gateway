@@ -62,6 +62,22 @@ assert.strictEqual(fallbackConfig.provider, 'openai');
 assert.strictEqual(fallbackConfig.credentials.apiKey, 'env-openai-key');
 assert.strictEqual(fallbackConfig.model, 'fallback-model');
 
+
+const geminiFallback = await resolveAiRuntimeConfig({
+  ...env,
+  AI_PROVIDER: 'gemini',
+  GEMINI_API_KEY: 'env-gemini-key',
+}, {
+  accountId: 'cus_missing',
+  capability: 'test-generation',
+  fallbackModel: 'gemini-company-model',
+  repository,
+});
+assert.strictEqual(geminiFallback.source, 'env');
+assert.strictEqual(geminiFallback.provider, 'gemini');
+assert.strictEqual(geminiFallback.credentials.apiKey, 'env-gemini-key');
+assert.strictEqual(geminiFallback.model, 'gemini-company-model');
+
 await assert.rejects(
   () => resolveAiRuntimeConfig({ ...env, AI_CONFIG_MODE: 'account_required' }, {
     accountId: 'cus_missing',

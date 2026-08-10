@@ -1,9 +1,10 @@
 import { ProviderRegistry } from './providerRegistry.js';
 import { openaiProvider } from './providers/openaiProvider.js';
+import { geminiProvider } from './providers/geminiProvider.js';
 
 export class AiEngine {
   constructor({ registry, defaultProvider = 'openai' } = {}) {
-    this.registry = registry || new ProviderRegistry({ openai: openaiProvider });
+    this.registry = registry || new ProviderRegistry({ openai: openaiProvider, gemini: geminiProvider });
     this.defaultProvider = String(defaultProvider || 'openai').trim().toLowerCase();
   }
 

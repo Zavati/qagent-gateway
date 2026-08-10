@@ -48,7 +48,7 @@ export async function generateAutofillActions(body, env, { aiEngine, log = defau
       userPrompt: prompt,
       temperature: Number(env.AUTOFILL_TEMPERATURE || 0.0),
       maxOutputTokens: Number(env.AUTOFILL_MAX_TOKENS || 600),
-      timeoutMs: Number(env.OPENAI_TIMEOUT_MS || 30000),
+      timeoutMs: Number(env.AI_TIMEOUT_MS || env.OPENAI_TIMEOUT_MS || 30000),
       retries: 2,
     }, env);
 
@@ -90,7 +90,7 @@ export async function generateAutofillActions(body, env, { aiEngine, log = defau
       repairInstruction: 'Extraia e retorne SOMENTE o JSON no formato {"actions":[{"selector":"...","value":"...","simulate":false}]}.',
       temperature: 0,
       maxOutputTokens: Number(env.AUTOFILL_MAX_TOKENS || 600),
-      timeoutMs: Math.min(5000, Number(env.OPENAI_TIMEOUT_MS || 30000)),
+      timeoutMs: Math.min(5000, Number(env.AI_TIMEOUT_MS || env.OPENAI_TIMEOUT_MS || 30000)),
       retries: 0,
     }, env);
     aiActions = repaired ? normalizeAutofillResponse(repaired) : null;

@@ -31,6 +31,39 @@ const PROVIDERS = {
       },
     ],
   },
+  gemini: {
+    id: 'gemini',
+    name: 'Google Gemini',
+    description: 'Use a conta Gemini API da sua organização para geração de testes e autofill.',
+    credentialTypes: [
+      {
+        id: 'api_key',
+        name: 'API Key',
+        fields: [
+          {
+            id: 'apiKey',
+            label: 'Gemini API Key',
+            type: 'secret',
+            requiredOnCreate: true,
+          },
+        ],
+      },
+    ],
+    capabilities: ['test_generation', 'autofill'],
+    modelFields: [
+      {
+        id: 'generateTests',
+        label: 'Modelo para geração de testes',
+        required: true,
+      },
+      {
+        id: 'autofill',
+        label: 'Modelo para autofill',
+        required: false,
+      },
+    ],
+  },
+
 };
 
 function clone(value) {

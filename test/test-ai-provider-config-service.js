@@ -75,17 +75,31 @@ assert.strictEqual(summaries.length, 1);
 assert.strictEqual(summaries[0].credentialsConfigured, true);
 assert.strictEqual('credentialsCiphertext' in summaries[0], false);
 
-await assert.rejects(
-  () => saveAccountAiConfig(env, 'cus_123', {
-    provider: 'gemini',
-    credentials: { apiKey: 'x' },
-    models: { generateTests: 'gemini-x' },
-  }, { repository }),
-  (err) => err?.code === 'AI_PROVIDER_CONFIG_UNSUPPORTED'
-);
-
 const removed = await removeAccountAiConfig(env, 'cus_123', 'openai', { repository });
 assert.deepStrictEqual(removed, { provider: 'openai', removed: true });
 assert.strictEqual(stored, null);
+
+const geminiSaved = await saveAccountAiConfig(env, 'cus_123', {
+  provider: 'gemini',
+  credentialType: 'api_key',
+  credentials: { apiKey: 'gemini-company-secret' },
+  models: { generateTests: 'gemini-company-tests', autofill: 'gemini-company-fill' },
+}, { repository });
+assert.strictEqual(geminiSaved.provider, 'gemini');
+const geminiCredentials = await decryptCredentialPayload(env, {
+  ciphertext: stored.credentialsCiphertext,
+  iv: stored.credentialsIv,
+  keyVersion: stored.credentialsKeyVersion,
+});
+assert.strictEqual(geminiCredentials.apiKey, 'gemini-company-secret');
+
+await assert.rejects(
+  () => saveAccountAiConfig(env, 'cus_123', {
+    provider: 'unsupported-provider',
+    credentials: { apiKey: 'x' },
+    models: { generateTests: 'x' },
+  }, { repository }),
+  (err) => err?.code === 'AI_PROVIDER_CONFIG_UNSUPPORTED'
+);
 
 console.log('AI provider config service tests passed ✅');
