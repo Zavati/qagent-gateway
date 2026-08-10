@@ -11,7 +11,7 @@
     "test:integration": "pwsh -File test/run-integration-tests.ps1",
     "test:generate": "node test/test-generateTests.js",
     "test:router": "node test/test-router.js",
-    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog",
+    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing",
     "test:ai": "node test/test-ai-engine.js",
     "test:autofill-ai": "node test/test-autofill-ai-service.js",
     "test:openai-provider": "node test/test-openai-provider.js",
@@ -20,7 +20,8 @@
     "test:ai-config-service": "node test/test-ai-provider-config-service.js",
     "db:migrate:local": "wrangler d1 migrations apply qagent-dev --local",
     "db:migrations:list:local": "wrangler d1 migrations list qagent-dev --local",
-    "test:ai-provider-catalog": "node test/test-ai-provider-catalog.js"
+    "test:ai-provider-catalog": "node test/test-ai-provider-catalog.js",
+    "test:stripe-billing": "node test/test-stripe-billing.js"
   },
   "keywords": [],
   "author": "",

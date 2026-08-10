@@ -38,7 +38,7 @@ import { createCustomer, getCustomerByEmail, getCustomerById, customerEmailIndex
 import { buildSignupEmailEvent, savePendingEmailEvent, markEmailEventStatus, saveEmailDispatchAck } from './lib/emailEventService.js';
 import { sendEmailEvent } from './lib/emailDispatcher.js';
 import { verifyWebhookSignatureOrThrow } from './lib/webhookSecurity.js';
-import { savePaymentEvent } from './lib/paymentEventService.js';
+import { getPaymentEvent, savePaymentEvent } from './lib/paymentEventService.js';
 import { trackMigrationMetric } from './lib/migrationMetricsService.js';
 import { createCheckoutSession, verifyStripeWebhook, normalizeStripeEvent } from './lib/stripeService.js';
 import { hashPassword, verifyPassword } from './lib/passwords.js';
@@ -1656,8 +1656,27 @@ async function handlePaymentWebhook(req, env) {
     throw err;
   }
 
-  let keyHash = null;
-  if (body?.reference?.clientKey) {
+  // Stripe sends several events that are useful for observability but must not
+  // alter entitlements (for example payment_intent.succeeded). Acknowledge them
+  // explicitly so they never fall through as a failed license transition.
+  if (body?.processing?.action === 'ignore') {
+    return json({
+      status: 'ok',
+      processed: false,
+      ignored: true,
+      eventType: body?.providerEventType || body?.eventType || 'unknown',
+    }, { status: 200, headers: corsHeaders(req, env) });
+  }
+
+  // Exact Stripe event replay protection must happen BEFORE any license mutation.
+  // Stripe may deliver the same Event more than once.
+  const existingPaymentEvent = await getPaymentEvent(env, body.provider, body.eventId);
+  if (existingPaymentEvent) {
+    return json({ status: 'ok', processed: false, idempotent: true }, { status: 200, headers: corsHeaders(req, env) });
+  }
+
+  let keyHash = body?.reference?.keyHash || null;
+  if (!keyHash && body?.reference?.clientKey) {
     try {
       keyHash = await hashClientKey(body.reference.clientKey);
     } catch {
@@ -1697,6 +1716,41 @@ async function handlePaymentWebhook(req, env) {
     log('stripe_mapping_save_error', { message: e?.message || String(e) });
   }
 
+  if (body?.processing?.action === 'mapping_only') {
+    const mappingEvent = {
+      provider: body.provider,
+      eventId: body.eventId,
+      type: body.eventType,
+      keyHash,
+      rawRef: {
+        providerCustomerId: body?.reference?.providerCustomerId || null,
+        providerSubscriptionId: body?.reference?.providerSubscriptionId || null,
+        providerInvoiceId: body?.reference?.providerInvoiceId || null,
+      },
+      billing: body.billing,
+      occurredAt: body.occurredAt,
+      status: 'processed',
+      transition: { updated: false, blocked: false, reason: 'mapping_only', finalStatus: null },
+    };
+    await savePaymentEvent(env, mappingEvent);
+    return json({
+      status: 'ok',
+      processed: true,
+      idempotent: false,
+      mappingOnly: true,
+      transition: mappingEvent.transition,
+    }, { status: 200, headers: corsHeaders(req, env) });
+  }
+
+  // A state-changing Stripe event without a resolvable QAgent account must be retried.
+  // Webhook event order is not guaranteed; a later Checkout/Subscription event may
+  // establish the mapping before Stripe's retry.
+  if (!keyHash && body?.provider === 'stripe') {
+    const err = new Error('Evento Stripe ainda não reconciliado com uma licença QAgent.');
+    err.status = 503;
+    throw err;
+  }
+
   const toSave = {
     provider: body.provider,
     eventId: body.eventId,
@@ -1704,9 +1758,10 @@ async function handlePaymentWebhook(req, env) {
     customerId: body?.customer?.customerId || null,
     keyHash,
     rawRef: {
-      clientKeyPrefix: body?.reference?.clientKey ? String(body.reference.clientKey).slice(0, 12) : null,
+      legacyClientKeyPresent: Boolean(body?.reference?.clientKey),
       providerCustomerId: body?.reference?.providerCustomerId || null,
       providerSubscriptionId: body?.reference?.providerSubscriptionId || null,
+      providerInvoiceId: body?.reference?.providerInvoiceId || null,
     },
     billing: body.billing,
     occurredAt: body.occurredAt,
@@ -1725,10 +1780,7 @@ async function handlePaymentWebhook(req, env) {
     finalStatus: transition.license?.status || null,
   };
 
-  const saved = await savePaymentEvent(env, toSave);
-  if (!saved.created) {
-    return json({ status: 'ok', processed: false, idempotent: true }, { status: 200, headers: corsHeaders(req, env) });
-  }
+  await savePaymentEvent(env, toSave);
 
   // If payment caused a license activation, generate a 30-day access token
   // and enqueue an email event to deliver it. Respect idempotency by relying
@@ -1736,7 +1788,7 @@ async function handlePaymentWebhook(req, env) {
   let dispatchPromise = null;
   try {
     const finalStatus = transition.license?.status || null;
-    if (transition.updated && !transition.blocked && finalStatus === 'active') {
+    if (body?.processing?.sendAccessToken === true && transition.updated && !transition.blocked && finalStatus === 'active') {
       try {
         const token = generateAccessToken('access', 48);
         const tokenHash = await hashAccessToken(token);

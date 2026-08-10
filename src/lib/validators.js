@@ -118,9 +118,9 @@ export function validatePaymentWebhookBody(body) {
 
   if (!body.reference || typeof body.reference !== 'object') fail("'reference' obrigatório e deve ser objeto.");
   const hasReference = Boolean(
-    body.reference.clientKey || body.reference.providerCustomerId || body.reference.providerSubscriptionId
+    body.reference.clientKey || body.reference.keyHash || body.reference.providerCustomerId || body.reference.providerSubscriptionId
   );
-  if (!hasReference) fail("'reference' deve conter ao menos clientKey, providerCustomerId ou providerSubscriptionId.");
+  if (!hasReference) fail("'reference' deve conter ao menos clientKey, keyHash, providerCustomerId ou providerSubscriptionId.");
 
   if (!body.billing || typeof body.billing !== 'object') fail("'billing' obrigatório e deve ser objeto.");
   if (typeof body.billing.status !== 'string' || !body.billing.status.trim()) fail("'billing.status' obrigatório.");

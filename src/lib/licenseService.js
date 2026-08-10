@@ -44,7 +44,7 @@ const ALLOWED_LICENSE_TRANSITIONS = {
   active: ['active', 'past_due', 'grace_period', 'canceled', 'revoked'],
   past_due: ['past_due', 'grace_period', 'active', 'canceled', 'revoked'],
   grace_period: ['grace_period', 'active', 'canceled', 'revoked'],
-  canceled: ['canceled', 'revoked'],
+  canceled: ['canceled', 'active', 'revoked'],
   expired: ['expired', 'active', 'revoked'],
   revoked: ['revoked'],
 };
@@ -98,13 +98,20 @@ export async function applyPaymentToLicense(env, { keyHash, paymentPayload }) {
   }
 
   const now = nowIso();
-  const periodStart = paymentPayload?.billing?.periodStart || null;
-  let periodEnd = paymentPayload?.billing?.periodEnd || null;
+  const explicitPeriodStart = paymentPayload?.billing?.periodStart || null;
+  const explicitPeriodEnd = paymentPayload?.billing?.periodEnd || null;
+  let periodStart = explicitPeriodStart;
+  let periodEnd = explicitPeriodEnd;
 
-  // Se o provedor não informou período, para pagamentos bem-sucedidos
-  // consideramos uma janela padrão de 30 dias a partir de agora.
+  // A successful provider event without an explicit service period may happen on
+  // checkout.session.completed. Never overwrite a precise period already received
+  // from an invoice/subscription event. Use the 30-day fallback only when there is
+  // no usable paid period yet.
   if (!periodEnd && targetStatus === 'active') {
-    periodEnd = addMsToIso(PAID_MS);
+    const currentEndMs = Date.parse(current?.currentPeriodEnd || current?.expiresAt || '');
+    if (!Number.isFinite(currentEndMs) || currentEndMs <= Date.now()) {
+      periodEnd = addMsToIso(PAID_MS);
+    }
   }
 
   if (!current) {
@@ -120,6 +127,12 @@ export async function applyPaymentToLicense(env, { keyHash, paymentPayload }) {
       provider: paymentPayload?.provider || null,
       providerCustomerId: paymentPayload?.reference?.providerCustomerId || null,
       providerSubscriptionId: paymentPayload?.reference?.providerSubscriptionId || null,
+      cancelAtPeriodEnd: Boolean(paymentPayload?.billing?.cancelAtPeriodEnd),
+      cancelAt: paymentPayload?.billing?.cancelAt || null,
+      lastBillingEventType: paymentPayload?.providerEventType || paymentPayload?.eventType || null,
+      lastBillingEventAt: paymentPayload?.occurredAt || now,
+      lastPaymentSucceededAt: targetStatus === 'active' ? (paymentPayload?.occurredAt || now) : null,
+      lastPaymentFailedAt: targetStatus === 'past_due' ? (paymentPayload?.occurredAt || now) : null,
       createdAt: now,
       updatedAt: now,
     };
@@ -127,21 +140,44 @@ export async function applyPaymentToLicense(env, { keyHash, paymentPayload }) {
     return { updated: true, blocked: false, reason: null, license: created };
   }
 
+  // Stripe explicitly does not guarantee webhook delivery order. Ignore an older
+  // billing event that arrives after a newer state was already applied.
+  const incomingEventMs = Date.parse(paymentPayload?.occurredAt || '');
+  const lastEventMs = Date.parse(current.lastBillingEventAt || '');
+  if (Number.isFinite(incomingEventMs) && Number.isFinite(lastEventMs) && incomingEventMs < lastEventMs) {
+    return { updated: false, blocked: false, reason: 'stale_event', license: current };
+  }
+
   const from = normalizeLicenseStatusLabel(current.status) || 'trial';
   if (!canTransitionLicense(from, targetStatus)) {
     return { updated: false, blocked: true, reason: `invalid_transition:${from}->${targetStatus}`, license: current };
   }
 
+  const isSuccessfulPaidState = targetStatus === 'active';
   const next = {
     ...current,
     status: targetStatus,
     plan: paymentPayload?.billing?.plan || current.plan,
-    currentPeriodStart: periodStart || current.currentPeriodStart || null,
-    currentPeriodEnd: periodEnd || current.currentPeriodEnd || null,
-    expiresAt: periodEnd || current.expiresAt || null,
+    // Only a successful paid/synchronized state advances the paid service period.
+    // payment_failed must not accidentally grant a new period from an unpaid invoice.
+    currentPeriodStart: isSuccessfulPaidState ? (periodStart || current.currentPeriodStart || null) : (current.currentPeriodStart || null),
+    currentPeriodEnd: isSuccessfulPaidState ? (periodEnd || current.currentPeriodEnd || null) : (current.currentPeriodEnd || null),
+    expiresAt: isSuccessfulPaidState ? (periodEnd || current.expiresAt || null) : (current.expiresAt || null),
     provider: paymentPayload?.provider || current.provider || null,
     providerCustomerId: paymentPayload?.reference?.providerCustomerId || current.providerCustomerId || null,
     providerSubscriptionId: paymentPayload?.reference?.providerSubscriptionId || current.providerSubscriptionId || null,
+    cancelAtPeriodEnd: paymentPayload?.billing?.cancelAtPeriodEnd != null
+      ? Boolean(paymentPayload.billing.cancelAtPeriodEnd)
+      : Boolean(current.cancelAtPeriodEnd),
+    cancelAt: paymentPayload?.billing?.cancelAt ?? current.cancelAt ?? null,
+    lastBillingEventType: paymentPayload?.providerEventType || paymentPayload?.eventType || current.lastBillingEventType || null,
+    lastBillingEventAt: paymentPayload?.occurredAt || now,
+    lastPaymentSucceededAt: targetStatus === 'active'
+      ? (paymentPayload?.occurredAt || now)
+      : (current.lastPaymentSucceededAt || null),
+    lastPaymentFailedAt: targetStatus === 'past_due'
+      ? (paymentPayload?.occurredAt || now)
+      : (current.lastPaymentFailedAt || null),
     updatedAt: now,
   };
 
