@@ -11,8 +11,9 @@ export function corsHeaders(req = null, env = {}, extra = {}) {
 
   return {
     "Access-Control-Allow-Origin": origin,
+    "Vary": "Origin",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-QAgent-Signature, X-QAgent-Tenant, X-QAgent-Cohort",
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     ...extra,
   };
 }

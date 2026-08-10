@@ -143,6 +143,10 @@ const fakeReq = { headers: { get: () => 'https://example.com' } };
 const env = { QAGENT_ALLOWED_ORIGINS: 'https://example.com' };
 const hdrs = corsHeaders(fakeReq, env);
 assert.strictEqual(hdrs['Access-Control-Allow-Origin'], 'https://example.com');
+assert.ok(hdrs['Access-Control-Allow-Methods'].includes('PUT'));
+assert.ok(hdrs['Access-Control-Allow-Methods'].includes('DELETE'));
+assert.ok(hdrs['Access-Control-Allow-Headers'].includes('Authorization'));
+assert.strictEqual(hdrs['Vary'], 'Origin');
 
 // client key utils
 const clientKeyLive = generateClientKey('live');
