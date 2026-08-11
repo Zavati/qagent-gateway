@@ -1,4 +1,11 @@
-import { fetchTextWithTimeout, extractJsonFromText } from './aiHttp.js';
+import {
+  fetchTextWithTimeout,
+  extractJsonFromText,
+  getAiRetryDecision,
+  waitForAiRetry,
+  createAiUpstreamError,
+  createAiResponseFormatError,
+} from './aiHttp.js';
 
 function extractGeminiInteractionText(bodyText) {
   if (!bodyText) return '';
@@ -24,6 +31,22 @@ function extractGeminiInteractionText(bodyText) {
   }
 }
 
+function parseGeminiError(bodyText) {
+  try {
+    const payload = JSON.parse(bodyText || '{}');
+    const error = payload?.error || {};
+    const rawCode = error?.code;
+    return {
+      code: typeof rawCode === 'string'
+        ? rawCode
+        : (typeof error?.status === 'string' ? error.status : (rawCode ? String(rawCode) : null)),
+      message: typeof error?.message === 'string' ? error.message : null,
+    };
+  } catch {
+    return { code: null, message: null };
+  }
+}
+
 function normalizeModel(model) {
   const normalized = String(model || '').trim().replace(/^models\//, '');
   if (!normalized) {
@@ -41,6 +64,9 @@ export const geminiClient = {
     const url = `https://generativelanguage.googleapis.com/${apiVersion}/interactions`;
     const timeoutMs = opts.timeoutMs || 90_000;
     const retries = Number.isInteger(opts.retries) ? opts.retries : 2;
+    const maxRetryWaitMs = Number.isFinite(opts.maxRetryWaitMs) ? opts.maxRetryWaitMs : 2_500;
+    const retryBaseDelayMs = Number.isFinite(opts.retryBaseDelayMs) ? opts.retryBaseDelayMs : 500;
+    const retryMaxDelayMs = Number.isFinite(opts.retryMaxDelayMs) ? opts.retryMaxDelayMs : 2_000;
     const headers = {
       'Content-Type': 'application/json',
       'x-goog-api-key': opts.apiKey || '',
@@ -65,10 +91,6 @@ export const geminiClient = {
 
     const body = JSON.stringify(requestBody);
 
-    let lastText = '';
-    let lastContentText = '';
-    let lastStatus = 0;
-
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       const response = await fetchTextWithTimeout(url, {
         method: 'POST',
@@ -76,29 +98,53 @@ export const geminiClient = {
         body,
       }, timeoutMs);
 
-      lastText = response.text || '';
-      lastStatus = response.status || 0;
+      if (response.ok) {
+        const contentText = extractGeminiInteractionText(response.text || '');
+        const json = extractJsonFromText(contentText);
+        if (json) {
+          return {
+            json,
+            rawText: response.text || '',
+            contentText,
+            status: response.status,
+            ok: true,
+          };
+        }
 
-      if (!response.ok) continue;
-
-      lastContentText = extractGeminiInteractionText(lastText);
-      const json = extractJsonFromText(lastContentText);
-      if (json) {
-        return {
-          json,
-          rawText: lastText,
-          contentText: lastContentText,
+        // HTTP 2xx com formato inválido é problema de saída, não de transporte.
+        // O chamador pode fazer um único repair sem repetir a geração completa.
+        throw createAiResponseFormatError('Gemini', {
+          rawText: response.text || '',
+          contentText,
           status: response.status,
-          ok: true,
-        };
+        });
       }
+
+      const upstream = parseGeminiError(response.text);
+      const decision = getAiRetryDecision({
+        status: response.status,
+        attempt,
+        retries,
+        retryAfterMs: response.retryAfterMs,
+        maxRetryWaitMs,
+        baseDelayMs: retryBaseDelayMs,
+        maxDelayMs: retryMaxDelayMs,
+      });
+
+      if (decision.retry) {
+        await waitForAiRetry(decision.delayMs);
+        continue;
+      }
+
+      throw createAiUpstreamError('gemini', response, {
+        upstreamCode: upstream.code,
+        upstreamMessage: upstream.message,
+        retryable: decision.delayMs > maxRetryWaitMs || Boolean(
+          response.status === 0 || response.status === 408 || response.status === 429 || response.status >= 500
+        ),
+      });
     }
 
-    const err = new Error('Failed to get valid JSON from Gemini');
-    err.rawText = lastText;
-    err.contentText = lastContentText;
-    err.upstreamStatus = lastStatus;
-    err.upstreamFailed = lastStatus === 0 || lastStatus < 200 || lastStatus >= 300;
-    throw err;
+    throw new Error('Gemini retry loop ended unexpectedly.');
   },
 };

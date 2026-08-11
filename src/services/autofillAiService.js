@@ -58,8 +58,14 @@ export async function generateAutofillActions(body, env, { aiEngine, log = defau
     rawText = e?.contentText || e?.rawText || '';
     log('autofill_ai_error', {
       provider: aiConfig.provider,
+      model,
       errorName: e?.name,
+      errorCode: e?.code || null,
       errorMessage: e?.message,
+      upstreamStatus: e?.upstreamStatus || null,
+      upstreamCode: e?.upstreamCode || null,
+      retryable: Boolean(e?.retryable),
+      retryAfterMs: e?.retryAfterMs || null,
       hasRawText: Boolean(rawText),
     });
 
@@ -68,8 +74,12 @@ export async function generateAutofillActions(body, env, { aiEngine, log = defau
       const upstreamStatus = e?.upstreamStatus || 0;
       const detail = upstreamStatus ? `HTTP ${upstreamStatus}` : (e?.message || 'unknown');
       const err = new Error(`Falha ao chamar LLM (${detail}).`);
-      err.status = 502;
-      err._detail = e?.message || null;
+      err.status = upstreamStatus === 429 ? 429 : 502;
+      err.code = 'AI_UPSTREAM_ERROR';
+      err.upstreamStatus = upstreamStatus;
+      err.upstreamCode = e?.upstreamCode || null;
+      err.retryable = Boolean(e?.retryable);
+      if (e?.retryAfterMs) err.retryAfterMs = e.retryAfterMs;
       throw err;
     }
   }

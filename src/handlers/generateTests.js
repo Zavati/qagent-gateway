@@ -107,6 +107,7 @@ ${expected}`;
   let repairAttempts = 0;
   let mode = 'ai';
   let rawText = '';
+  let aiFailure = null;
   const log = getLogger(env);
 
   async function callOnce(prompt, maxOutputTokens) {
@@ -204,26 +205,53 @@ ATENÇÃO (modo compacto):
       if (repaired) result = repaired;
     }
   } catch (e) {
-    repairAttempts++;
     rawText = e?.contentText || e?.rawText || '';
+    aiFailure = e;
 
     log('generateTests_ai_error', {
+      provider: aiConfig.provider,
+      model,
       errorName: e?.name,
+      errorCode: e?.code || null,
       errorMessage: e?.message,
       upstreamStatus: e?.upstreamStatus || null,
+      upstreamCode: e?.upstreamCode || null,
+      retryable: Boolean(e?.retryable),
+      retryAfterMs: e?.retryAfterMs || null,
+      upstreamFailed: Boolean(e?.upstreamFailed),
       rawTextLength: String(rawText || '').length,
     });
 
-    result = await aiEngine.repairJson({
-      capability: 'test-generation',
-      provider: aiConfig.provider,
-      credentials: aiConfig.credentials,
-      model,
-      originalPrompt: basePrompt,
-      rawText,
-      timeoutMs: 25_000,
-      maxOutputTokens: 2000,
-    }, env);
+    // Repair é exclusivo para uma resposta HTTP válida cuja saída não pôde ser
+    // interpretada/normalizada. Erros de rede, auth, quota e 5xx nunca entram aqui.
+    if (!e?.upstreamFailed && rawText) {
+      repairAttempts++;
+      try {
+        result = await aiEngine.repairJson({
+          capability: 'test-generation',
+          provider: aiConfig.provider,
+          credentials: aiConfig.credentials,
+          model,
+          originalPrompt: basePrompt,
+          rawText,
+          timeoutMs: 25_000,
+          maxOutputTokens: 2000,
+        }, env);
+      } catch (repairError) {
+        aiFailure = repairError;
+        log('generateTests_ai_repair_error', {
+          provider: aiConfig.provider,
+          model,
+          errorName: repairError?.name,
+          errorCode: repairError?.code || null,
+          upstreamStatus: repairError?.upstreamStatus || null,
+          upstreamCode: repairError?.upstreamCode || null,
+          retryable: Boolean(repairError?.retryable),
+          retryAfterMs: repairError?.retryAfterMs || null,
+        });
+        result = null;
+      }
+    }
 
     if (!result) {
       mode = 'stub';
@@ -272,6 +300,13 @@ ATENÇÃO (modo compacto):
     promptSize: basePrompt.length,
   };
   if (mode === 'stub' && rawText) meta.rawTextLength = String(rawText).length;
+  if (mode === 'stub' && aiFailure) {
+    meta.aiErrorCode = aiFailure?.code || null;
+    meta.upstreamStatus = aiFailure?.upstreamStatus || null;
+    meta.upstreamCode = aiFailure?.upstreamCode || null;
+    meta.retryable = Boolean(aiFailure?.retryable);
+    if (aiFailure?.retryAfterMs) meta.retryAfterMs = aiFailure.retryAfterMs;
+  }
 
   return {
     cases: normalizedCases,

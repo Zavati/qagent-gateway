@@ -87,6 +87,34 @@ async function testUpstreamFailureIsNotMaskedByHeuristics() {
 
 
 
+
+async function testRateLimitPreserves429AndRetryAfter() {
+  const engine = {
+    async generateJson() {
+      const err = new Error('rate limited');
+      err.upstreamFailed = true;
+      err.upstreamStatus = 429;
+      err.upstreamCode = 'too_many_requests';
+      err.retryable = true;
+      err.retryAfterMs = 55000;
+      err.rawText = '{"error":"rate"}';
+      throw err;
+    },
+    async repairJson() { throw new Error('repair must not be called'); },
+  };
+
+  await assert.rejects(
+    () => generateAutofillActions({
+      url: 'https://example.com/form',
+      elements: [{ selector: '#name', type: 'text', name: 'fullName', visible: true }],
+    }, {}, { aiEngine: engine }),
+    (err) => err?.status === 429
+      && err?.code === 'AI_UPSTREAM_ERROR'
+      && err?.upstreamCode === 'too_many_requests'
+      && err?.retryAfterMs === 55000
+  );
+}
+
 async function testAccountAiConfigControlsProviderCredentialsAndModel() {
   let received = null;
   const engine = {
@@ -122,5 +150,6 @@ await testHeuristicOnlySkipsAi();
 await testAiActionsAreMerged();
 await testRepairWhenFirstResponseHasInvalidShape();
 await testUpstreamFailureIsNotMaskedByHeuristics();
+await testRateLimitPreserves429AndRetryAfter();
 await testAccountAiConfigControlsProviderCredentialsAndModel();
 console.log('autofill AI service tests passed ✅');

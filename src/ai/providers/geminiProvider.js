@@ -24,6 +24,9 @@ export const geminiProvider = {
     maxOutputTokens = 1200,
     timeoutMs = 90_000,
     retries = 2,
+    maxRetryWaitMs,
+    retryBaseDelayMs,
+    retryMaxDelayMs,
   }) {
     const apiKey = assertApiKey(env, credentials);
     const out = await geminiClient.callJsonResponse(model, userPrompt, {
@@ -34,6 +37,9 @@ export const geminiProvider = {
       maxOutputTokens,
       timeoutMs,
       retries,
+      maxRetryWaitMs: Number.isFinite(maxRetryWaitMs) ? maxRetryWaitMs : Number(env?.AI_MAX_RETRY_WAIT_MS || 2500),
+      retryBaseDelayMs: Number.isFinite(retryBaseDelayMs) ? retryBaseDelayMs : Number(env?.AI_RETRY_BASE_DELAY_MS || 500),
+      retryMaxDelayMs: Number.isFinite(retryMaxDelayMs) ? retryMaxDelayMs : Number(env?.AI_RETRY_MAX_DELAY_MS || 2000),
     });
 
     return {
@@ -55,6 +61,9 @@ export const geminiProvider = {
     maxOutputTokens = 2000,
     timeoutMs = 25_000,
     retries = 0,
+    maxRetryWaitMs,
+    retryBaseDelayMs,
+    retryMaxDelayMs,
   }) {
     const apiKey = assertApiKey(env, credentials);
     const instruction = repairInstruction
@@ -70,9 +79,13 @@ export const geminiProvider = {
         maxOutputTokens,
         timeoutMs,
         retries,
+        maxRetryWaitMs: Number.isFinite(maxRetryWaitMs) ? maxRetryWaitMs : Number(env?.AI_MAX_RETRY_WAIT_MS || 2500),
+        retryBaseDelayMs: Number.isFinite(retryBaseDelayMs) ? retryBaseDelayMs : Number(env?.AI_RETRY_BASE_DELAY_MS || 500),
+        retryMaxDelayMs: Number.isFinite(retryMaxDelayMs) ? retryMaxDelayMs : Number(env?.AI_RETRY_MAX_DELAY_MS || 2000),
       });
       return out?.json || null;
-    } catch {
+    } catch (error) {
+      if (error?.upstreamFailed) throw error;
       return null;
     }
   },
