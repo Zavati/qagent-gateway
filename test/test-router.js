@@ -26,6 +26,21 @@ expectRoute('POST', '/v1/console/projects/prj_123/environments', 'consoleEnviron
 expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentGet', { projectId: 'prj_123', environmentId: 'env_456' });
 expectRoute('PATCH', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentPatch', { projectId: 'prj_123', environmentId: 'env_456' });
 expectRoute('DELETE', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentDelete', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('GET', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesList', { projectId: 'prj_123' });
+expectRoute('POST', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesCreate', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/api-services/svc_789', 'consoleApiServiceGet', { projectId: 'prj_123', apiServiceId: 'svc_789' });
+expectRoute('PATCH', '/v1/console/projects/prj_123/api-services/svc_789', 'consoleApiServicePatch', { projectId: 'prj_123', apiServiceId: 'svc_789' });
+expectRoute('DELETE', '/v1/console/projects/prj_123/api-services/svc_789', 'consoleApiServiceDelete', { projectId: 'prj_123', apiServiceId: 'svc_789' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456/api-services', 'consoleEnvironmentApiBindingsList', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456/api-services/svc_789', 'consoleEnvironmentApiBindingGet', { projectId: 'prj_123', environmentId: 'env_456', apiServiceId: 'svc_789' });
+expectRoute('PUT', '/v1/console/projects/prj_123/environments/env_456/api-services/svc_789', 'consoleEnvironmentApiBindingPut', { projectId: 'prj_123', environmentId: 'env_456', apiServiceId: 'svc_789' });
+expectRoute('DELETE', '/v1/console/projects/prj_123/environments/env_456/api-services/svc_789', 'consoleEnvironmentApiBindingDelete', { projectId: 'prj_123', environmentId: 'env_456', apiServiceId: 'svc_789' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456/variables', 'consoleEnvironmentVariablesList', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('POST', '/v1/console/projects/prj_123/environments/env_456/variables', 'consoleEnvironmentVariablesCreate', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456/variables/var_abc', 'consoleEnvironmentVariableGet', { projectId: 'prj_123', environmentId: 'env_456', variableId: 'var_abc' });
+expectRoute('PATCH', '/v1/console/projects/prj_123/environments/env_456/variables/var_abc', 'consoleEnvironmentVariablePatch', { projectId: 'prj_123', environmentId: 'env_456', variableId: 'var_abc' });
+expectRoute('DELETE', '/v1/console/projects/prj_123/environments/env_456/variables/var_abc', 'consoleEnvironmentVariableDelete', { projectId: 'prj_123', environmentId: 'env_456', variableId: 'var_abc' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456/runtime-config', 'consoleEnvironmentRuntimeConfigGet', { projectId: 'prj_123', environmentId: 'env_456' });
 expectRoute('GET', '/debug/payment-event/stripe/evt_123', 'debugPaymentEvent', {
   provider: 'stripe',
   eventId: 'evt_123',

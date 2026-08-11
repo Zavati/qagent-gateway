@@ -37,9 +37,11 @@ export function resolveGatewayRoute(method, pathname) {
 
   if (normalizedPath.startsWith('/v1/console/projects/')) {
     const segs = normalizedPath.split('/').filter(Boolean);
+    const isProjectBase = segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'projects';
+    if (!isProjectBase) return null;
 
     // /v1/console/projects/:projectId
-    if (segs.length === 4 && segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'projects') {
+    if (segs.length === 4) {
       const projectId = decodeURIComponent(segs[3]);
       const byMethod = {
         GET: 'consoleProjectGet',
@@ -48,6 +50,30 @@ export function resolveGatewayRoute(method, pathname) {
       };
       const name = byMethod[normalizedMethod];
       if (name) return { name, params: { projectId } };
+    }
+
+    // /v1/console/projects/:projectId/api-services
+    if (segs.length === 5 && segs[4] === 'api-services') {
+      const projectId = decodeURIComponent(segs[3]);
+      const byMethod = {
+        GET: 'consoleApiServicesList',
+        POST: 'consoleApiServicesCreate',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId } };
+    }
+
+    // /v1/console/projects/:projectId/api-services/:apiServiceId
+    if (segs.length === 6 && segs[4] === 'api-services') {
+      const projectId = decodeURIComponent(segs[3]);
+      const apiServiceId = decodeURIComponent(segs[5]);
+      const byMethod = {
+        GET: 'consoleApiServiceGet',
+        PATCH: 'consoleApiServicePatch',
+        DELETE: 'consoleApiServiceDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, apiServiceId } };
     }
 
     // /v1/console/projects/:projectId/environments
@@ -72,6 +98,64 @@ export function resolveGatewayRoute(method, pathname) {
       };
       const name = byMethod[normalizedMethod];
       if (name) return { name, params: { projectId, environmentId } };
+    }
+
+    // /v1/console/projects/:projectId/environments/:environmentId/api-services
+    if (segs.length === 7 && segs[4] === 'environments' && segs[6] === 'api-services') {
+      const projectId = decodeURIComponent(segs[3]);
+      const environmentId = decodeURIComponent(segs[5]);
+      if (normalizedMethod === 'GET') {
+        return { name: 'consoleEnvironmentApiBindingsList', params: { projectId, environmentId } };
+      }
+    }
+
+    // /v1/console/projects/:projectId/environments/:environmentId/api-services/:apiServiceId
+    if (segs.length === 8 && segs[4] === 'environments' && segs[6] === 'api-services') {
+      const projectId = decodeURIComponent(segs[3]);
+      const environmentId = decodeURIComponent(segs[5]);
+      const apiServiceId = decodeURIComponent(segs[7]);
+      const byMethod = {
+        GET: 'consoleEnvironmentApiBindingGet',
+        PUT: 'consoleEnvironmentApiBindingPut',
+        DELETE: 'consoleEnvironmentApiBindingDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, environmentId, apiServiceId } };
+    }
+
+    // /v1/console/projects/:projectId/environments/:environmentId/variables
+    if (segs.length === 7 && segs[4] === 'environments' && segs[6] === 'variables') {
+      const projectId = decodeURIComponent(segs[3]);
+      const environmentId = decodeURIComponent(segs[5]);
+      const byMethod = {
+        GET: 'consoleEnvironmentVariablesList',
+        POST: 'consoleEnvironmentVariablesCreate',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, environmentId } };
+    }
+
+    // /v1/console/projects/:projectId/environments/:environmentId/variables/:variableId
+    if (segs.length === 8 && segs[4] === 'environments' && segs[6] === 'variables') {
+      const projectId = decodeURIComponent(segs[3]);
+      const environmentId = decodeURIComponent(segs[5]);
+      const variableId = decodeURIComponent(segs[7]);
+      const byMethod = {
+        GET: 'consoleEnvironmentVariableGet',
+        PATCH: 'consoleEnvironmentVariablePatch',
+        DELETE: 'consoleEnvironmentVariableDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, environmentId, variableId } };
+    }
+
+    // /v1/console/projects/:projectId/environments/:environmentId/runtime-config
+    if (segs.length === 7 && segs[4] === 'environments' && segs[6] === 'runtime-config') {
+      const projectId = decodeURIComponent(segs[3]);
+      const environmentId = decodeURIComponent(segs[5]);
+      if (normalizedMethod === 'GET') {
+        return { name: 'consoleEnvironmentRuntimeConfigGet', params: { projectId, environmentId } };
+      }
     }
   }
 

@@ -271,6 +271,12 @@ import {
   listConsoleProjects, createConsoleProject, getConsoleProject, patchConsoleProject, deleteConsoleProject,
   listConsoleEnvironments, createConsoleEnvironment, getConsoleEnvironment, patchConsoleEnvironment, deleteConsoleEnvironment,
 } from './handlers/consoleDataArchitecture.js';
+import {
+  listConsoleApiServices, createConsoleApiService, getConsoleApiService, patchConsoleApiService, deleteConsoleApiService,
+  listConsoleEnvironmentApiBindings, getConsoleEnvironmentApiBinding, putConsoleEnvironmentApiBinding, deleteConsoleEnvironmentApiBinding,
+  listConsoleEnvironmentVariables, createConsoleEnvironmentVariable, getConsoleEnvironmentVariable, patchConsoleEnvironmentVariable, deleteConsoleEnvironmentVariable,
+  getConsoleEnvironmentRuntimeConfig,
+} from './handlers/consoleEnvironmentConfig.js';
 
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
@@ -1966,6 +1972,21 @@ const gatewayRouteHandlers = {
   consoleEnvironmentGet: async (req, env, _ctx, params) => json(await getConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEnvironmentPatch: async (req, env, _ctx, params) => json(await patchConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEnvironmentDelete: async (req, env, _ctx, params) => json(await deleteConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleApiServicesList: async (req, env, _ctx, params) => json(await listConsoleApiServices(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleApiServicesCreate: async (req, env, _ctx, params) => json(await createConsoleApiService(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleApiServiceGet: async (req, env, _ctx, params) => json(await getConsoleApiService(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleApiServicePatch: async (req, env, _ctx, params) => json(await patchConsoleApiService(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleApiServiceDelete: async (req, env, _ctx, params) => json(await deleteConsoleApiService(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentApiBindingsList: async (req, env, _ctx, params) => json(await listConsoleEnvironmentApiBindings(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentApiBindingGet: async (req, env, _ctx, params) => json(await getConsoleEnvironmentApiBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentApiBindingPut: async (req, env, _ctx, params) => json(await putConsoleEnvironmentApiBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentApiBindingDelete: async (req, env, _ctx, params) => json(await deleteConsoleEnvironmentApiBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentVariablesList: async (req, env, _ctx, params) => json(await listConsoleEnvironmentVariables(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentVariablesCreate: async (req, env, _ctx, params) => json(await createConsoleEnvironmentVariable(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleEnvironmentVariableGet: async (req, env, _ctx, params) => json(await getConsoleEnvironmentVariable(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentVariablePatch: async (req, env, _ctx, params) => json(await patchConsoleEnvironmentVariable(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentVariableDelete: async (req, env, _ctx, params) => json(await deleteConsoleEnvironmentVariable(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentRuntimeConfigGet: async (req, env, _ctx, params) => json(await getConsoleEnvironmentRuntimeConfig(req, env, params), { headers: corsHeaders(req, env) }),
   rotateClientKey: (req, env) => handleRotateClientKey(req, env),
   debugPaymentEvent: (req, env, _ctx, params) => handleDebugPaymentEvent(req, env, params.provider, params.eventId),
   invalidDebugPaymentEvent: (req, env) => json({ ok: false, message: 'invalid debug path' }, { status: 400, headers: corsHeaders(req, env) }),
