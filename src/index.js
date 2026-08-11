@@ -266,6 +266,11 @@ import { handleGenerateTests as generateTestsHandler } from './handlers/generate
 import { aiEngine } from './ai/aiEngine.js';
 import { generateAutofillActions } from './services/autofillAiService.js';
 import { getConsoleAiProviders, getConsoleAiConfig, putConsoleAiConfig, deleteConsoleAiConfig } from './handlers/consoleAiConfig.js';
+import {
+  getConsoleOrganization, patchConsoleOrganization,
+  listConsoleProjects, createConsoleProject, getConsoleProject, patchConsoleProject, deleteConsoleProject,
+  listConsoleEnvironments, createConsoleEnvironment, getConsoleEnvironment, patchConsoleEnvironment, deleteConsoleEnvironment,
+} from './handlers/consoleDataArchitecture.js';
 
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
@@ -1949,6 +1954,18 @@ const gatewayRouteHandlers = {
   consoleAiConfigGet: async (req, env) => json(await getConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
   consoleAiConfigPut: async (req, env) => json(await putConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
   consoleAiConfigDelete: async (req, env) => json(await deleteConsoleAiConfig(req, env), { headers: corsHeaders(req, env) }),
+  consoleOrganizationGet: async (req, env) => json(await getConsoleOrganization(req, env), { headers: corsHeaders(req, env) }),
+  consoleOrganizationPatch: async (req, env) => json(await patchConsoleOrganization(req, env), { headers: corsHeaders(req, env) }),
+  consoleProjectsList: async (req, env) => json(await listConsoleProjects(req, env), { headers: corsHeaders(req, env) }),
+  consoleProjectsCreate: async (req, env) => json(await createConsoleProject(req, env), { status: 201, headers: corsHeaders(req, env) }),
+  consoleProjectGet: async (req, env, _ctx, params) => json(await getConsoleProject(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleProjectPatch: async (req, env, _ctx, params) => json(await patchConsoleProject(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleProjectDelete: async (req, env, _ctx, params) => json(await deleteConsoleProject(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentsList: async (req, env, _ctx, params) => json(await listConsoleEnvironments(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentsCreate: async (req, env, _ctx, params) => json(await createConsoleEnvironment(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleEnvironmentGet: async (req, env, _ctx, params) => json(await getConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentPatch: async (req, env, _ctx, params) => json(await patchConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEnvironmentDelete: async (req, env, _ctx, params) => json(await deleteConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
   rotateClientKey: (req, env) => handleRotateClientKey(req, env),
   debugPaymentEvent: (req, env, _ctx, params) => handleDebugPaymentEvent(req, env, params.provider, params.eventId),
   invalidDebugPaymentEvent: (req, env) => json({ ok: false, message: 'invalid debug path' }, { status: 400, headers: corsHeaders(req, env) }),

@@ -14,6 +14,18 @@ expectRoute('GET', '/v1/console/ai-providers', 'consoleAiProvidersGet');
 expectRoute('GET', '/v1/console/ai-config', 'consoleAiConfigGet');
 expectRoute('PUT', '/v1/console/ai-config', 'consoleAiConfigPut');
 expectRoute('DELETE', '/v1/console/ai-config', 'consoleAiConfigDelete');
+expectRoute('GET', '/v1/console/organization', 'consoleOrganizationGet');
+expectRoute('PATCH', '/v1/console/organization', 'consoleOrganizationPatch');
+expectRoute('GET', '/v1/console/projects', 'consoleProjectsList');
+expectRoute('POST', '/v1/console/projects', 'consoleProjectsCreate');
+expectRoute('GET', '/v1/console/projects/prj_123', 'consoleProjectGet', { projectId: 'prj_123' });
+expectRoute('PATCH', '/v1/console/projects/prj_123', 'consoleProjectPatch', { projectId: 'prj_123' });
+expectRoute('DELETE', '/v1/console/projects/prj_123', 'consoleProjectDelete', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments', 'consoleEnvironmentsList', { projectId: 'prj_123' });
+expectRoute('POST', '/v1/console/projects/prj_123/environments', 'consoleEnvironmentsCreate', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentGet', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('PATCH', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentPatch', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('DELETE', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentDelete', { projectId: 'prj_123', environmentId: 'env_456' });
 expectRoute('GET', '/debug/payment-event/stripe/evt_123', 'debugPaymentEvent', {
   provider: 'stripe',
   eventId: 'evt_123',

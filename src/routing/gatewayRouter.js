@@ -12,6 +12,10 @@ const EXACT_ROUTES = new Map([
   ['GET /v1/console/ai-config', 'consoleAiConfigGet'],
   ['PUT /v1/console/ai-config', 'consoleAiConfigPut'],
   ['DELETE /v1/console/ai-config', 'consoleAiConfigDelete'],
+  ['GET /v1/console/organization', 'consoleOrganizationGet'],
+  ['PATCH /v1/console/organization', 'consoleOrganizationPatch'],
+  ['GET /v1/console/projects', 'consoleProjectsList'],
+  ['POST /v1/console/projects', 'consoleProjectsCreate'],
   ['POST /v1/console/rotate-clientkey', 'rotateClientKey'],
   ['GET /v1/license', 'getLicense'],
   ['POST /v1/signup-trial', 'signupTrial'],
@@ -29,6 +33,46 @@ export function resolveGatewayRoute(method, pathname) {
   const exact = EXACT_ROUTES.get(`${normalizedMethod} ${normalizedPath}`);
   if (exact) {
     return { name: exact, params: {} };
+  }
+
+  if (normalizedPath.startsWith('/v1/console/projects/')) {
+    const segs = normalizedPath.split('/').filter(Boolean);
+
+    // /v1/console/projects/:projectId
+    if (segs.length === 4 && segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'projects') {
+      const projectId = decodeURIComponent(segs[3]);
+      const byMethod = {
+        GET: 'consoleProjectGet',
+        PATCH: 'consoleProjectPatch',
+        DELETE: 'consoleProjectDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId } };
+    }
+
+    // /v1/console/projects/:projectId/environments
+    if (segs.length === 5 && segs[4] === 'environments') {
+      const projectId = decodeURIComponent(segs[3]);
+      const byMethod = {
+        GET: 'consoleEnvironmentsList',
+        POST: 'consoleEnvironmentsCreate',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId } };
+    }
+
+    // /v1/console/projects/:projectId/environments/:environmentId
+    if (segs.length === 6 && segs[4] === 'environments') {
+      const projectId = decodeURIComponent(segs[3]);
+      const environmentId = decodeURIComponent(segs[5]);
+      const byMethod = {
+        GET: 'consoleEnvironmentGet',
+        PATCH: 'consoleEnvironmentPatch',
+        DELETE: 'consoleEnvironmentDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, environmentId } };
+    }
   }
 
   if (normalizedMethod === 'GET' && normalizedPath.startsWith('/debug/payment-event/')) {
