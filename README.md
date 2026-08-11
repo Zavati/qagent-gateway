@@ -369,3 +369,5 @@ npx wrangler dev --port 8787
 ```
 
 A chave `AI_CREDENTIALS_KEY_V1` deve existir somente em `.dev.vars` local ou como secret no ambiente implantado.
+
+Alterado backup faze 2 
