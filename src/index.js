@@ -277,6 +277,11 @@ import {
   listConsoleEnvironmentVariables, createConsoleEnvironmentVariable, getConsoleEnvironmentVariable, patchConsoleEnvironmentVariable, deleteConsoleEnvironmentVariable,
   getConsoleEnvironmentRuntimeConfig,
 } from './handlers/consoleEnvironmentConfig.js';
+import {
+  listConsoleSecrets, createConsoleSecret, getConsoleSecret, patchConsoleSecret, putConsoleSecretValue, deleteConsoleSecret,
+  listConsoleAuthProfiles, createConsoleAuthProfile, getConsoleAuthProfile, patchConsoleAuthProfile, deleteConsoleAuthProfile,
+  listConsoleAuthProfileEnvironmentBindings, getConsoleAuthProfileEnvironmentBinding, putConsoleAuthProfileEnvironmentBinding, deleteConsoleAuthProfileEnvironmentBinding,
+} from './handlers/consoleAuthProfiles.js';
 
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
@@ -1987,6 +1992,21 @@ const gatewayRouteHandlers = {
   consoleEnvironmentVariablePatch: async (req, env, _ctx, params) => json(await patchConsoleEnvironmentVariable(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEnvironmentVariableDelete: async (req, env, _ctx, params) => json(await deleteConsoleEnvironmentVariable(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEnvironmentRuntimeConfigGet: async (req, env, _ctx, params) => json(await getConsoleEnvironmentRuntimeConfig(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleSecretsList: async (req, env, _ctx, params) => json(await listConsoleSecrets(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleSecretsCreate: async (req, env, _ctx, params) => json(await createConsoleSecret(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleSecretGet: async (req, env, _ctx, params) => json(await getConsoleSecret(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleSecretPatch: async (req, env, _ctx, params) => json(await patchConsoleSecret(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleSecretValuePut: async (req, env, _ctx, params) => json(await putConsoleSecretValue(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleSecretDelete: async (req, env, _ctx, params) => json(await deleteConsoleSecret(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfilesList: async (req, env, _ctx, params) => json(await listConsoleAuthProfiles(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfilesCreate: async (req, env, _ctx, params) => json(await createConsoleAuthProfile(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleAuthProfileGet: async (req, env, _ctx, params) => json(await getConsoleAuthProfile(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfilePatch: async (req, env, _ctx, params) => json(await patchConsoleAuthProfile(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfileDelete: async (req, env, _ctx, params) => json(await deleteConsoleAuthProfile(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfileEnvironmentBindingsList: async (req, env, _ctx, params) => json(await listConsoleAuthProfileEnvironmentBindings(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfileEnvironmentBindingGet: async (req, env, _ctx, params) => json(await getConsoleAuthProfileEnvironmentBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfileEnvironmentBindingPut: async (req, env, _ctx, params) => json(await putConsoleAuthProfileEnvironmentBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAuthProfileEnvironmentBindingDelete: async (req, env, _ctx, params) => json(await deleteConsoleAuthProfileEnvironmentBinding(req, env, params), { headers: corsHeaders(req, env) }),
   rotateClientKey: (req, env) => handleRotateClientKey(req, env),
   debugPaymentEvent: (req, env, _ctx, params) => handleDebugPaymentEvent(req, env, params.provider, params.eventId),
   invalidDebugPaymentEvent: (req, env) => json({ ok: false, message: 'invalid debug path' }, { status: 400, headers: corsHeaders(req, env) }),

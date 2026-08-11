@@ -76,6 +76,86 @@ export function resolveGatewayRoute(method, pathname) {
       if (name) return { name, params: { projectId, apiServiceId } };
     }
 
+    // /v1/console/projects/:projectId/secrets
+    if (segs.length === 5 && segs[4] === 'secrets') {
+      const projectId = decodeURIComponent(segs[3]);
+      const byMethod = {
+        GET: 'consoleSecretsList',
+        POST: 'consoleSecretsCreate',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId } };
+    }
+
+    // /v1/console/projects/:projectId/secrets/:secretId
+    if (segs.length === 6 && segs[4] === 'secrets') {
+      const projectId = decodeURIComponent(segs[3]);
+      const secretId = decodeURIComponent(segs[5]);
+      const byMethod = {
+        GET: 'consoleSecretGet',
+        PATCH: 'consoleSecretPatch',
+        DELETE: 'consoleSecretDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, secretId } };
+    }
+
+    // /v1/console/projects/:projectId/secrets/:secretId/value
+    if (segs.length === 7 && segs[4] === 'secrets' && segs[6] === 'value') {
+      const projectId = decodeURIComponent(segs[3]);
+      const secretId = decodeURIComponent(segs[5]);
+      if (normalizedMethod === 'PUT') {
+        return { name: 'consoleSecretValuePut', params: { projectId, secretId } };
+      }
+    }
+
+    // /v1/console/projects/:projectId/auth-profiles
+    if (segs.length === 5 && segs[4] === 'auth-profiles') {
+      const projectId = decodeURIComponent(segs[3]);
+      const byMethod = {
+        GET: 'consoleAuthProfilesList',
+        POST: 'consoleAuthProfilesCreate',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId } };
+    }
+
+    // /v1/console/projects/:projectId/auth-profiles/:authProfileId
+    if (segs.length === 6 && segs[4] === 'auth-profiles') {
+      const projectId = decodeURIComponent(segs[3]);
+      const authProfileId = decodeURIComponent(segs[5]);
+      const byMethod = {
+        GET: 'consoleAuthProfileGet',
+        PATCH: 'consoleAuthProfilePatch',
+        DELETE: 'consoleAuthProfileDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, authProfileId } };
+    }
+
+    // /v1/console/projects/:projectId/auth-profiles/:authProfileId/environments
+    if (segs.length === 7 && segs[4] === 'auth-profiles' && segs[6] === 'environments') {
+      const projectId = decodeURIComponent(segs[3]);
+      const authProfileId = decodeURIComponent(segs[5]);
+      if (normalizedMethod === 'GET') {
+        return { name: 'consoleAuthProfileEnvironmentBindingsList', params: { projectId, authProfileId } };
+      }
+    }
+
+    // /v1/console/projects/:projectId/auth-profiles/:authProfileId/environments/:environmentId
+    if (segs.length === 8 && segs[4] === 'auth-profiles' && segs[6] === 'environments') {
+      const projectId = decodeURIComponent(segs[3]);
+      const authProfileId = decodeURIComponent(segs[5]);
+      const environmentId = decodeURIComponent(segs[7]);
+      const byMethod = {
+        GET: 'consoleAuthProfileEnvironmentBindingGet',
+        PUT: 'consoleAuthProfileEnvironmentBindingPut',
+        DELETE: 'consoleAuthProfileEnvironmentBindingDelete',
+      };
+      const name = byMethod[normalizedMethod];
+      if (name) return { name, params: { projectId, authProfileId, environmentId } };
+    }
+
     // /v1/console/projects/:projectId/environments
     if (segs.length === 5 && segs[4] === 'environments') {
       const projectId = decodeURIComponent(segs[3]);

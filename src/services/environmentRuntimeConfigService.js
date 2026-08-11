@@ -2,12 +2,14 @@ import { deserializeVariableValue } from '../lib/environmentConfig.js';
 import { getProjectEnvironment } from './environmentService.js';
 import { listProjectEnvironmentApiBindings } from './environmentApiBindingService.js';
 import { listProjectEnvironmentVariables } from './environmentVariableService.js';
+import { listEnvironmentAuthProfilesPublic } from './authProfileRuntimeService.js';
 
 export async function resolveEnvironmentRuntimeConfig(env, organizationId, projectId, environmentId) {
   const environment = await getProjectEnvironment(env, organizationId, projectId, environmentId);
-  const [bindings, variables] = await Promise.all([
+  const [bindings, variables, authProfiles] = await Promise.all([
     listProjectEnvironmentApiBindings(env, organizationId, projectId, environmentId),
     listProjectEnvironmentVariables(env, organizationId, projectId, environmentId),
+    listEnvironmentAuthProfilesPublic(env, organizationId, projectId, environmentId),
   ]);
 
   const apiServices = {};
@@ -37,5 +39,6 @@ export async function resolveEnvironmentRuntimeConfig(env, organizationId, proje
     },
     apiServices,
     variables: resolvedVariables,
+    authProfiles,
   };
 }
