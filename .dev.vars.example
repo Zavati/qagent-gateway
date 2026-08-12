@@ -26,3 +26,6 @@ STRIPE_PRICE_ID=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_WEBHOOK_MAX_SKEW_SEC=300
 SESSION_SECRET=
+
+# Shared only between Gateway signer and Observation verifier. Minimum 32 chars.
+OBSERVATION_GRANT_SECRET=

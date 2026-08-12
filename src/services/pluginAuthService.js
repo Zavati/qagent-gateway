@@ -4,6 +4,7 @@ import { assertPremiumAllowed, getOrCreateLicense } from '../lib/licenseService.
 import { generateAccessToken, hashAccessToken, hashClientKey, validateClientKeyFormat } from '../lib/keyService.js';
 import {
   createOrganization,
+  getOrganizationById,
   getOrganizationByLegacyCustomerId,
 } from '../repositories/organizationRepository.js';
 import { listOrganizationProjects } from './projectService.js';
@@ -154,6 +155,7 @@ async function loadPluginProjects(env, organizationId) {
 
 async function savePluginSession(env, context) {
   const accessToken = generateAccessToken('qps', 48);
+  const pluginSessionId = `psn_${crypto.randomUUID()}`;
   const tokenHash = await hashAccessToken(accessToken);
   const ttlSeconds = pluginSessionTtlSeconds(env);
   const issuedAt = new Date();
@@ -163,6 +165,7 @@ async function savePluginSession(env, context) {
     `plugin_session:${tokenHash}`,
     JSON.stringify({
       tokenHash,
+      pluginSessionId,
       keyHash: context.keyHash,
       customerId: context.customerId,
       organizationId: context.organization.organizationId,
@@ -175,6 +178,7 @@ async function savePluginSession(env, context) {
   );
 
   return {
+    sessionId: pluginSessionId,
     accessToken,
     expiresAt: expiresAt.toISOString(),
     expiresInSeconds: ttlSeconds,
@@ -227,5 +231,67 @@ export async function createPluginSession(req, env) {
       name: organization.name,
     },
     projects,
+  };
+}
+
+
+export async function requirePluginSession(req, env) {
+  if (!env?.QAGENT_KV) {
+    const err = new Error('KV não configurado (env.QAGENT_KV ausente).');
+    err.status = 500;
+    err.code = 'PLUGIN_SESSION_STORE_UNAVAILABLE';
+    throw err;
+  }
+
+  const accessToken = getBearerToken(req);
+  if (!/^qps_[A-Za-z0-9]{24,}$/.test(accessToken)) {
+    const err = new Error('Plugin Session inválida ou ausente. Conecte o Plugin novamente.');
+    err.status = 401;
+    err.code = 'PLUGIN_SESSION_REQUIRED';
+    throw err;
+  }
+
+  const tokenHash = await hashAccessToken(accessToken);
+  const raw = await env.QAGENT_KV.get(`plugin_session:${tokenHash}`);
+  let record = null;
+  try {
+    record = raw ? JSON.parse(raw) : null;
+  } catch {
+    record = null;
+  }
+
+  if (!record?.organizationId || !record?.keyHash) {
+    const err = new Error('Plugin Session inválida ou expirada. Conecte o Plugin novamente.');
+    err.status = 401;
+    err.code = 'PLUGIN_SESSION_INVALID';
+    throw err;
+  }
+
+  const expiresAtMs = Date.parse(record.expiresAt || '');
+  if (!Number.isFinite(expiresAtMs) || Date.now() >= expiresAtMs) {
+    const err = new Error('Plugin Session expirada. Conecte o Plugin novamente.');
+    err.status = 401;
+    err.code = 'PLUGIN_SESSION_EXPIRED';
+    throw err;
+  }
+
+  const organization = await getOrganizationById(env, record.organizationId);
+  if (!organization || organization.status !== 'active') {
+    const err = new Error('Organização da Plugin Session não está disponível.');
+    err.status = 403;
+    err.code = 'PLUGIN_ORGANIZATION_UNAVAILABLE';
+    throw err;
+  }
+
+  return {
+    accessToken,
+    tokenHash,
+    pluginSessionId: String(record.pluginSessionId || `psn_${tokenHash.replace(/^sha256:/, '').slice(0, 32)}`),
+    organizationId: organization.organizationId,
+    customerId: record.customerId || null,
+    keyHash: record.keyHash,
+    pluginVersion: record.pluginVersion || null,
+    issuedAt: record.issuedAt || null,
+    expiresAt: record.expiresAt,
   };
 }

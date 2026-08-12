@@ -26,6 +26,7 @@
 		"MIGRATION_METRICS_ENABLED": "true",
 		// Webhooks (BE-2001, BE-2002)
 		"CLIENT_KEY_MODE": "test",
+		"OBSERVATION_GRANT_TTL_SECONDS": "120",
 		"EMAIL_DISPATCH_WEBHOOK_URL": ""
 	},
 	"d1_databases": [

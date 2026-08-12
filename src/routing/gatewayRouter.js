@@ -7,6 +7,7 @@ const EXACT_ROUTES = new Map([
   ['POST /v1/auth/reset-password', 'resetPassword'],
   ['GET /v1/auth/me', 'authMe'],
   ['POST /v1/plugin/session', 'pluginSessionCreate'],
+  ['POST /v1/plugin/observation-grants', 'pluginObservationGrantCreate'],
   ['GET /v1/console/license', 'consoleLicense'],
   ['GET /v1/console/payments', 'consolePayments'],
   ['GET /v1/console/ai-providers', 'consoleAiProvidersGet'],
