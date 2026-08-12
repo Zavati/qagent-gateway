@@ -2136,7 +2136,7 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       });
       const status = e?.status || 500;
       const headers = corsHeaders(req, env, status === 429 && e.retryAfterMs ? { "Retry-After": String(Math.ceil(e.retryAfterMs / 1000)) } : {});
-      return json({ status: "error", message: e?.message || String(e), stack: e?.stack || null, detail: e?._detail || null }, { status, headers });
+      return json({ status: "error", code: e?.code || null, message: e?.message || String(e), stack: e?.stack || null, detail: e?._detail || null }, { status, headers });
     }
   },
 };

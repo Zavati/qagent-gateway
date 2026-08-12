@@ -1,4 +1,5 @@
 import { getCustomerById } from '../lib/customerService.js';
+import { getUserByEmail } from '../lib/userService.js';
 import { assertPremiumAllowed, getOrCreateLicense } from '../lib/licenseService.js';
 import { generateAccessToken, hashAccessToken, hashClientKey, validateClientKeyFormat } from '../lib/keyService.js';
 import {
@@ -57,14 +58,66 @@ async function loadClientKeyRecord(env, keyHash) {
   return record;
 }
 
-async function resolveOrganization(env, customerId) {
+async function resolvePluginAccountBinding(env, clientKeyRecord, license) {
+  const clientKeyCustomerId = String(clientKeyRecord?.customerId || '').trim();
+  const licenseCustomerId = String(license?.customerId || '').trim();
+
+  if (!clientKeyCustomerId) {
+    const err = new Error('ClientKey sem vínculo de conta. Gere uma nova chave no Console.');
+    err.status = 409;
+    err.code = 'PLUGIN_CLIENT_KEY_ACCOUNT_MISSING';
+    throw err;
+  }
+
+  // ClientKey e licença são duas representações da mesma credencial comercial.
+  // Divergência entre elas indica dado legado/corrompido e nunca deve ser
+  // resolvida silenciosamente para outro tenant.
+  if (licenseCustomerId && licenseCustomerId !== clientKeyCustomerId) {
+    const err = new Error('ClientKey possui vínculo de conta inconsistente. Gere uma nova chave no Console.');
+    err.status = 409;
+    err.code = 'PLUGIN_CLIENT_KEY_ACCOUNT_MISMATCH';
+    throw err;
+  }
+
+  const customer = await getCustomerById(env, clientKeyCustomerId);
+  if (!customer) {
+    const err = new Error('Conta vinculada à ClientKey não foi encontrada. Gere uma nova chave no Console.');
+    err.status = 409;
+    err.code = 'PLUGIN_CLIENT_KEY_ACCOUNT_NOT_FOUND';
+    throw err;
+  }
+
+  // O Console resolve o tenant a partir de user.customerId. Em instalações
+  // antigas pode existir uma ClientKey ainda válida apontando para um customer
+  // anterior do mesmo login. Não promovemos essa chave automaticamente para o
+  // tenant atual: isso atravessaria um boundary de segurança. Em vez disso,
+  // falhamos explicitamente e exigimos rotação da chave pelo Console atual.
+  const email = String(customer.email || '').trim().toLowerCase();
+  if (email) {
+    const user = await getUserByEmail(env, email);
+    const consoleCustomerId = String(user?.customerId || '').trim();
+    if (consoleCustomerId && consoleCustomerId !== clientKeyCustomerId) {
+      const err = new Error('ClientKey vinculada a uma conta legada. Gere uma nova ClientKey no Console e conecte novamente.');
+      err.status = 409;
+      err.code = 'PLUGIN_CLIENT_KEY_STALE_ACCOUNT_BINDING';
+      throw err;
+    }
+  }
+
+  return {
+    customerId: clientKeyCustomerId,
+    customer,
+  };
+}
+
+async function resolveOrganization(env, customerId, customer = null) {
   let organization = await getOrganizationByLegacyCustomerId(env, customerId);
   if (organization) return organization;
 
-  const customer = await getCustomerById(env, customerId);
+  const resolvedCustomer = customer || await getCustomerById(env, customerId);
   organization = await createOrganization(env, {
     legacyCustomerId: customerId,
-    name: organizationDisplayName(customer),
+    name: organizationDisplayName(resolvedCustomer),
   });
 
   if (!organization) {
@@ -140,7 +193,8 @@ export async function createPluginSession(req, env) {
   const license = await getOrCreateLicense(env, clientKey);
   assertPremiumAllowed(license);
 
-  const organization = await resolveOrganization(env, clientKeyRecord.customerId);
+  const account = await resolvePluginAccountBinding(env, clientKeyRecord, license);
+  const organization = await resolveOrganization(env, account.customerId, account.customer);
   if (organization.status !== 'active') {
     const err = new Error('Organização indisponível para o Plugin.');
     err.status = 403;
@@ -152,7 +206,7 @@ export async function createPluginSession(req, env) {
   const projects = await loadPluginProjects(env, organization.organizationId);
   const session = await savePluginSession(env, {
     keyHash,
-    customerId: clientKeyRecord.customerId,
+    customerId: account.customerId,
     clientKeyRecord,
     organization,
     pluginVersion,
