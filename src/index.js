@@ -44,6 +44,7 @@ import { createCheckoutSession, verifyStripeWebhook, normalizeStripeEvent } from
 import { hashPassword, verifyPassword } from './lib/passwords.js';
 import { createUser, getUserByEmail, getUserById, updateUserLoginStats, updateUserPassword } from './lib/userService.js';
 import { createSessionToken, verifySessionToken } from './lib/sessionTokens.js';
+import { provisionSignupTenant } from './services/accountTenantProvisioningService.js';
 
 function getBearerToken(req) {
   const h = req.headers.get("Authorization") || "";
@@ -1452,8 +1453,11 @@ async function handleSignupTrial(req, env) {
     plan: 'pro',
   });
 
-   // Se senha foi enviada, cria conta de usuário vinculada ao customerId
+   // Se senha foi enviada, cria a conta de usuário vinculada ao customerId.
+  // O fluxo legado sem senha continua suportado, mas uma conta real do Console
+  // só é considerada provisionada quando também existir Organization + owner.
   let user = null;
+  let tenant = null;
   if (body.password && body.passwordConfirmation) {
     const passwordBundle = await hashPassword(body.password);
     try {
@@ -1463,9 +1467,26 @@ async function handleSignupTrial(req, env) {
         customerId: customer.customerId,
       });
     } catch (e) {
-      // Se falhar na criação do usuário (por exemplo, corrida de email duplicado),
-      // loga e segue apenas com trial, sem bloquear signup.
+      // Mantém compatibilidade com o comportamento anterior do trial, porém
+      // sem tentar provisionar tenant quando o usuário não foi criado.
       log('signup_user_create_error', { message: e?.message || String(e), email });
+    }
+
+    if (user) {
+      try {
+        tenant = await provisionSignupTenant(env, { customer, user });
+      } catch (e) {
+        log('signup_tenant_provision_error', {
+          message: e?.message || String(e),
+          code: e?.code || null,
+          customerId: customer.customerId,
+          userId: user.userId,
+        });
+        const err = new Error('Conta criada, mas não foi possível provisionar a organização. Tente novamente após validar o Data DB.');
+        err.status = e?.status || 500;
+        err.code = e?.code || 'SIGNUP_TENANT_PROVISION_FAILED';
+        throw err;
+      }
     }
   }
 
@@ -1502,6 +1523,13 @@ async function handleSignupTrial(req, env) {
           ? {
               userId: user.userId,
               email: user.email,
+            }
+          : null,
+        organization: tenant
+          ? {
+              organizationId: tenant.organization.organizationId,
+              name: tenant.organization.name,
+              role: tenant.membership.role,
             }
           : null,
       },

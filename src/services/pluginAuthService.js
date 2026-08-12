@@ -111,6 +111,8 @@ async function resolvePluginAccountBinding(env, clientKeyRecord, license) {
 }
 
 async function resolveOrganization(env, customerId, customer = null) {
+  // New Console signups provision Organization + owner during signup.
+  // This creation path remains only as a compatibility fallback for legacy accounts.
   let organization = await getOrganizationByLegacyCustomerId(env, customerId);
   if (organization) return organization;
 

@@ -69,6 +69,7 @@ export async function upsertOrganizationMember(env, { organizationId, userId, ro
       organization_id, user_id, role, status, created_at, updated_at
     ) VALUES (?, ?, ?, 'active', ?, ?)
     ON CONFLICT(organization_id, user_id) DO UPDATE SET
+      role = excluded.role,
       status = 'active',
       updated_at = excluded.updated_at
   `).bind(organizationId, userId, role, now, now).run();

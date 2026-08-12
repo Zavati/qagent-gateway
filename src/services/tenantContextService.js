@@ -18,10 +18,11 @@ export async function requireConsoleTenant(req, env) {
   const legacyCustomerId = sessionContext.accountId;
 
   let organization = await getOrganizationByLegacyCustomerId(env, legacyCustomerId);
+  let customer = null;
   let created = false;
 
   if (!organization) {
-    const customer = await getCustomerById(env, legacyCustomerId);
+    customer = await getCustomerById(env, legacyCustomerId);
     organization = await createOrganization(env, {
       legacyCustomerId,
       name: organizationDisplayName(customer, sessionContext.user),
@@ -37,11 +38,22 @@ export async function requireConsoleTenant(req, env) {
   }
 
   const existingMember = await getOrganizationMember(env, organization.organizationId, sessionContext.user.userId);
+  let resolvedRole = existingMember?.role || null;
+
   if (!existingMember) {
+    // Compatibilidade para contas criadas antes do Foundation 07.4.2-F ou para
+    // uma Organization criada pelo fallback legado do Plugin. O usuário primário
+    // da conta (mesmo email do customer) continua sendo owner, não member.
+    if (!customer) customer = await getCustomerById(env, legacyCustomerId);
+    const customerEmail = String(customer?.email || '').trim().toLowerCase();
+    const userEmail = String(sessionContext.user?.email || '').trim().toLowerCase();
+    const isPrimaryAccountUser = Boolean(customerEmail && userEmail && customerEmail === userEmail);
+    resolvedRole = (created || isPrimaryAccountUser) ? 'owner' : 'member';
+
     await upsertOrganizationMember(env, {
       organizationId: organization.organizationId,
       userId: sessionContext.user.userId,
-      role: created ? 'owner' : 'member',
+      role: resolvedRole,
     });
   } else if (existingMember.status !== 'active') {
     const err = new Error('Usuário sem acesso ativo à organização.');
@@ -54,6 +66,6 @@ export async function requireConsoleTenant(req, env) {
     ...sessionContext,
     organizationId: organization.organizationId,
     organization,
-    organizationRole: existingMember?.role || (created ? 'owner' : 'member'),
+    organizationRole: resolvedRole,
   };
 }
