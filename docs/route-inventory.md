@@ -12,6 +12,7 @@ Inventário criado durante a Phase 2 / Foundation 02.
 | POST | `/v1/auth/forgot-password` | Auth | Recuperação de senha |
 | POST | `/v1/auth/reset-password` | Auth | Reset de senha |
 | GET | `/v1/auth/me` | Auth | Sessão atual |
+| POST | `/v1/plugin/session` | Plugin/Auth | ClientKey → sessão efêmera + Organization/Projects/Environments |
 | GET | `/v1/console/license` | Console | Dados de licença |
 | GET | `/v1/console/payments` | Console | Histórico de pagamentos |
 | GET | `/v1/console/ai-providers` | Console/AI | Catálogo de providers e credenciais suportadas |

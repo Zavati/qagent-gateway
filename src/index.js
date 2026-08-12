@@ -266,6 +266,7 @@ import { handleGenerateTests as generateTestsHandler } from './handlers/generate
 import { aiEngine } from './ai/aiEngine.js';
 import { generateAutofillActions } from './services/autofillAiService.js';
 import { getConsoleAiProviders, getConsoleAiConfig, putConsoleAiConfig, deleteConsoleAiConfig } from './handlers/consoleAiConfig.js';
+import { postPluginSession } from './handlers/pluginSession.js';
 import {
   getConsoleOrganization, patchConsoleOrganization,
   listConsoleProjects, createConsoleProject, getConsoleProject, patchConsoleProject, deleteConsoleProject,
@@ -1959,6 +1960,7 @@ const gatewayRouteHandlers = {
   forgotPassword: (req, env) => handleForgotPassword(req, env),
   resetPassword: (req, env) => handleResetPassword(req, env),
   authMe: (req, env) => handleAuthMe(req, env),
+  pluginSessionCreate: async (req, env) => json(await postPluginSession(req, env), { status: 201, headers: corsHeaders(req, env) }),
   consoleLicense: (req, env) => handleConsoleLicense(req, env),
   consolePayments: (req, env) => handleConsolePayments(req, env),
   consoleAiProvidersGet: async (req, env) => json(await getConsoleAiProviders(req, env), { headers: corsHeaders(req, env) }),
