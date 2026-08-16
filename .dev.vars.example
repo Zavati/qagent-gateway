@@ -29,3 +29,10 @@ SESSION_SECRET=
 
 # Shared only between Gateway signer and Observation verifier. Minimum 32 chars.
 OBSERVATION_GRANT_SECRET=
+
+# Foundation 07.5.12-A - Gateway -> Catalog Query API
+CATALOG_QUERY_BASE_URL=https://api.apiqagent.com
+CATALOG_QUERY_TIMEOUT_MS=10000
+# Must match qagent-catalog CATALOG_QUERY_HMAC_SECRET. Never commit the real value.
+CATALOG_QUERY_HMAC_SECRET=
+

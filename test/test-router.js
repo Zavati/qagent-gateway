@@ -43,6 +43,13 @@ expectRoute('POST', '/v1/console/projects/prj_123/environments', 'consoleEnviron
 expectRoute('GET', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentGet', { projectId: 'prj_123', environmentId: 'env_456' });
 expectRoute('PATCH', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentPatch', { projectId: 'prj_123', environmentId: 'env_456' });
 expectRoute('DELETE', '/v1/console/projects/prj_123/environments/env_456', 'consoleEnvironmentDelete', { projectId: 'prj_123', environmentId: 'env_456' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/summary', 'consoleCatalogSummary', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/services', 'consoleCatalogServicesList', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints', 'consoleCatalogEndpointsList', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789', 'consoleCatalogEndpointGet', { projectId: 'prj_123', endpointId: 'cep_789' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/evidence', 'consoleCatalogEndpointEvidenceList', { projectId: 'prj_123', endpointId: 'cep_789' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/schemas', 'consoleCatalogEndpointSchemasGet', { projectId: 'prj_123', endpointId: 'cep_789' });
+expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/lifecycle-history', 'consoleCatalogEndpointLifecycleHistoryList', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('GET', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesList', { projectId: 'prj_123' });
 expectRoute('POST', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesCreate', { projectId: 'prj_123' });
 expectRoute('GET', '/v1/console/projects/prj_123/api-services/svc_789', 'consoleApiServiceGet', { projectId: 'prj_123', apiServiceId: 'svc_789' });

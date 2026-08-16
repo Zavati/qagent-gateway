@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -29,7 +29,9 @@
     "test:f07-auth": "node test/test-foundation-07-3-auth.js",
     "test:plugin-session": "node test/test-plugin-session.js",
     "test:signup-tenant": "node test/test-signup-tenant-provisioning.js",
-    "test:observation-grant": "node test/test-observation-grant.js"
+    "test:observation-grant": "node test/test-observation-grant.js",
+    "test:catalog-proxy": "node test/test-catalog-query-proxy.js",
+    "check:07.5.12-a": "node scripts/verify-catalog-proxy-config.mjs && npm run test:router && npm run test:catalog-proxy"
   },
   "keywords": [],
   "author": "",

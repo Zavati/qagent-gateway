@@ -54,6 +54,27 @@ export function resolveGatewayRoute(method, pathname) {
       if (name) return { name, params: { projectId } };
     }
 
+
+    // Foundation 07.5.12-A - API Catalog read-only BFF
+    if (segs.length === 6 && segs[4] === 'catalog' && segs[5] === 'summary' && normalizedMethod === 'GET') {
+      return { name: 'consoleCatalogSummary', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    if (segs.length === 6 && segs[4] === 'catalog' && segs[5] === 'services' && normalizedMethod === 'GET') {
+      return { name: 'consoleCatalogServicesList', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    if (segs.length === 6 && segs[4] === 'catalog' && segs[5] === 'endpoints' && normalizedMethod === 'GET') {
+      return { name: 'consoleCatalogEndpointsList', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    if (segs.length === 7 && segs[4] === 'catalog' && segs[5] === 'endpoints' && normalizedMethod === 'GET') {
+      return { name: 'consoleCatalogEndpointGet', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
+    }
+    if (segs.length === 8 && segs[4] === 'catalog' && segs[5] === 'endpoints' && normalizedMethod === 'GET') {
+      const params = { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) };
+      if (segs[7] === 'evidence') return { name: 'consoleCatalogEndpointEvidenceList', params };
+      if (segs[7] === 'schemas') return { name: 'consoleCatalogEndpointSchemasGet', params };
+      if (segs[7] === 'lifecycle-history') return { name: 'consoleCatalogEndpointLifecycleHistoryList', params };
+    }
+
     // /v1/console/projects/:projectId/api-services
     if (segs.length === 5 && segs[4] === 'api-services') {
       const projectId = decodeURIComponent(segs[3]);

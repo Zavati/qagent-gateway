@@ -286,6 +286,15 @@ import {
   listConsoleAuthProfileEnvironmentBindings, getConsoleAuthProfileEnvironmentBinding, putConsoleAuthProfileEnvironmentBinding, deleteConsoleAuthProfileEnvironmentBinding,
 } from './handlers/consoleAuthProfiles.js';
 
+import {
+  getConsoleCatalogSummary,
+  listConsoleCatalogServices,
+  listConsoleCatalogEndpoints,
+  getConsoleCatalogEndpoint,
+  listConsoleCatalogEndpointEvidence,
+  getConsoleCatalogEndpointSchemas,
+  listConsoleCatalogEndpointLifecycleHistory,
+} from './handlers/consoleCatalog.js';
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
 import { dispatchGatewayRoute } from './routing/gatewayRouter.js';
@@ -2009,6 +2018,13 @@ const gatewayRouteHandlers = {
   consoleEnvironmentGet: async (req, env, _ctx, params) => json(await getConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEnvironmentPatch: async (req, env, _ctx, params) => json(await patchConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEnvironmentDelete: async (req, env, _ctx, params) => json(await deleteConsoleEnvironment(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleCatalogSummary: (req, env, _ctx, params) => getConsoleCatalogSummary(req, env, params),
+  consoleCatalogServicesList: (req, env, _ctx, params) => listConsoleCatalogServices(req, env, params),
+  consoleCatalogEndpointsList: (req, env, _ctx, params) => listConsoleCatalogEndpoints(req, env, params),
+  consoleCatalogEndpointGet: (req, env, _ctx, params) => getConsoleCatalogEndpoint(req, env, params),
+  consoleCatalogEndpointEvidenceList: (req, env, _ctx, params) => listConsoleCatalogEndpointEvidence(req, env, params),
+  consoleCatalogEndpointSchemasGet: (req, env, _ctx, params) => getConsoleCatalogEndpointSchemas(req, env, params),
+  consoleCatalogEndpointLifecycleHistoryList: (req, env, _ctx, params) => listConsoleCatalogEndpointLifecycleHistory(req, env, params),
   consoleApiServicesList: async (req, env, _ctx, params) => json(await listConsoleApiServices(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesCreate: async (req, env, _ctx, params) => json(await createConsoleApiService(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleApiServiceGet: async (req, env, _ctx, params) => json(await getConsoleApiService(req, env, params), { headers: corsHeaders(req, env) }),
@@ -2166,7 +2182,7 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       });
       const status = e?.status || 500;
       const headers = corsHeaders(req, env, status === 429 && e.retryAfterMs ? { "Retry-After": String(Math.ceil(e.retryAfterMs / 1000)) } : {});
-      return json({ status: "error", code: e?.code || null, message: e?.message || String(e), stack: e?.stack || null, detail: e?._detail || null }, { status, headers });
+      return json({ status: "error", code: e?.code || null, message: e?.message || String(e) }, { status, headers });
     }
   },
 };

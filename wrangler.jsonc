@@ -27,7 +27,10 @@
 		// Webhooks (BE-2001, BE-2002)
 		"CLIENT_KEY_MODE": "test",
 		"OBSERVATION_GRANT_TTL_SECONDS": "120",
-		"EMAIL_DISPATCH_WEBHOOK_URL": ""
+		"EMAIL_DISPATCH_WEBHOOK_URL": "",
+		// Foundation 07.5.12-A - internal Catalog Query API proxy
+		"CATALOG_QUERY_BASE_URL": "https://api.apiqagent.com",
+		"CATALOG_QUERY_TIMEOUT_MS": "10000"
 	},
 	"d1_databases": [
 		{
