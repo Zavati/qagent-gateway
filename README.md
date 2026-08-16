@@ -372,4 +372,4 @@ A chave `AI_CREDENTIALS_KEY_V1` deve existir somente em `.dev.vars` local ou com
 
 
 Comando node para gerar chave aleatoria 
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"  
