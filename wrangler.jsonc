@@ -2,6 +2,9 @@
 	"name": "qagent-gateway",
 	"compatibility_date": "2026-01-14",
 	"main": "src/index.js",
+	"secrets": {
+		"required": ["CATALOG_QUERY_HMAC_SECRET"]
+	},
 	"vars": {
 		// Environment
 		"ENVIRONMENT": "development",
