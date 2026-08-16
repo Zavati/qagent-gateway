@@ -23,15 +23,38 @@ const upstream = buildCatalogUpstreamUrl(env, '/v1/catalog/projects/prj_test/end
 assert.equal(upstream.toString(), 'https://api.apiqagent.com/v1/catalog/projects/prj_test/endpoints?classification=FIRST_PARTY_API&limit=20');
 
 let captured;
-const result = await proxyCatalogQuery({ env, organizationId, projectId, upstreamPath:'/v1/catalog/projects/prj_test/endpoints', incomingUrl:incoming, fetchImpl:async (url, init) => {
-  captured={url,init};
+const result = await proxyCatalogQuery({ env, organizationId, projectId, upstreamPath:'/v1/catalog/projects/prj_test/endpoints', incomingUrl:incoming, fetchImpl:async (request) => {
+  captured={url:request.url,init:{headers:Object.fromEntries(request.headers.entries())}};
   return new Response(JSON.stringify({status:'ok',data:[{endpointId:'cep_1'}]}), {status:200,headers:{'content-type':'application/json','x-qagent-query-api-version':'catalog-query-v1'}});
 }});
 assert.equal(result.status,200); assert.equal(result.queryApiVersion,'catalog-query-v1');
-assert.equal(captured.init.headers['X-QAgent-Organization-Id'], organizationId);
-assert.equal(captured.init.headers['X-QAgent-Project-Id'], projectId);
-const livePayload=buildCatalogQuerySigningPayload({method:'GET',url:new URL(captured.url),organizationId,projectId,timestamp:captured.init.headers['X-QAgent-Query-Timestamp']});
-assert.equal(captured.init.headers['X-QAgent-Query-Signature'], createHmac('sha256',secret).update(livePayload).digest('hex'));
+assert.equal(captured.init.headers['x-qagent-organization-id'], organizationId);
+assert.equal(captured.init.headers['x-qagent-project-id'], projectId);
+const livePayload=buildCatalogQuerySigningPayload({method:'GET',url:new URL(captured.url),organizationId,projectId,timestamp:captured.init.headers['x-qagent-query-timestamp']});
+assert.equal(captured.init.headers['x-qagent-query-signature'], createHmac('sha256',secret).update(livePayload).digest('hex'));
+
+
+let serviceBindingRequest;
+const envWithBinding = {
+  ...env,
+  CATALOG_QUERY_SERVICE: {
+    fetch: async (request) => {
+      serviceBindingRequest = request;
+      return new Response(JSON.stringify({status:'ok',data:{serviceCount:1}}), {status:200,headers:{'content-type':'application/json','x-qagent-query-api-version':'catalog-query-v1'}});
+    },
+  },
+};
+const bindingResult = await proxyCatalogQuery({
+  env: envWithBinding,
+  organizationId,
+  projectId,
+  upstreamPath:'/v1/catalog/projects/prj_test/summary',
+  incomingUrl:new URL('https://gateway.example/v1/console/projects/prj_test/catalog/summary'),
+});
+assert.equal(bindingResult.status, 200);
+assert.equal(serviceBindingRequest.url, 'https://api.apiqagent.com/v1/catalog/projects/prj_test/summary');
+assert.equal(serviceBindingRequest.headers.get('X-QAgent-Organization-Id'), organizationId);
+assert.match(serviceBindingRequest.headers.get('X-QAgent-Query-Signature'), /^[0-9a-f]{64}$/);
 
 await assert.rejects(() => proxyCatalogQuery({ env,organizationId,projectId,upstreamPath:'/v1/catalog/projects/prj_test/summary',incomingUrl:new URL('https://gateway.example/v1/console/projects/prj_test/catalog/summary'),fetchImpl:async()=>new Response(JSON.stringify({status:'error',code:'INVALID_QUERY_SIGNATURE'}),{status:401,headers:{'content-type':'application/json'}})}), e=>e?.status===502&&e?.code==='CATALOG_UPSTREAM_AUTH_FAILED');
 await assert.rejects(() => proxyCatalogQuery({ env,organizationId,projectId,upstreamPath:'/v1/catalog/projects/prj_test/summary',incomingUrl:new URL('https://gateway.example/v1/console/projects/prj_test/catalog/summary'),fetchImpl:async()=>{throw new Error('network down')}}), e=>e?.status===502&&e?.code==='CATALOG_UPSTREAM_UNAVAILABLE');

@@ -39,3 +39,28 @@ Then validate:
 - Project outside tenant: 404 `PROJECT_NOT_FOUND`.
 - Gateway/Catalog HMAC secret mismatch: 502 `CATALOG_UPSTREAM_AUTH_FAILED`.
 - Catalog timeout: 504 `CATALOG_UPSTREAM_TIMEOUT`.
+
+
+## Secret deployment guard
+
+`wrangler.jsonc` declares:
+
+```json
+"secrets": {
+  "required": ["CATALOG_QUERY_HMAC_SECRET"]
+}
+```
+
+The value must already exist as an encrypted Worker secret in Cloudflare.
+The value must not be placed under `vars` or committed to Git.
+
+
+## Service Binding
+
+The deploy output must list a service binding similar to:
+
+```text
+env.CATALOG_QUERY_SERVICE (qagent-catalog)  Worker
+```
+
+Gateway→Catalog requests must no longer use a same-zone public network hop.

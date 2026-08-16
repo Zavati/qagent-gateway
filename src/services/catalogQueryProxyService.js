@@ -78,19 +78,31 @@ export function buildCatalogUpstreamUrl(env, upstreamPath, incomingUrl) {
   return target;
 }
 
-export async function proxyCatalogQuery({ env, organizationId, projectId, upstreamPath, incomingUrl, fetchImpl = fetch }) {
+export async function proxyCatalogQuery({ env, organizationId, projectId, upstreamPath, incomingUrl, fetchImpl = null }) {
   const upstreamUrl = buildCatalogUpstreamUrl(env, upstreamPath, incomingUrl);
   const signedHeaders = await buildCatalogQueryHeaders({ env, url: upstreamUrl, organizationId, projectId });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), resolveTimeoutMs(env));
 
+  const request = new Request(upstreamUrl.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json', ...signedHeaders },
+    signal: controller.signal,
+  });
+
   let response;
   try {
-    response = await fetchImpl(upstreamUrl.toString(), {
-      method: 'GET',
-      headers: { Accept: 'application/json', ...signedHeaders },
-      signal: controller.signal,
-    });
+    if (fetchImpl) {
+      response = await fetchImpl(request);
+    } else if (env?.CATALOG_QUERY_SERVICE && typeof env.CATALOG_QUERY_SERVICE.fetch === 'function') {
+      response = await env.CATALOG_QUERY_SERVICE.fetch(request);
+    } else {
+      throw new CatalogProxyError(
+        503,
+        'CATALOG_QUERY_NOT_CONFIGURED',
+        'Catalog Query service binding is not configured.',
+      );
+    }
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new CatalogProxyError(504, 'CATALOG_UPSTREAM_TIMEOUT', 'Catalog service request timed out.');
