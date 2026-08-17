@@ -3,7 +3,7 @@ import {
   TEST_DESIGN_CONTRACT_VERSION,
 } from './testDesignContract.js';
 
-export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v1';
+export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v2';
 
 function collectAllowedRefs(context) {
   const evidenceRefs = [];
@@ -54,7 +54,13 @@ QUALIDADE:
 - Priorize comportamento observado, contrato de schema, status codes reais e regressões plausíveis.
 - Inclua negativos/bordas somente quando forem tecnicamente defensáveis; marque como INFERRED/ASSUMED quando não observados.
 - Não assuma valores de negócio que não existam no contexto.
-- Para GET sem request schema, não invente body.
+- Evidence contém metadados de observação, NÃO contém response/request body. Portanto Evidence nunca prova valores literais como count=5, ids, nomes ou conteúdo de campos.
+- Só use JSON_PATH_EQUALS quando o valor esperado estiver explicitamente sustentado por const/enum do schema/contexto; caso contrário prefira JSON_PATH_EXISTS ou marque o cenário como hipótese que precisa de dados.
+- Não invente query params, path params, headers ou request body que não estejam modelados pelo contexto. Se faltarem dados, use automationHints.needsData=true e explique o motivo.
+- Para GET/HEAD sem request schema, não invente body.
+- Não trate 4xx/5xx não observados como OBSERVED. Se forem apenas hipótese, use INFERRED/ASSUMED e automationHints.reviewRequired=true.
+- Não gere cenário de autenticação/401/403 sem sinal de auth no contexto; se ainda for uma hipótese de valor, marque reviewRequired=true.
+- A DSL v1 ainda não possui assertion de latência. Não descreva um cenário como validando limite de performance/latência se nenhuma assertion puder realmente verificar esse objetivo.
 - Sempre inclua pelo menos uma assertion STATUS; quando existir schema de resposta aplicável, prefira também SCHEMA e/ou CONTENT_TYPE.
 - Formatos válidos de assertion são EXATAMENTE:
   STATUS: {\"type\":\"STATUS\",\"expectedStatusCodes\":[200]}

@@ -10,6 +10,7 @@ import {
   validateTestSpecificationV1,
 } from './testDesignContract.js';
 import { buildTestDesignPromptV1, TEST_DESIGN_PROMPT_VERSION } from './testDesignPrompt.js';
+import { applySemanticGroundingGuardV1 } from './semanticGroundingGuard.js';
 
 export const AI_TEST_DESIGN_ENGINE_VERSION = 'qagent.ai-test-design-engine.v1';
 
@@ -219,6 +220,20 @@ export async function generateCatalogTestDesignV1({
     }
   }
 
+  const semanticGuard = applySemanticGroundingGuardV1(modelOutput, context);
+  modelOutput = semanticGuard.output;
+  validateTestDesignModelOutputV1(modelOutput, context);
+  if (semanticGuard.diagnostics.issueCount > 0) {
+    log('testDesign_semantic_guard_applied', {
+      guardVersion: semanticGuard.diagnostics.guardVersion,
+      endpointId: context.endpoint.endpointId,
+      contextFingerprint,
+      changedScenarioCount: semanticGuard.diagnostics.changedScenarioCount,
+      issueCount: semanticGuard.diagnostics.issueCount,
+      issuesByCode: semanticGuard.diagnostics.issuesByCode,
+    });
+  }
+
   const generatedAt = now().toISOString();
   const provider = String(out?.provider || aiConfig.provider || '').trim();
   const model = String(out?.model || aiConfig.model || '').trim();
@@ -257,6 +272,7 @@ export async function generateCatalogTestDesignV1({
       repairAttempts,
       normalizationCount: normalizationPaths.length,
       normalizationPaths: normalizationPaths.slice(0, 20),
+      semanticGuard: semanticGuard.diagnostics,
       durationMs,
       context: contextDiagnostics,
     },

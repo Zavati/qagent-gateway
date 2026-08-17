@@ -1,0 +1,235 @@
+import assert from 'node:assert/strict';
+import { applySemanticGroundingGuardV1, SEMANTIC_GROUNDING_GUARD_VERSION } from '../src/intelligence/semanticGroundingGuard.js';
+import { buildTestSpecificationV1, validateTestDesignModelOutputV1, validateTestSpecificationV1 } from '../src/intelligence/testDesignContract.js';
+import { generateCatalogTestDesignV1 } from '../src/intelligence/testDesignService.js';
+
+const context = {
+  contractVersion: 'qagent.test-design.v1',
+  organizationId: 'org_guard',
+  projectId: 'prj_guard',
+  endpoint: {
+    endpointId: 'cep_guard', serviceId: 'svc_guard', serviceName: 'apigtw.example.com', classification: 'FIRST_PARTY_API',
+    classificationConfidence: 94, method: 'GET', normalizedPath: '/core-api/api-token-list', discoveryConfidenceScore: 79,
+    discoveryConfidenceLevel: 'HIGH', lifecycleState: 'DISCOVERED', observationCount: 31, sessionCount: 2, environmentCount: 1,
+    successRatePct: 100, latencyAvgMs: 534.26, firstSeenAt: '2026-08-16T17:48:43.913Z', lastSeenAt: '2026-08-17T00:15:01.187Z',
+  },
+  schemas: [{
+    trackId: 'track_response_200', direction: 'RESPONSE', statusCode: 200, currentVersionId: 'sv_response_2', currentSchemaHash: 'hash_response_2',
+    contentTypes: ['application/json'],
+    schema: {
+      type: 'object',
+      properties: {
+        contents: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              name: { type: 'string' },
+              isDeleted: { type: 'boolean' },
+            },
+          },
+        },
+        count: { type: 'integer' },
+      },
+    },
+    versions: [
+      { versionId: 'sv_response_2', schemaHash: 'hash_response_2', observationCount: 6, introducedAt: '2026-08-17T00:00:00.000Z' },
+      { versionId: 'sv_response_1', schemaHash: 'hash_response_1', observationCount: 25, introducedAt: '2026-08-16T17:48:43.913Z' },
+    ],
+  }],
+  evidence: [
+    { evidenceId: 'ev_200_a', observedAt: '2026-08-17T00:15:01.187Z', environmentId: 'env_hml', outcome: 'HTTP_2XX', statusCode: 200, latencyMs: 481, sourceHost: 'apigtw.example.com', sessionId: 'obs_1', requestSchemaVersionId: null, responseSchemaVersionId: 'sv_response_2' },
+    { evidenceId: 'ev_200_b', observedAt: '2026-08-17T00:14:52.253Z', environmentId: 'env_hml', outcome: 'HTTP_2XX', statusCode: 200, latencyMs: 1040, sourceHost: 'apigtw.example.com', sessionId: 'obs_1', requestSchemaVersionId: null, responseSchemaVersionId: 'sv_response_2' },
+  ],
+  environments: [{ environmentId: 'env_hml', name: 'Homologação', observationCount: 31, successRatePct: 100, lastSeenAt: '2026-08-17T00:15:01.187Z' }],
+  runtime: { apiServiceKey: null, defaultAuthProfileRef: null, availableAuthProfileRefs: [] },
+};
+
+function baseScenario(id, overrides = {}) {
+  return {
+    scenarioId: id,
+    title: 'Cenário',
+    objective: 'Validar comportamento observado.',
+    category: 'HAPPY_PATH',
+    priority: 'MEDIUM',
+    confidence: 'HIGH',
+    grounding: { level: 'OBSERVED', rationale: ['Comportamento observado.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+    preconditions: [],
+    authRequirement: 'NONE',
+    request: { pathParams: {}, query: {}, headers: {}, body: {} },
+    assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }],
+    extract: [],
+    automationHints: { needsData: false, reviewRequired: false, reasons: [] },
+    ...overrides,
+  };
+}
+
+const modelOutput = {
+  title: 'Semantic guard regression pack',
+  objective: 'Reproduzir falsos groundings observados no primeiro retorno real da 07.6.3.',
+  assumptions: [],
+  scenarios: [
+    baseScenario('SAFE_001', {
+      title: 'Happy path observado',
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'SCHEMA', schemaRef: 'track_response_200' },
+        { type: 'CONTENT_TYPE', expected: ['application/json'] },
+      ],
+    }),
+    baseScenario('VALUE_002', {
+      title: 'Contagem exata inventada',
+      category: 'DATA_VARIATION',
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EQUALS', path: '$.count', expected: 5 },
+      ],
+    }),
+    baseScenario('FILTER_003', {
+      title: 'ID específico sem massa de teste',
+      category: 'DATA_VARIATION',
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: "$.contents[?(@.id == 'token-uuid-123')]" },
+      ],
+    }),
+    baseScenario('QUERY_004', {
+      title: 'Query param inventado',
+      category: 'NEGATIVE',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Hipótese negativa.'], evidenceRefs: [], schemaRefs: [] },
+      request: { pathParams: {}, query: { id: 'token-inexistente' }, headers: {}, body: {} },
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [404] }],
+    }),
+    baseScenario('BODY_005', {
+      title: 'GET com body inventado',
+      category: 'NEGATIVE',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Hipótese negativa.'], evidenceRefs: [], schemaRefs: [] },
+      request: { pathParams: {}, query: {}, headers: {}, body: { invalidField: 'invalidValue' } },
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [400] }],
+    }),
+    baseScenario('AUTH_006', {
+      title: '401 sem intenção de auth consistente',
+      category: 'NEGATIVE',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Hipótese de autenticação.'], evidenceRefs: [], schemaRefs: [] },
+      authRequirement: 'NONE',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [401] }],
+    }),
+    baseScenario('LATENCY_007', {
+      title: 'Verificar latência do endpoint',
+      objective: 'Garantir que a latência esteja dentro do limite aceitável.',
+      category: 'STATUS_BEHAVIOR',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }],
+    }),
+    baseScenario('SCHEMA_008', {
+      title: 'Campo count existe',
+      category: 'SCHEMA_CONTRACT',
+      grounding: { level: 'OBSERVED', rationale: ['Schema estrutural observado.'], evidenceRefs: [], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.count' },
+      ],
+    }),
+  ],
+};
+
+assert.doesNotThrow(() => validateTestDesignModelOutputV1(modelOutput, context));
+const guarded = applySemanticGroundingGuardV1(modelOutput, context);
+assert.equal(guarded.diagnostics.guardVersion, SEMANTIC_GROUNDING_GUARD_VERSION);
+assert.equal(guarded.diagnostics.scenarioCount, 8);
+assert.ok(guarded.diagnostics.issueCount >= 8);
+assert.ok(guarded.diagnostics.issuesByCode.SEMANTIC_EXACT_VALUE_UNGROUNDED >= 1);
+assert.ok(guarded.diagnostics.issuesByCode.SEMANTIC_JSON_PATH_VALUE_DEPENDENT >= 1);
+assert.ok(guarded.diagnostics.issuesByCode.SEMANTIC_QUERY_PARAM_UNMODELED >= 1);
+assert.ok(guarded.diagnostics.issuesByCode.SEMANTIC_BODY_UNSUPPORTED_FOR_METHOD >= 1);
+assert.ok(guarded.diagnostics.issuesByCode.SEMANTIC_AUTH_CONTRADICTION >= 1);
+assert.ok(guarded.diagnostics.issuesByCode.SEMANTIC_ASSERTION_COVERAGE_GAP >= 1);
+
+const safe = guarded.output.scenarios[0];
+assert.equal(safe.grounding.level, 'OBSERVED');
+assert.equal(safe.confidence, 'HIGH');
+assert.equal(safe.automationHints.needsData, false);
+assert.equal(safe.automationHints.reviewRequired, false);
+
+const exact = guarded.output.scenarios[1];
+assert.equal(exact.grounding.level, 'ASSUMED');
+assert.equal(exact.confidence, 'LOW');
+assert.equal(exact.automationHints.needsData, true);
+assert.equal(exact.automationHints.reviewRequired, false);
+assert.match(exact.automationHints.reasons.join(' '), /valor literal esperado/i);
+
+const filter = guarded.output.scenarios[2];
+assert.equal(filter.grounding.level, 'INFERRED');
+assert.equal(filter.confidence, 'MEDIUM');
+assert.equal(filter.automationHints.needsData, true);
+
+const query = guarded.output.scenarios[3];
+assert.equal(query.grounding.level, 'ASSUMED');
+assert.equal(query.automationHints.reviewRequired, true);
+assert.equal(query.automationHints.needsData, true);
+
+const body = guarded.output.scenarios[4];
+assert.equal(body.grounding.level, 'ASSUMED');
+assert.equal(body.automationHints.reviewRequired, true);
+
+const auth = guarded.output.scenarios[5];
+assert.equal(auth.grounding.level, 'ASSUMED');
+assert.equal(auth.automationHints.reviewRequired, true);
+
+const latency = guarded.output.scenarios[6];
+assert.equal(latency.grounding.level, 'OBSERVED');
+assert.equal(latency.automationHints.reviewRequired, true);
+
+const schema = guarded.output.scenarios[7];
+assert.equal(schema.grounding.level, 'OBSERVED');
+assert.ok(schema.grounding.evidenceRefs.includes('ev_200_a'), 'Guard should auto-ground observed 200 with real evidence');
+assert.ok(schema.grounding.schemaRefs.includes('track_response_200'));
+assert.doesNotThrow(() => validateTestDesignModelOutputV1(guarded.output, context));
+
+const specification = buildTestSpecificationV1({
+  context,
+  modelOutput: guarded.output,
+  generation: { provider: 'openai', model: 'gpt-4o-mini', generatedAt: '2026-08-17T23:03:37.011Z', contextFingerprint: 'b'.repeat(64) },
+});
+assert.doesNotThrow(() => validateTestSpecificationV1(specification, context));
+assert.equal(specification.scenarios[0].automation.readiness, 'NEEDS_ENVIRONMENT');
+assert.equal(specification.scenarios[1].automation.readiness, 'NEEDS_DATA');
+assert.equal(specification.scenarios[2].automation.readiness, 'NEEDS_DATA');
+assert.equal(specification.scenarios[3].automation.readiness, 'REVIEW_REQUIRED');
+assert.equal(specification.scenarios[4].automation.readiness, 'REVIEW_REQUIRED');
+assert.equal(specification.scenarios[5].automation.readiness, 'REVIEW_REQUIRED');
+assert.equal(specification.scenarios[6].automation.readiness, 'REVIEW_REQUIRED');
+assert.equal(specification.scenarios[7].automation.readiness, 'NEEDS_ENVIRONMENT');
+assert.ok(specification.scenarios[1].automation.blockers.some((reason) => /valor literal/i.test(reason)));
+assert.ok(specification.scenarios[0].automation.blockers.some((reason) => /API Service de runtime/i.test(reason)));
+
+let generateCalls = 0;
+const serviceResult = await generateCatalogTestDesignV1({
+  env: { TEST_DESIGN_SCENARIO_COUNT: '8' },
+  organizationId: context.organizationId,
+  projectId: context.projectId,
+  endpointId: context.endpoint.endpointId,
+  aiEngine: {
+    async generateJson() {
+      generateCalls += 1;
+      return { json: modelOutput, provider: 'openai', model: 'gpt-4o-mini', rawText: JSON.stringify(modelOutput) };
+    },
+    async repairJson() { throw new Error('semantic guard must not require AI repair'); },
+  },
+  contextBuilder: async () => ({ context, contextFingerprint: 'b'.repeat(64), diagnostics: { runtimeMapping: { status: 'UNMATCHED' } } }),
+  resolveAiConfig: async () => ({ source: 'env', provider: 'openai', model: 'gpt-4o-mini', credentials: { apiKey: 'hidden' } }),
+  now: () => new Date('2026-08-17T23:03:37.011Z'),
+});
+assert.equal(generateCalls, 1);
+assert.equal(serviceResult.diagnostics.repairAttempts, 0);
+assert.equal(serviceResult.diagnostics.semanticGuard.guardVersion, SEMANTIC_GROUNDING_GUARD_VERSION);
+assert.ok(serviceResult.diagnostics.semanticGuard.changedScenarioCount >= 6);
+assert.equal(serviceResult.specification.summary.byReadiness.NEEDS_ENVIRONMENT, 2);
+assert.equal(serviceResult.specification.summary.byReadiness.NEEDS_DATA, 2);
+assert.equal(serviceResult.specification.summary.byReadiness.REVIEW_REQUIRED, 4);
+assert.equal(JSON.stringify(serviceResult).includes('hidden'), false);
+
+console.log('Foundation 07.6.3-C Semantic Grounding Guard tests passed ✅');

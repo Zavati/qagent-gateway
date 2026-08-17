@@ -11,7 +11,7 @@
     "test:integration": "pwsh -File test/run-integration-tests.ps1",
     "test:generate": "node test/test-generateTests.js",
     "test:router": "node test/test-router.js",
-    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1 && npm run test:f07-6-2 && npm run test:f07-6-3",
+    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1 && npm run test:f07-6-2 && npm run test:f07-6-3 && npm run test:f07-6-3-c",
     "test:ai": "node test/test-ai-engine.js",
     "test:autofill-ai": "node test/test-autofill-ai-service.js",
     "test:openai-provider": "node test/test-openai-provider.js",
@@ -34,7 +34,8 @@
     "check:07.5.12-a": "node scripts/verify-catalog-proxy-config.mjs && npm run test:router && npm run test:catalog-proxy",
     "test:f07-6-1": "node test/test-foundation-07-6-1-test-design-contract.js",
     "test:f07-6-2": "node test/test-foundation-07-6-2-catalog-context-builder.js",
-    "test:f07-6-3": "node test/test-foundation-07-6-3-ai-test-design-engine.js"
+    "test:f07-6-3": "node test/test-foundation-07-6-3-ai-test-design-engine.js",
+    "test:f07-6-3-c": "node test/test-foundation-07-6-3-c-semantic-grounding-guard.js"
   },
   "keywords": [],
   "author": "",

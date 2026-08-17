@@ -605,27 +605,25 @@ export function validateTestDesignModelOutputV1(output, context) {
 function computeAutomationReadiness(scenario, context) {
   const runtime = context.runtime || {};
   const blockers = [];
+  const hintReasons = scenario.automationHints?.reasons || [];
+  const reviewRequired = scenario.automationHints?.reviewRequired === true;
+  const needsData = scenario.automationHints?.needsData === true;
+  const needsAuth = scenario.authRequirement === 'REQUIRED' && !runtime.defaultAuthProfileRef;
+  const needsEnvironment = !runtime.apiServiceKey;
+  const assumed = scenario.grounding?.level === 'ASSUMED';
 
-  if (!runtime.apiServiceKey) {
-    blockers.push('Nenhum API Service de runtime está associado ao endpoint descoberto.');
-    return { readiness: 'NEEDS_ENVIRONMENT', blockers };
-  }
+  if (reviewRequired) blockers.push(...(hintReasons.length ? hintReasons : ['O cenário precisa de revisão semântica antes da automação.']));
+  if (needsData) blockers.push(...(hintReasons.length ? hintReasons : ['O cenário requer dados de teste adicionais.']));
+  if (assumed && !reviewRequired && !needsData) blockers.push('O cenário contém hipótese que precisa de revisão humana.');
+  if (needsAuth) blockers.push('O cenário requer autenticação, mas não há Auth Profile selecionado.');
+  if (needsEnvironment) blockers.push('Nenhum API Service de runtime está associado ao endpoint descoberto.');
 
-  if (scenario.authRequirement === 'REQUIRED' && !runtime.defaultAuthProfileRef) {
-    blockers.push('O cenário requer autenticação, mas não há Auth Profile selecionado.');
-    return { readiness: 'NEEDS_AUTH', blockers };
-  }
-
-  if (scenario.automationHints?.needsData) {
-    blockers.push(...(scenario.automationHints?.reasons || ['O cenário requer dados de teste adicionais.']));
-    return { readiness: 'NEEDS_DATA', blockers };
-  }
-
-  if (scenario.automationHints?.reviewRequired || scenario.grounding?.level === 'ASSUMED') {
-    blockers.push(...(scenario.automationHints?.reasons || ['O cenário contém hipótese que precisa de revisão humana.']));
-    return { readiness: 'REVIEW_REQUIRED', blockers };
-  }
-
+  const uniqueBlockers = [...new Set(blockers)].slice(0, 10);
+  if (reviewRequired) return { readiness: 'REVIEW_REQUIRED', blockers: uniqueBlockers };
+  if (needsData) return { readiness: 'NEEDS_DATA', blockers: uniqueBlockers };
+  if (assumed) return { readiness: 'REVIEW_REQUIRED', blockers: uniqueBlockers };
+  if (needsAuth) return { readiness: 'NEEDS_AUTH', blockers: uniqueBlockers };
+  if (needsEnvironment) return { readiness: 'NEEDS_ENVIRONMENT', blockers: uniqueBlockers };
   return { readiness: 'READY', blockers: [] };
 }
 
@@ -792,11 +790,11 @@ export function validateTestSpecificationV1(specification, context) {
     if (authProfileRef && !(context.runtime?.availableAuthProfileRefs || []).includes(authProfileRef)) {
       fail('Auth Profile não pertence ao contexto permitido.', `${path}.spec.auth.authProfileRef`, 'TEST_DESIGN_AUTH_PROFILE_UNKNOWN');
     }
-    if (!context.runtime?.apiServiceKey && scenario.automation.readiness !== 'NEEDS_ENVIRONMENT') {
-      fail('Readiness deve ser NEEDS_ENVIRONMENT sem API Service configurado.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
+    if (!context.runtime?.apiServiceKey && scenario.automation.readiness === 'READY') {
+      fail('Cenário não pode ser READY sem API Service configurado.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
     }
-    if (context.runtime?.apiServiceKey && scenario.spec.auth.requirement === 'REQUIRED' && !authProfileRef && scenario.automation.readiness !== 'NEEDS_AUTH') {
-      fail('Readiness deve ser NEEDS_AUTH quando autenticação é obrigatória sem Auth Profile.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
+    if (context.runtime?.apiServiceKey && scenario.spec.auth.requirement === 'REQUIRED' && !authProfileRef && scenario.automation.readiness === 'READY') {
+      fail('Cenário não pode ser READY quando autenticação é obrigatória sem Auth Profile.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
     }
     if (scenario.grounding.level === 'ASSUMED' && !['REVIEW_REQUIRED', 'NEEDS_ENVIRONMENT', 'NEEDS_AUTH', 'NEEDS_DATA'].includes(scenario.automation.readiness)) {
       fail('Cenário ASSUMED não pode ser READY.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
