@@ -27,6 +27,8 @@ Inventário criado durante a Phase 2 / Foundation 02.
 | POST | `/v1/webhooks/email-dispatched` | Webhook | Confirmação de disparo de e-mail |
 | POST | `/v1/webhooks/payment` | Webhook/Billing | Processamento de pagamento |
 | POST | `/v1/generate-tests` | AI | Geração de casos de teste |
+| GET | `/v1/console/projects/:projectId/intelligence/endpoints/:endpointId/test-design-context` | Console/Intelligence | Preview determinístico do contexto sanitizado de Test Design |
+| POST | `/v1/console/projects/:projectId/intelligence/endpoints/:endpointId/test-design` | Console/Intelligence | Gera TestSpecificationV1 via AI Engine/BYOAI; efêmero nesta Foundation |
 | POST | `/v1/autofill` | AI | Preenchimento assistido |
 
 ## Próxima decomposição sugerida

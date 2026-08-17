@@ -1,6 +1,8 @@
+import { getEnvNum } from '../lib/config.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import { buildCatalogTestDesignContextV1 } from '../intelligence/catalogContextBuilder.js';
+import { generateCatalogTestDesignV1 } from '../intelligence/testDesignService.js';
 
 export async function getConsoleTestDesignContext(req, env, { projectId, endpointId }) {
   const tenant = await requireConsoleTenant(req, env);
@@ -11,6 +13,32 @@ export async function getConsoleTestDesignContext(req, env, { projectId, endpoin
     projectId,
     endpointId,
   });
+  return {
+    status: 'ok',
+    data: result,
+  };
+}
+
+export async function postConsoleTestDesign(req, env, { projectId, endpointId }, { rateLimiter = null } = {}) {
+  const tenant = await requireConsoleTenant(req, env);
+  await getOrganizationProject(env, tenant.organizationId, projectId);
+
+  if (rateLimiter) {
+    rateLimiter({
+      key: `test-design:${tenant.organizationId}:${tenant.user?.userId || tenant.accountId || 'console'}`,
+      windowMs: getEnvNum(env, 'TEST_DESIGN_RATE_LIMIT_WINDOW_MS', 60_000),
+      max: getEnvNum(env, 'TEST_DESIGN_RATE_LIMIT_MAX', 6),
+    });
+  }
+
+  const result = await generateCatalogTestDesignV1({
+    env,
+    organizationId: tenant.organizationId,
+    projectId,
+    endpointId,
+    accountId: tenant.accountId || null,
+  });
+
   return {
     status: 'ok',
     data: result,

@@ -31,3 +31,11 @@ export function getGenerateTestsModel(body, env) {
     || 'gpt-4o-mini';
   return sanitizeModel(candidate);
 }
+
+export function getTestDesignModel(env) {
+  const candidate = env?.TEST_DESIGN_MODEL
+    || env?.GENERATE_TESTS_MODEL
+    || env?.AUTOFILL_MODEL
+    || 'gpt-4o-mini';
+  return sanitizeModel(candidate);
+}

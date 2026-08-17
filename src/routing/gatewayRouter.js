@@ -83,6 +83,14 @@ export function resolveGatewayRoute(method, pathname) {
       };
     }
 
+    // Foundation 07.6.3 - AI Test Design generation (ephemeral, not persisted yet)
+    if (segs.length === 8 && segs[4] === 'intelligence' && segs[5] === 'endpoints' && segs[7] === 'test-design' && normalizedMethod === 'POST') {
+      return {
+        name: 'consoleIntelligenceTestDesignPost',
+        params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) },
+      };
+    }
+
     // /v1/console/projects/:projectId/api-services
     if (segs.length === 5 && segs[4] === 'api-services') {
       const projectId = decodeURIComponent(segs[3]);
