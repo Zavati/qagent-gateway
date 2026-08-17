@@ -33,14 +33,17 @@ function wrapInvalidModelOutput(error, { repairAttempts = 0 } = {}) {
     validationCode: error?.code || 'TEST_DESIGN_CONTRACT_INVALID',
     validationPath: error?.path || null,
   };
+  wrapped.publicDetails = wrapped.details;
   return wrapped;
 }
 
 function contractRepairInstruction(error) {
   const code = error?.code || 'TEST_DESIGN_CONTRACT_INVALID';
   const path = error?.path || 'unknown';
+  const rule = String(error?.message || 'Contrato inválido.').slice(0, 500);
   return `A resposta anterior viola o TestDesignModelOutputV1 (${code} em ${path}).
-Reescreva o objeto COMPLETO, respeitando estritamente OUTPUT_JSON_SCHEMA e CATALOG_CONTEXT_JSON.
+Regra violada: ${rule}
+Reescreva o objeto COMPLETO, respeitando estritamente OUTPUT_JSON_SCHEMA, os formatos exatos de assertion e CATALOG_CONTEXT_JSON.
 Não adicione campos extras. Não invente refs. Use somente IDs existentes no contexto. Retorne somente JSON válido.`;
 }
 
@@ -172,6 +175,15 @@ export async function generateCatalogTestDesignV1({
       validateTestDesignModelOutputV1(modelOutput, context);
     } catch (repairError) {
       if (repairError instanceof TestDesignContractError) {
+        log('testDesign_ai_contract_failed', {
+          validationCode: repairError.code,
+          validationPath: repairError.path || null,
+          repairAttempts,
+          provider: out?.provider || aiConfig.provider,
+          model: out?.model || aiConfig.model,
+          endpointId: context.endpoint.endpointId,
+          contextFingerprint,
+        });
         throw wrapInvalidModelOutput(repairError, { repairAttempts });
       }
       throw repairError;

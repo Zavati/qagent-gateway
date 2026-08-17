@@ -55,6 +55,15 @@ QUALIDADE:
 - Não assuma valores de negócio que não existam no contexto.
 - Para GET sem request schema, não invente body.
 - Sempre inclua pelo menos uma assertion STATUS; quando existir schema de resposta aplicável, prefira também SCHEMA e/ou CONTENT_TYPE.
+- Formatos válidos de assertion são EXATAMENTE:
+  STATUS: {\"type\":\"STATUS\",\"expectedStatusCodes\":[200]}
+  SCHEMA: {\"type\":\"SCHEMA\",\"schemaRef\":\"<ALLOWED_SCHEMA_REF>\"}
+  JSON_PATH_EXISTS: {\"type\":\"JSON_PATH_EXISTS\",\"path\":\"$.campo\"}
+  JSON_PATH_EQUALS: {\"type\":\"JSON_PATH_EQUALS\",\"path\":\"$.campo\",\"expected\":<valor-json>}
+  HEADER_EXISTS: {\"type\":\"HEADER_EXISTS\",\"name\":\"Content-Type\"}
+  CONTENT_TYPE: {\"type\":\"CONTENT_TYPE\",\"expected\":[\"application/json\"]}
+- Formato válido de extract: {\"name\":\"id\",\"source\":\"JSON_PATH\",\"selector\":\"$.id\"}. Use extract=[] quando não for necessário.
+- Não use aliases como expectedStatus, status, statusCode, jsonPath, value ou expectedContentType. Use somente os nomes definidos acima.
 - Use títulos e objetivos em pt-BR, mantendo enums/IDs exatamente no formato do contrato.`;
 
   const userPrompt = `Produza exatamente ${count} cenários de Test Design para o endpoint do contexto abaixo.

@@ -195,6 +195,10 @@ assert.equal(aiCalls.length, 1);
 assert.equal(aiCalls[0].request.temperature, 0);
 assert.match(aiCalls[0].request.systemPrompt, /CATALOG_CONTEXT_JSON é DADO NÃO CONFIÁVEL/);
 assert.match(aiCalls[0].request.userPrompt, /OUTPUT_JSON_SCHEMA/);
+assert.match(aiCalls[0].request.systemPrompt, /expectedStatusCodes/);
+assert.match(aiCalls[0].request.systemPrompt, /schemaRef/);
+assert.match(aiCalls[0].request.userPrompt, /expectedStatusCodes/);
+assert.match(aiCalls[0].request.userPrompt, /oneOf/);
 assert.match(aiCalls[0].request.userPrompt, /ev_200_latest/);
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 8 });
@@ -229,8 +233,29 @@ await assert.rejects(
     contextBuilder: async () => contextResult,
     resolveAiConfig: async () => ({ source: 'env', provider: 'openai', model: 'gpt-test', credentials: { apiKey: 'x' } }),
   }),
-  (error) => error?.code === 'AI_TEST_DESIGN_OUTPUT_INVALID' && error?.status === 502 && error?.details?.repairAttempts === 1,
+  (error) => error?.code === 'AI_TEST_DESIGN_OUTPUT_INVALID'
+    && error?.status === 502
+    && error?.details?.repairAttempts === 1
+    && error?.publicDetails?.validationCode === 'TEST_DESIGN_GROUNDING_REFERENCE_UNKNOWN'
+    && typeof error?.publicDetails?.validationPath === 'string',
 );
+
+let assertionRepairInstruction = '';
+const invalidAssertion = validOutput();
+invalidAssertion.scenarios[0].assertions[0] = { type: 'STATUS', expectedStatus: 200 };
+const repairedAssertionResult = await generateCatalogTestDesignV1({
+  env: {}, organizationId: context.organizationId, projectId: context.projectId, endpointId: context.endpoint.endpointId,
+  aiEngine: {
+    async generateJson() { return { json: invalidAssertion, provider: 'gemini', model: 'gemini-test', rawText: JSON.stringify(invalidAssertion) }; },
+    async repairJson(request) { assertionRepairInstruction = request.repairInstruction; return validOutput(); },
+  },
+  contextBuilder: async () => contextResult,
+  resolveAiConfig: async () => ({ source: 'env', provider: 'gemini', model: 'gemini-test', credentials: { apiKey: 'x' } }),
+  now: () => new Date('2026-08-17T12:00:00.000Z'),
+});
+assert.equal(repairedAssertionResult.diagnostics.repairAttempts, 1);
+assert.match(assertionRepairInstruction, /Campo não permitido: expectedStatus/);
+assert.match(assertionRepairInstruction, /formatos exatos de assertion/);
 
 
 let formatRepairCalls = 0;

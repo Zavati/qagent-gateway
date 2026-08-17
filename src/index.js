@@ -2185,7 +2185,9 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       });
       const status = e?.status || 500;
       const headers = corsHeaders(req, env, status === 429 && e.retryAfterMs ? { "Retry-After": String(Math.ceil(e.retryAfterMs / 1000)) } : {});
-      return json({ status: "error", code: e?.code || null, message: e?.message || String(e) }, { status, headers });
+      const errorBody = { status: "error", code: e?.code || null, message: e?.message || String(e) };
+      if (e?.publicDetails && typeof e.publicDetails === "object") errorBody.details = e.publicDetails;
+      return json(errorBody, { status, headers });
     }
   },
 };

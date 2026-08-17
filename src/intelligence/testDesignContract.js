@@ -768,8 +768,90 @@ export const TEST_DESIGN_MODEL_OUTPUT_JSON_SCHEMA_V1 = Object.freeze({
               body: {},
             },
           },
-          assertions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object' } },
-          extract: { type: 'array', maxItems: 20, items: { type: 'object' } },
+          assertions: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 30,
+            items: {
+              oneOf: [
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['type', 'expectedStatusCodes'],
+                  properties: {
+                    type: { const: 'STATUS' },
+                    expectedStatusCodes: {
+                      type: 'array', minItems: 1, maxItems: 12,
+                      items: { type: 'integer', minimum: 100, maximum: 599 },
+                    },
+                  },
+                },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['type', 'schemaRef'],
+                  properties: {
+                    type: { const: 'SCHEMA' },
+                    schemaRef: { type: 'string', minLength: 1, maxLength: 160 },
+                  },
+                },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['type', 'path'],
+                  properties: {
+                    type: { const: 'JSON_PATH_EXISTS' },
+                    path: { type: 'string', minLength: 1, maxLength: 500 },
+                  },
+                },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['type', 'path', 'expected'],
+                  properties: {
+                    type: { const: 'JSON_PATH_EQUALS' },
+                    path: { type: 'string', minLength: 1, maxLength: 500 },
+                    expected: {},
+                  },
+                },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['type', 'name'],
+                  properties: {
+                    type: { const: 'HEADER_EXISTS' },
+                    name: { type: 'string', minLength: 1, maxLength: 160 },
+                  },
+                },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['type', 'expected'],
+                  properties: {
+                    type: { const: 'CONTENT_TYPE' },
+                    expected: {
+                      type: 'array', minItems: 1, maxItems: 10,
+                      items: { type: 'string', minLength: 1, maxLength: 160 },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+          extract: {
+            type: 'array',
+            maxItems: 20,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'source', 'selector'],
+              properties: {
+                name: { type: 'string', minLength: 1, maxLength: 120 },
+                source: { type: 'string', enum: EXTRACT_SOURCES },
+                selector: { type: 'string', minLength: 1, maxLength: 500 },
+              },
+            },
+          },
           automationHints: {
             type: 'object',
             additionalProperties: false,
