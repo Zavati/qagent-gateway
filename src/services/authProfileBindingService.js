@@ -3,6 +3,7 @@ import {
   getAuthProfile,
   getAuthProfileBinding,
   listAuthProfileBindings,
+  listEnvironmentAuthProfileBindings,
   upsertAuthProfileBinding,
 } from '../repositories/authProfileRepository.js';
 import { getSecretMetadata } from '../repositories/secretRepository.js';
@@ -36,6 +37,11 @@ export async function listProjectAuthProfileEnvironmentBindings(env, organizatio
   await getOrganizationProject(env, organizationId, projectId);
   await requireProfile(env, organizationId, projectId, authProfileId);
   return (await listAuthProfileBindings(env, organizationId, projectId, authProfileId)).map(publicBinding);
+}
+
+export async function listProjectEnvironmentAuthProfileBindings(env, organizationId, projectId, environmentId) {
+  await getProjectEnvironment(env, organizationId, projectId, environmentId);
+  return (await listEnvironmentAuthProfileBindings(env, organizationId, projectId, environmentId)).map(publicBinding);
 }
 
 export async function getProjectAuthProfileEnvironmentBinding(env, organizationId, projectId, authProfileId, environmentId, options = {}) {

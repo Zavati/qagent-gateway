@@ -75,6 +75,14 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[7] === 'lifecycle-history') return { name: 'consoleCatalogEndpointLifecycleHistoryList', params };
     }
 
+    // Foundation 07.6.2 - deterministic Catalog -> Test Design context preview
+    if (segs.length === 8 && segs[4] === 'intelligence' && segs[5] === 'endpoints' && segs[7] === 'test-design-context' && normalizedMethod === 'GET') {
+      return {
+        name: 'consoleIntelligenceTestDesignContextGet',
+        params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) },
+      };
+    }
+
     // /v1/console/projects/:projectId/api-services
     if (segs.length === 5 && segs[4] === 'api-services') {
       const projectId = decodeURIComponent(segs[3]);
