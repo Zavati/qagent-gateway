@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apiqagent.com/contracts/test-design-model-output-v1.schema.json",
+  "title": "QAgent Test Design Model Output v1",
+  "description": "AI-controlled output only. Tenant scope, target endpoint, runtime service refs, auth profile refs, generation metadata and automation readiness are system-owned and intentionally absent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "objective", "scenarios"],
+  "properties": {
+    "title": { "type": "string", "minLength": 1, "maxLength": 260 },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 1200 },
+    "assumptions": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenarioId", "title", "objective", "category", "priority", "confidence", "grounding", "authRequirement", "request", "assertions"],
+        "properties": {
+          "scenarioId": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 80 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 260 },
+          "objective": { "type": "string", "minLength": 1, "maxLength": 1000 },
+          "category": { "type": "string", "enum": ["HAPPY_PATH", "NEGATIVE", "BOUNDARY", "SCHEMA_CONTRACT", "AUTHORIZATION", "STATUS_BEHAVIOR", "REGRESSION_CANDIDATE", "DATA_VARIATION"] },
+          "priority": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] },
+          "confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] },
+          "grounding": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["level", "rationale", "evidenceRefs", "schemaRefs"],
+            "properties": {
+              "level": { "type": "string", "enum": ["OBSERVED", "INFERRED", "ASSUMED"] },
+              "rationale": { "type": "array", "minItems": 1, "maxItems": 12, "items": { "type": "string", "maxLength": 500 } },
+              "evidenceRefs": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 160 } },
+              "schemaRefs": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 256 } }
+            }
+          },
+          "preconditions": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } },
+          "authRequirement": { "type": "string", "enum": ["NONE", "REQUIRED", "UNAUTHENTICATED"] },
+          "request": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "pathParams": { "type": "object" },
+              "query": { "type": "object" },
+              "headers": { "type": "object" },
+              "body": {}
+            }
+          },
+          "assertions": { "type": "array", "minItems": 1, "maxItems": 30, "items": { "type": "object" } },
+          "extract": { "type": "array", "maxItems": 20, "items": { "type": "object" } },
+          "automationHints": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "needsData": { "type": "boolean" },
+              "reviewRequired": { "type": "boolean" },
+              "reasons": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 500 } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

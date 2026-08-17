@@ -1,0 +1,786 @@
+export const TEST_DESIGN_CONTRACT_VERSION = 'qagent.test-design.v1';
+export const TEST_SPECIFICATION_VERSION = 'qagent.test-spec.v1';
+export const API_TEST_DSL_VERSION = 'qagent.api-test-dsl.v1';
+
+export const TEST_SCENARIO_CATEGORIES = Object.freeze([
+  'HAPPY_PATH',
+  'NEGATIVE',
+  'BOUNDARY',
+  'SCHEMA_CONTRACT',
+  'AUTHORIZATION',
+  'STATUS_BEHAVIOR',
+  'REGRESSION_CANDIDATE',
+  'DATA_VARIATION',
+]);
+
+export const TEST_PRIORITIES = Object.freeze(['HIGH', 'MEDIUM', 'LOW']);
+export const TEST_GROUNDING_LEVELS = Object.freeze(['OBSERVED', 'INFERRED', 'ASSUMED']);
+export const TEST_CONFIDENCE_LEVELS = Object.freeze(['HIGH', 'MEDIUM', 'LOW']);
+export const AUTOMATION_READINESS_LEVELS = Object.freeze([
+  'READY',
+  'NEEDS_DATA',
+  'NEEDS_AUTH',
+  'NEEDS_ENVIRONMENT',
+  'REVIEW_REQUIRED',
+]);
+export const AUTH_REQUIREMENTS = Object.freeze(['NONE', 'REQUIRED', 'UNAUTHENTICATED']);
+export const ASSERTION_TYPES = Object.freeze([
+  'STATUS',
+  'SCHEMA',
+  'JSON_PATH_EXISTS',
+  'JSON_PATH_EQUALS',
+  'HEADER_EXISTS',
+  'CONTENT_TYPE',
+]);
+export const EXTRACT_SOURCES = Object.freeze(['JSON_PATH', 'HEADER']);
+
+const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
+const SENSITIVE_HEADER_NAMES = new Set([
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'set-cookie',
+  'x-api-key',
+  'api-key',
+  'x-auth-token',
+]);
+
+const SENSITIVE_REQUEST_KEY_RE = /(?:password|passwd|secret|token|api[_-]?key|authorization|cookie|credential|private[_-]?key|client[_-]?secret)/i;
+
+const MODEL_OUTPUT_KEYS = new Set(['title', 'objective', 'assumptions', 'scenarios']);
+const MODEL_SCENARIO_KEYS = new Set([
+  'scenarioId',
+  'title',
+  'objective',
+  'category',
+  'priority',
+  'confidence',
+  'grounding',
+  'preconditions',
+  'authRequirement',
+  'request',
+  'assertions',
+  'extract',
+  'automationHints',
+]);
+
+export class TestDesignContractError extends Error {
+  constructor(message, { code = 'TEST_DESIGN_CONTRACT_INVALID', path = null, details = null } = {}) {
+    super(message);
+    this.name = 'TestDesignContractError';
+    this.code = code;
+    this.status = 422;
+    this.path = path;
+    this.details = details;
+  }
+}
+
+function fail(message, path, code = 'TEST_DESIGN_CONTRACT_INVALID', details = null) {
+  throw new TestDesignContractError(message, { code, path, details });
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function assertPlainObject(value, path) {
+  if (!isPlainObject(value)) fail('Objeto esperado.', path);
+}
+
+function assertString(value, path, { min = 1, max = 500 } = {}) {
+  if (typeof value !== 'string') fail('String esperada.', path);
+  const trimmed = value.trim();
+  if (trimmed.length < min) fail('Valor obrigatório.', path);
+  if (trimmed.length > max) fail(`Valor excede ${max} caracteres.`, path);
+  return trimmed;
+}
+
+function assertNullableString(value, path, { max = 500 } = {}) {
+  if (value == null) return null;
+  return assertString(value, path, { min: 1, max });
+}
+
+function assertFiniteNumber(value, path, { min = -Infinity, max = Infinity } = {}) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) fail('Número finito esperado.', path);
+  if (value < min || value > max) fail(`Número fora do intervalo permitido (${min}..${max}).`, path);
+  return value;
+}
+
+function assertInteger(value, path, { min = -Infinity, max = Infinity } = {}) {
+  if (!Number.isInteger(value)) fail('Inteiro esperado.', path);
+  if (value < min || value > max) fail(`Inteiro fora do intervalo permitido (${min}..${max}).`, path);
+  return value;
+}
+
+function assertEnum(value, allowed, path) {
+  if (!allowed.includes(value)) fail(`Valor inválido. Permitidos: ${allowed.join(', ')}.`, path);
+  return value;
+}
+
+function assertArray(value, path, { max = 50 } = {}) {
+  if (!Array.isArray(value)) fail('Array esperado.', path);
+  if (value.length > max) fail(`Array excede ${max} itens.`, path);
+  return value;
+}
+
+function assertStringArray(value, path, { maxItems = 20, maxLength = 500 } = {}) {
+  const arr = assertArray(value ?? [], path, { max: maxItems });
+  return arr.map((item, index) => assertString(item, `${path}[${index}]`, { max: maxLength }));
+}
+
+function assertKnownKeys(value, allowed, path) {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) fail(`Campo não permitido: ${key}.`, `${path}.${key}`, 'TEST_DESIGN_UNKNOWN_FIELD');
+  }
+}
+
+function assertUniqueStrings(values, path) {
+  const seen = new Set();
+  for (const value of values) {
+    if (seen.has(value)) fail(`Referência duplicada: ${value}.`, path, 'TEST_DESIGN_DUPLICATE_REFERENCE');
+    seen.add(value);
+  }
+}
+
+function assertJsonValue(value, path, depth = 0) {
+  if (depth > 12) fail('JSON excede profundidade máxima.', path, 'TEST_DESIGN_JSON_TOO_DEEP');
+  if (value == null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) fail('Número JSON inválido.', path);
+    return;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 100) fail('Array JSON excede 100 itens.', path);
+    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`, depth + 1));
+    return;
+  }
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value);
+    if (keys.length > 100) fail('Objeto JSON excede 100 propriedades.', path);
+    for (const key of keys) {
+      if (key.length > 160) fail('Nome de propriedade excede limite.', `${path}.${key}`);
+      assertJsonValue(value[key], `${path}.${key}`, depth + 1);
+    }
+    return;
+  }
+  fail('Valor não é JSON serializável.', path);
+}
+
+function assertNoSensitiveRequestKeys(value, path, depth = 0) {
+  if (depth > 12 || value == null) return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoSensitiveRequestKeys(item, `${path}[${index}]`, depth + 1));
+    return;
+  }
+  if (!isPlainObject(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    if (SENSITIVE_REQUEST_KEY_RE.test(key)) {
+      fail(`Campo sensível não pode ser materializado pelo Test Design: ${key}.`, `${path}.${key}`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+    }
+    assertNoSensitiveRequestKeys(child, `${path}.${key}`, depth + 1);
+  }
+}
+
+function assertRelativePath(pathValue, path = 'endpoint.normalizedPath') {
+  const value = assertString(pathValue, path, { max: 1000 });
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) || value.startsWith('//')) {
+    fail('Host/base URL não é permitido no Test DSL.', path, 'TEST_DESIGN_ABSOLUTE_URL_FORBIDDEN');
+  }
+  if (!value.startsWith('/')) fail('Path precisa começar com /.', path, 'TEST_DESIGN_TARGET_INVALID');
+  if (value.includes('#')) fail('Fragmento de URL não é permitido no path.', path, 'TEST_DESIGN_TARGET_INVALID');
+  return value;
+}
+
+function normalizeMethod(value, path = 'endpoint.method') {
+  const method = assertString(value, path, { max: 16 }).toUpperCase();
+  if (!HTTP_METHODS.has(method)) fail('Método HTTP não suportado.', path, 'TEST_DESIGN_METHOD_INVALID');
+  return method;
+}
+
+function validateRequestObject(request, path) {
+  assertPlainObject(request, path);
+  assertKnownKeys(request, new Set(['pathParams', 'query', 'headers', 'body']), path);
+
+  for (const field of ['pathParams', 'query', 'headers']) {
+    const value = request[field] ?? {};
+    assertPlainObject(value, `${path}.${field}`);
+    if (Object.keys(value).length > 50) fail(`${field} excede 50 entradas.`, `${path}.${field}`);
+    for (const [key, item] of Object.entries(value)) {
+      assertString(key, `${path}.${field}.<key>`, { max: 160 });
+      if (field === 'headers' && SENSITIVE_HEADER_NAMES.has(key.trim().toLowerCase())) {
+        fail(`Header sensível não pode ser definido pela IA: ${key}.`, `${path}.headers.${key}`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+      }
+      assertJsonValue(item, `${path}.${field}.${key}`);
+      if (field !== 'headers') assertNoSensitiveRequestKeys({ [key]: item }, `${path}.${field}`);
+    }
+  }
+
+  if ('body' in request) {
+    assertJsonValue(request.body, `${path}.body`);
+    assertNoSensitiveRequestKeys(request.body, `${path}.body`);
+  }
+}
+
+function validateAssertion(assertion, path, schemaRefs) {
+  assertPlainObject(assertion, path);
+  const type = assertEnum(assertion.type, ASSERTION_TYPES, `${path}.type`);
+
+  if (type === 'STATUS') {
+    assertKnownKeys(assertion, new Set(['type', 'expectedStatusCodes']), path);
+    const codes = assertArray(assertion.expectedStatusCodes, `${path}.expectedStatusCodes`, { max: 12 });
+    if (!codes.length) fail('STATUS precisa de ao menos um status code.', `${path}.expectedStatusCodes`);
+    codes.forEach((code, index) => assertInteger(code, `${path}.expectedStatusCodes[${index}]`, { min: 100, max: 599 }));
+    return;
+  }
+
+  if (type === 'SCHEMA') {
+    assertKnownKeys(assertion, new Set(['type', 'schemaRef']), path);
+    const ref = assertString(assertion.schemaRef, `${path}.schemaRef`, { max: 160 });
+    if (!schemaRefs.has(ref)) fail('schemaRef não existe no contexto fornecido.', `${path}.schemaRef`, 'TEST_DESIGN_GROUNDING_REFERENCE_UNKNOWN');
+    return;
+  }
+
+  if (type === 'JSON_PATH_EXISTS') {
+    assertKnownKeys(assertion, new Set(['type', 'path']), path);
+    assertString(assertion.path, `${path}.path`, { max: 500 });
+    return;
+  }
+
+  if (type === 'JSON_PATH_EQUALS') {
+    assertKnownKeys(assertion, new Set(['type', 'path', 'expected']), path);
+    assertString(assertion.path, `${path}.path`, { max: 500 });
+    assertJsonValue(assertion.expected, `${path}.expected`);
+    return;
+  }
+
+  if (type === 'HEADER_EXISTS') {
+    assertKnownKeys(assertion, new Set(['type', 'name']), path);
+    const headerName = assertString(assertion.name, `${path}.name`, { max: 160 });
+    if (SENSITIVE_HEADER_NAMES.has(headerName.toLowerCase())) {
+      fail('Assertions sobre headers sensíveis não são permitidas no draft de IA.', `${path}.name`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+    }
+    return;
+  }
+
+  if (type === 'CONTENT_TYPE') {
+    assertKnownKeys(assertion, new Set(['type', 'expected']), path);
+    const expected = assertStringArray(assertion.expected, `${path}.expected`, { maxItems: 10, maxLength: 160 });
+    if (!expected.length) fail('CONTENT_TYPE precisa de ao menos um valor.', `${path}.expected`);
+  }
+}
+
+function validateExtract(extract, path) {
+  assertPlainObject(extract, path);
+  assertKnownKeys(extract, new Set(['name', 'source', 'selector']), path);
+  assertString(extract.name, `${path}.name`, { max: 120 });
+  assertEnum(extract.source, EXTRACT_SOURCES, `${path}.source`);
+  const selector = assertString(extract.selector, `${path}.selector`, { max: 500 });
+  if (extract.source === 'HEADER' && SENSITIVE_HEADER_NAMES.has(selector.toLowerCase())) {
+    fail('Extração de headers sensíveis não é permitida.', `${path}.selector`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+  }
+}
+
+function collectContextReferences(context) {
+  const evidenceRefs = new Set();
+  const schemaRefs = new Set();
+
+  for (const evidence of context.evidence || []) {
+    if (typeof evidence?.evidenceId === 'string' && evidence.evidenceId) evidenceRefs.add(evidence.evidenceId);
+  }
+
+  for (const schema of context.schemas || []) {
+    for (const candidate of [schema?.trackId, schema?.currentVersionId, schema?.currentSchemaHash]) {
+      if (typeof candidate === 'string' && candidate) schemaRefs.add(candidate);
+    }
+    for (const version of schema?.versions || []) {
+      for (const candidate of [version?.versionId, version?.schemaHash]) {
+        if (typeof candidate === 'string' && candidate) schemaRefs.add(candidate);
+      }
+    }
+  }
+
+  return { evidenceRefs, schemaRefs };
+}
+
+export function validateCatalogTestDesignContextV1(context) {
+  assertPlainObject(context, 'context');
+  assertKnownKeys(context, new Set([
+    'contractVersion',
+    'organizationId',
+    'projectId',
+    'endpoint',
+    'schemas',
+    'evidence',
+    'environments',
+    'runtime',
+  ]), 'context');
+
+  if (context.contractVersion !== TEST_DESIGN_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser ${TEST_DESIGN_CONTRACT_VERSION}.`, 'context.contractVersion', 'TEST_DESIGN_VERSION_UNSUPPORTED');
+  }
+
+  assertString(context.organizationId, 'context.organizationId', { max: 128 });
+  assertString(context.projectId, 'context.projectId', { max: 128 });
+
+  assertPlainObject(context.endpoint, 'context.endpoint');
+  assertKnownKeys(context.endpoint, new Set([
+    'endpointId', 'serviceId', 'serviceName', 'classification', 'classificationConfidence',
+    'method', 'normalizedPath', 'discoveryConfidenceScore', 'discoveryConfidenceLevel',
+    'lifecycleState', 'observationCount', 'sessionCount', 'environmentCount', 'successRatePct',
+    'latencyAvgMs', 'firstSeenAt', 'lastSeenAt',
+  ]), 'context.endpoint');
+
+  assertString(context.endpoint.endpointId, 'context.endpoint.endpointId', { max: 160 });
+  assertNullableString(context.endpoint.serviceId, 'context.endpoint.serviceId', { max: 160 });
+  assertNullableString(context.endpoint.serviceName, 'context.endpoint.serviceName', { max: 260 });
+  normalizeMethod(context.endpoint.method, 'context.endpoint.method');
+  assertRelativePath(context.endpoint.normalizedPath, 'context.endpoint.normalizedPath');
+
+  if (context.endpoint.classification != null) assertString(context.endpoint.classification, 'context.endpoint.classification', { max: 80 });
+  if (context.endpoint.classificationConfidence != null) assertFiniteNumber(context.endpoint.classificationConfidence, 'context.endpoint.classificationConfidence', { min: 0, max: 100 });
+  if (context.endpoint.discoveryConfidenceScore != null) assertFiniteNumber(context.endpoint.discoveryConfidenceScore, 'context.endpoint.discoveryConfidenceScore', { min: 0, max: 100 });
+  if (context.endpoint.discoveryConfidenceLevel != null) assertString(context.endpoint.discoveryConfidenceLevel, 'context.endpoint.discoveryConfidenceLevel', { max: 40 });
+  if (context.endpoint.lifecycleState != null) assertString(context.endpoint.lifecycleState, 'context.endpoint.lifecycleState', { max: 40 });
+  for (const field of ['observationCount', 'sessionCount', 'environmentCount']) {
+    if (context.endpoint[field] != null) assertInteger(context.endpoint[field], `context.endpoint.${field}`, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  }
+  if (context.endpoint.successRatePct != null) assertFiniteNumber(context.endpoint.successRatePct, 'context.endpoint.successRatePct', { min: 0, max: 100 });
+  if (context.endpoint.latencyAvgMs != null) assertFiniteNumber(context.endpoint.latencyAvgMs, 'context.endpoint.latencyAvgMs', { min: 0, max: 86_400_000 });
+
+  const schemas = assertArray(context.schemas ?? [], 'context.schemas', { max: 30 });
+  schemas.forEach((schema, index) => {
+    const path = `context.schemas[${index}]`;
+    assertPlainObject(schema, path);
+    assertKnownKeys(schema, new Set([
+      'trackId', 'direction', 'statusCode', 'currentVersionId', 'currentSchemaHash',
+      'contentTypes', 'schema', 'versions',
+    ]), path);
+    assertString(schema.trackId, `${path}.trackId`, { max: 160 });
+    assertEnum(schema.direction, ['REQUEST', 'RESPONSE'], `${path}.direction`);
+    if (schema.statusCode != null) assertInteger(schema.statusCode, `${path}.statusCode`, { min: 100, max: 599 });
+    assertNullableString(schema.currentVersionId, `${path}.currentVersionId`, { max: 160 });
+    assertNullableString(schema.currentSchemaHash, `${path}.currentSchemaHash`, { max: 256 });
+    assertStringArray(schema.contentTypes ?? [], `${path}.contentTypes`, { maxItems: 20, maxLength: 160 });
+    if ('schema' in schema) assertJsonValue(schema.schema, `${path}.schema`);
+    const versions = assertArray(schema.versions ?? [], `${path}.versions`, { max: 20 });
+    versions.forEach((version, versionIndex) => {
+      const vPath = `${path}.versions[${versionIndex}]`;
+      assertPlainObject(version, vPath);
+      assertKnownKeys(version, new Set(['versionId', 'schemaHash', 'observationCount', 'introducedAt']), vPath);
+      assertString(version.versionId, `${vPath}.versionId`, { max: 160 });
+      assertString(version.schemaHash, `${vPath}.schemaHash`, { max: 256 });
+      if (version.observationCount != null) assertInteger(version.observationCount, `${vPath}.observationCount`, { min: 0, max: Number.MAX_SAFE_INTEGER });
+      if (version.introducedAt != null) assertString(version.introducedAt, `${vPath}.introducedAt`, { max: 64 });
+    });
+  });
+
+  const evidence = assertArray(context.evidence ?? [], 'context.evidence', { max: 50 });
+  evidence.forEach((item, index) => {
+    const path = `context.evidence[${index}]`;
+    assertPlainObject(item, path);
+    assertKnownKeys(item, new Set([
+      'evidenceId', 'observedAt', 'environmentId', 'outcome', 'statusCode', 'latencyMs',
+      'sourceHost', 'sessionId', 'requestSchemaVersionId', 'responseSchemaVersionId',
+    ]), path);
+    assertString(item.evidenceId, `${path}.evidenceId`, { max: 160 });
+    assertString(item.observedAt, `${path}.observedAt`, { max: 64 });
+    assertNullableString(item.environmentId, `${path}.environmentId`, { max: 160 });
+    assertNullableString(item.outcome, `${path}.outcome`, { max: 80 });
+    if (item.statusCode != null) assertInteger(item.statusCode, `${path}.statusCode`, { min: 100, max: 599 });
+    if (item.latencyMs != null) assertFiniteNumber(item.latencyMs, `${path}.latencyMs`, { min: 0, max: 86_400_000 });
+    assertNullableString(item.sourceHost, `${path}.sourceHost`, { max: 500 });
+    assertNullableString(item.sessionId, `${path}.sessionId`, { max: 160 });
+    assertNullableString(item.requestSchemaVersionId, `${path}.requestSchemaVersionId`, { max: 160 });
+    assertNullableString(item.responseSchemaVersionId, `${path}.responseSchemaVersionId`, { max: 160 });
+  });
+
+  const environments = assertArray(context.environments ?? [], 'context.environments', { max: 30 });
+  environments.forEach((environment, index) => {
+    const path = `context.environments[${index}]`;
+    assertPlainObject(environment, path);
+    assertKnownKeys(environment, new Set(['environmentId', 'name', 'observationCount', 'successRatePct', 'lastSeenAt']), path);
+    assertString(environment.environmentId, `${path}.environmentId`, { max: 160 });
+    assertNullableString(environment.name, `${path}.name`, { max: 160 });
+    if (environment.observationCount != null) assertInteger(environment.observationCount, `${path}.observationCount`, { min: 0, max: Number.MAX_SAFE_INTEGER });
+    if (environment.successRatePct != null) assertFiniteNumber(environment.successRatePct, `${path}.successRatePct`, { min: 0, max: 100 });
+    if (environment.lastSeenAt != null) assertString(environment.lastSeenAt, `${path}.lastSeenAt`, { max: 64 });
+  });
+
+  const runtime = context.runtime ?? {};
+  assertPlainObject(runtime, 'context.runtime');
+  assertKnownKeys(runtime, new Set(['apiServiceKey', 'defaultAuthProfileRef', 'availableAuthProfileRefs']), 'context.runtime');
+  assertNullableString(runtime.apiServiceKey, 'context.runtime.apiServiceKey', { max: 120 });
+  assertNullableString(runtime.defaultAuthProfileRef, 'context.runtime.defaultAuthProfileRef', { max: 160 });
+  const authRefs = assertStringArray(runtime.availableAuthProfileRefs ?? [], 'context.runtime.availableAuthProfileRefs', { maxItems: 30, maxLength: 160 });
+  assertUniqueStrings(authRefs, 'context.runtime.availableAuthProfileRefs');
+  if (runtime.defaultAuthProfileRef && !authRefs.includes(runtime.defaultAuthProfileRef)) {
+    fail('defaultAuthProfileRef precisa existir em availableAuthProfileRefs.', 'context.runtime.defaultAuthProfileRef', 'TEST_DESIGN_AUTH_PROFILE_UNKNOWN');
+  }
+
+  const refs = collectContextReferences(context);
+  assertUniqueStrings([...refs.evidenceRefs], 'context.evidence');
+  assertUniqueStrings([...refs.schemaRefs], 'context.schemas');
+  return context;
+}
+
+function validateGrounding(grounding, path, refs) {
+  assertPlainObject(grounding, path);
+  assertKnownKeys(grounding, new Set(['level', 'rationale', 'evidenceRefs', 'schemaRefs']), path);
+  const level = assertEnum(grounding.level, TEST_GROUNDING_LEVELS, `${path}.level`);
+  const rationale = assertStringArray(grounding.rationale ?? [], `${path}.rationale`, { maxItems: 12, maxLength: 500 });
+  if (!rationale.length) fail('Grounding precisa de rationale.', `${path}.rationale`, 'TEST_DESIGN_GROUNDING_REQUIRED');
+  const evidenceRefs = assertStringArray(grounding.evidenceRefs ?? [], `${path}.evidenceRefs`, { maxItems: 20, maxLength: 160 });
+  const schemaRefs = assertStringArray(grounding.schemaRefs ?? [], `${path}.schemaRefs`, { maxItems: 20, maxLength: 256 });
+  assertUniqueStrings(evidenceRefs, `${path}.evidenceRefs`);
+  assertUniqueStrings(schemaRefs, `${path}.schemaRefs`);
+
+  for (const ref of evidenceRefs) {
+    if (!refs.evidenceRefs.has(ref)) fail(`Evidence ref desconhecida: ${ref}.`, `${path}.evidenceRefs`, 'TEST_DESIGN_GROUNDING_REFERENCE_UNKNOWN');
+  }
+  for (const ref of schemaRefs) {
+    if (!refs.schemaRefs.has(ref)) fail(`Schema ref desconhecida: ${ref}.`, `${path}.schemaRefs`, 'TEST_DESIGN_GROUNDING_REFERENCE_UNKNOWN');
+  }
+
+  if (level === 'OBSERVED' && evidenceRefs.length + schemaRefs.length === 0) {
+    fail('Grounding OBSERVED exige evidenceRefs ou schemaRefs reais.', path, 'TEST_DESIGN_GROUNDING_REQUIRED');
+  }
+}
+
+export function validateTestDesignModelOutputV1(output, context) {
+  validateCatalogTestDesignContextV1(context);
+  assertPlainObject(output, 'modelOutput');
+  assertKnownKeys(output, MODEL_OUTPUT_KEYS, 'modelOutput');
+
+  assertString(output.title, 'modelOutput.title', { max: 260 });
+  assertString(output.objective, 'modelOutput.objective', { max: 1200 });
+  assertStringArray(output.assumptions ?? [], 'modelOutput.assumptions', { maxItems: 20, maxLength: 500 });
+
+  const scenarios = assertArray(output.scenarios, 'modelOutput.scenarios', { max: 20 });
+  if (!scenarios.length) fail('Ao menos um cenário é obrigatório.', 'modelOutput.scenarios');
+
+  const refs = collectContextReferences(context);
+  const scenarioIds = new Set();
+
+  scenarios.forEach((scenario, index) => {
+    const path = `modelOutput.scenarios[${index}]`;
+    assertPlainObject(scenario, path);
+    assertKnownKeys(scenario, MODEL_SCENARIO_KEYS, path);
+
+    const scenarioId = assertString(scenario.scenarioId, `${path}.scenarioId`, { max: 80 });
+    if (!/^[A-Za-z0-9_-]+$/.test(scenarioId)) fail('scenarioId contém caracteres inválidos.', `${path}.scenarioId`);
+    if (scenarioIds.has(scenarioId)) fail('scenarioId duplicado.', `${path}.scenarioId`, 'TEST_DESIGN_DUPLICATE_SCENARIO');
+    scenarioIds.add(scenarioId);
+
+    assertString(scenario.title, `${path}.title`, { max: 260 });
+    assertString(scenario.objective, `${path}.objective`, { max: 1000 });
+    assertEnum(scenario.category, TEST_SCENARIO_CATEGORIES, `${path}.category`);
+    assertEnum(scenario.priority, TEST_PRIORITIES, `${path}.priority`);
+    const confidence = assertEnum(scenario.confidence, TEST_CONFIDENCE_LEVELS, `${path}.confidence`);
+    validateGrounding(scenario.grounding, `${path}.grounding`, refs);
+    if (scenario.grounding.level === 'ASSUMED' && confidence === 'HIGH') {
+      fail('Cenário ASSUMED não pode declarar confidence HIGH.', `${path}.confidence`, 'TEST_DESIGN_CONFIDENCE_INCONSISTENT');
+    }
+
+    assertStringArray(scenario.preconditions ?? [], `${path}.preconditions`, { maxItems: 20, maxLength: 500 });
+    assertEnum(scenario.authRequirement, AUTH_REQUIREMENTS, `${path}.authRequirement`);
+    validateRequestObject(scenario.request ?? {}, `${path}.request`);
+
+    const assertions = assertArray(scenario.assertions ?? [], `${path}.assertions`, { max: 30 });
+    if (!assertions.length) fail('Cenário precisa de ao menos uma assertion.', `${path}.assertions`);
+    assertions.forEach((assertion, assertionIndex) => validateAssertion(assertion, `${path}.assertions[${assertionIndex}]`, refs.schemaRefs));
+
+    const extract = assertArray(scenario.extract ?? [], `${path}.extract`, { max: 20 });
+    extract.forEach((item, extractIndex) => validateExtract(item, `${path}.extract[${extractIndex}]`));
+
+    const hints = scenario.automationHints ?? {};
+    assertPlainObject(hints, `${path}.automationHints`);
+    assertKnownKeys(hints, new Set(['needsData', 'reviewRequired', 'reasons']), `${path}.automationHints`);
+    if ('needsData' in hints && typeof hints.needsData !== 'boolean') fail('needsData deve ser boolean.', `${path}.automationHints.needsData`);
+    if ('reviewRequired' in hints && typeof hints.reviewRequired !== 'boolean') fail('reviewRequired deve ser boolean.', `${path}.automationHints.reviewRequired`);
+    assertStringArray(hints.reasons ?? [], `${path}.automationHints.reasons`, { maxItems: 10, maxLength: 500 });
+  });
+
+  return output;
+}
+
+function computeAutomationReadiness(scenario, context) {
+  const runtime = context.runtime || {};
+  const blockers = [];
+
+  if (!runtime.apiServiceKey) {
+    blockers.push('Nenhum API Service de runtime está associado ao endpoint descoberto.');
+    return { readiness: 'NEEDS_ENVIRONMENT', blockers };
+  }
+
+  if (scenario.authRequirement === 'REQUIRED' && !runtime.defaultAuthProfileRef) {
+    blockers.push('O cenário requer autenticação, mas não há Auth Profile selecionado.');
+    return { readiness: 'NEEDS_AUTH', blockers };
+  }
+
+  if (scenario.automationHints?.needsData) {
+    blockers.push(...(scenario.automationHints?.reasons || ['O cenário requer dados de teste adicionais.']));
+    return { readiness: 'NEEDS_DATA', blockers };
+  }
+
+  if (scenario.automationHints?.reviewRequired || scenario.grounding?.level === 'ASSUMED') {
+    blockers.push(...(scenario.automationHints?.reasons || ['O cenário contém hipótese que precisa de revisão humana.']));
+    return { readiness: 'REVIEW_REQUIRED', blockers };
+  }
+
+  return { readiness: 'READY', blockers: [] };
+}
+
+function buildSummary(scenarios) {
+  const byCategory = {};
+  const byReadiness = {};
+  const byGrounding = {};
+  for (const scenario of scenarios) {
+    byCategory[scenario.category] = (byCategory[scenario.category] || 0) + 1;
+    byReadiness[scenario.automation.readiness] = (byReadiness[scenario.automation.readiness] || 0) + 1;
+    byGrounding[scenario.grounding.level] = (byGrounding[scenario.grounding.level] || 0) + 1;
+  }
+  return {
+    scenarioCount: scenarios.length,
+    readyCount: byReadiness.READY || 0,
+    byCategory,
+    byReadiness,
+    byGrounding,
+  };
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+export function buildTestSpecificationV1({ context, modelOutput, generation }) {
+  validateTestDesignModelOutputV1(modelOutput, context);
+  assertPlainObject(generation, 'generation');
+  assertKnownKeys(generation, new Set(['provider', 'model', 'generatedAt', 'contextFingerprint']), 'generation');
+
+  const provider = assertString(generation.provider, 'generation.provider', { max: 80 });
+  const model = assertString(generation.model, 'generation.model', { max: 160 });
+  const generatedAt = assertString(generation.generatedAt, 'generation.generatedAt', { max: 64 });
+  const contextFingerprint = assertString(generation.contextFingerprint, 'generation.contextFingerprint', { max: 256 });
+
+  const method = normalizeMethod(context.endpoint.method);
+  const path = assertRelativePath(context.endpoint.normalizedPath);
+  const apiServiceKey = context.runtime?.apiServiceKey || null;
+  const defaultAuthProfileRef = context.runtime?.defaultAuthProfileRef || null;
+
+  const scenarios = modelOutput.scenarios.map((scenario) => {
+    const automation = computeAutomationReadiness(scenario, context);
+    return {
+      scenarioId: scenario.scenarioId,
+      title: scenario.title.trim(),
+      objective: scenario.objective.trim(),
+      category: scenario.category,
+      priority: scenario.priority,
+      confidence: scenario.confidence,
+      grounding: cloneJson(scenario.grounding),
+      automation,
+      preconditions: cloneJson(scenario.preconditions || []),
+      spec: {
+        dslVersion: API_TEST_DSL_VERSION,
+        type: 'api',
+        target: {
+          catalogEndpointId: context.endpoint.endpointId,
+          apiServiceKey,
+          method,
+          path,
+        },
+        auth: {
+          requirement: scenario.authRequirement,
+          authProfileRef: scenario.authRequirement === 'REQUIRED' ? defaultAuthProfileRef : null,
+        },
+        request: cloneJson(scenario.request || { pathParams: {}, query: {}, headers: {}, body: null }),
+        assertions: cloneJson(scenario.assertions || []),
+        extract: cloneJson(scenario.extract || []),
+      },
+    };
+  });
+
+  return {
+    contractVersion: TEST_DESIGN_CONTRACT_VERSION,
+    specificationVersion: TEST_SPECIFICATION_VERSION,
+    source: {
+      type: 'CATALOG_ENDPOINT',
+      organizationId: context.organizationId,
+      projectId: context.projectId,
+      endpointId: context.endpoint.endpointId,
+    },
+    title: modelOutput.title.trim(),
+    objective: modelOutput.objective.trim(),
+    assumptions: cloneJson(modelOutput.assumptions || []),
+    summary: buildSummary(scenarios),
+    scenarios,
+    generation: {
+      mode: 'AI',
+      provider,
+      model,
+      generatedAt,
+      contextFingerprint,
+    },
+  };
+}
+
+export function validateTestSpecificationV1(specification, context) {
+  validateCatalogTestDesignContextV1(context);
+  assertPlainObject(specification, 'specification');
+  assertKnownKeys(specification, new Set([
+    'contractVersion', 'specificationVersion', 'source', 'title', 'objective', 'assumptions',
+    'summary', 'scenarios', 'generation',
+  ]), 'specification');
+  if (specification.contractVersion !== TEST_DESIGN_CONTRACT_VERSION) fail('Contract version inválida.', 'specification.contractVersion');
+  if (specification.specificationVersion !== TEST_SPECIFICATION_VERSION) fail('Specification version inválida.', 'specification.specificationVersion');
+
+  assertPlainObject(specification.source, 'specification.source');
+  if (specification.source.type !== 'CATALOG_ENDPOINT') fail('Source type inválido.', 'specification.source.type');
+  if (specification.source.organizationId !== context.organizationId) fail('organizationId divergente do contexto.', 'specification.source.organizationId', 'TEST_DESIGN_SCOPE_MISMATCH');
+  if (specification.source.projectId !== context.projectId) fail('projectId divergente do contexto.', 'specification.source.projectId', 'TEST_DESIGN_SCOPE_MISMATCH');
+  if (specification.source.endpointId !== context.endpoint.endpointId) fail('endpointId divergente do contexto.', 'specification.source.endpointId', 'TEST_DESIGN_SCOPE_MISMATCH');
+
+  assertString(specification.title, 'specification.title', { max: 260 });
+  assertString(specification.objective, 'specification.objective', { max: 1200 });
+  assertStringArray(specification.assumptions ?? [], 'specification.assumptions', { maxItems: 20, maxLength: 500 });
+
+  assertPlainObject(specification.generation, 'specification.generation');
+  assertKnownKeys(specification.generation, new Set(['mode', 'provider', 'model', 'generatedAt', 'contextFingerprint']), 'specification.generation');
+  if (specification.generation.mode !== 'AI') fail('Generation mode inválido.', 'specification.generation.mode');
+  assertString(specification.generation.provider, 'specification.generation.provider', { max: 80 });
+  assertString(specification.generation.model, 'specification.generation.model', { max: 160 });
+  assertString(specification.generation.generatedAt, 'specification.generation.generatedAt', { max: 64 });
+  assertString(specification.generation.contextFingerprint, 'specification.generation.contextFingerprint', { max: 256 });
+
+  const refs = collectContextReferences(context);
+  const scenarios = assertArray(specification.scenarios, 'specification.scenarios', { max: 20 });
+  if (!scenarios.length) fail('Specification sem cenários.', 'specification.scenarios');
+
+  for (let index = 0; index < scenarios.length; index++) {
+    const scenario = scenarios[index];
+    const path = `specification.scenarios[${index}]`;
+    assertPlainObject(scenario, path);
+    assertKnownKeys(scenario, new Set([
+      'scenarioId', 'title', 'objective', 'category', 'priority', 'confidence', 'grounding',
+      'automation', 'preconditions', 'spec',
+    ]), path);
+    assertString(scenario.scenarioId, `${path}.scenarioId`, { max: 80 });
+    assertString(scenario.title, `${path}.title`, { max: 260 });
+    assertString(scenario.objective, `${path}.objective`, { max: 1000 });
+    assertStringArray(scenario.preconditions ?? [], `${path}.preconditions`, { maxItems: 20, maxLength: 500 });
+    assertEnum(scenario.category, TEST_SCENARIO_CATEGORIES, `${path}.category`);
+    assertEnum(scenario.priority, TEST_PRIORITIES, `${path}.priority`);
+    assertEnum(scenario.confidence, TEST_CONFIDENCE_LEVELS, `${path}.confidence`);
+    validateGrounding(scenario.grounding, `${path}.grounding`, refs);
+    assertPlainObject(scenario.automation, `${path}.automation`);
+    assertEnum(scenario.automation.readiness, AUTOMATION_READINESS_LEVELS, `${path}.automation.readiness`);
+    assertStringArray(scenario.automation.blockers ?? [], `${path}.automation.blockers`, { maxItems: 10, maxLength: 500 });
+
+    assertPlainObject(scenario.spec, `${path}.spec`);
+    if (scenario.spec.dslVersion !== API_TEST_DSL_VERSION) fail('DSL version inválida.', `${path}.spec.dslVersion`);
+    if (scenario.spec.type !== 'api') fail('Somente API Test DSL é suportada nesta versão.', `${path}.spec.type`);
+    assertKnownKeys(scenario.spec, new Set(['dslVersion', 'type', 'target', 'auth', 'request', 'assertions', 'extract']), `${path}.spec`);
+    assertPlainObject(scenario.spec.target, `${path}.spec.target`);
+    assertKnownKeys(scenario.spec.target, new Set(['catalogEndpointId', 'apiServiceKey', 'method', 'path']), `${path}.spec.target`);
+    if (scenario.spec.target.catalogEndpointId !== context.endpoint.endpointId) fail('Target endpoint foi alterado.', `${path}.spec.target.catalogEndpointId`, 'TEST_DESIGN_SCOPE_MISMATCH');
+    if (normalizeMethod(scenario.spec.target.method, `${path}.spec.target.method`) !== normalizeMethod(context.endpoint.method)) fail('Método divergente do Catalog.', `${path}.spec.target.method`, 'TEST_DESIGN_TARGET_MISMATCH');
+    if (assertRelativePath(scenario.spec.target.path, `${path}.spec.target.path`) !== context.endpoint.normalizedPath) fail('Path divergente do Catalog.', `${path}.spec.target.path`, 'TEST_DESIGN_TARGET_MISMATCH');
+    if ((scenario.spec.target.apiServiceKey || null) !== (context.runtime?.apiServiceKey || null)) fail('Runtime API Service não pode ser inventado pelo Test Design.', `${path}.spec.target.apiServiceKey`, 'TEST_DESIGN_RUNTIME_SERVICE_MISMATCH');
+
+    assertPlainObject(scenario.spec.auth, `${path}.spec.auth`);
+    assertKnownKeys(scenario.spec.auth, new Set(['requirement', 'authProfileRef']), `${path}.spec.auth`);
+    assertEnum(scenario.spec.auth.requirement, AUTH_REQUIREMENTS, `${path}.spec.auth.requirement`);
+    const authProfileRef = scenario.spec.auth.authProfileRef || null;
+    if (authProfileRef && !(context.runtime?.availableAuthProfileRefs || []).includes(authProfileRef)) {
+      fail('Auth Profile não pertence ao contexto permitido.', `${path}.spec.auth.authProfileRef`, 'TEST_DESIGN_AUTH_PROFILE_UNKNOWN');
+    }
+    if (!context.runtime?.apiServiceKey && scenario.automation.readiness !== 'NEEDS_ENVIRONMENT') {
+      fail('Readiness deve ser NEEDS_ENVIRONMENT sem API Service configurado.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
+    }
+    if (context.runtime?.apiServiceKey && scenario.spec.auth.requirement === 'REQUIRED' && !authProfileRef && scenario.automation.readiness !== 'NEEDS_AUTH') {
+      fail('Readiness deve ser NEEDS_AUTH quando autenticação é obrigatória sem Auth Profile.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
+    }
+    if (scenario.grounding.level === 'ASSUMED' && !['REVIEW_REQUIRED', 'NEEDS_ENVIRONMENT', 'NEEDS_AUTH', 'NEEDS_DATA'].includes(scenario.automation.readiness)) {
+      fail('Cenário ASSUMED não pode ser READY.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
+    }
+
+    validateRequestObject(scenario.spec.request, `${path}.spec.request`);
+    const assertions = assertArray(scenario.spec.assertions, `${path}.spec.assertions`, { max: 30 });
+    if (!assertions.length) fail('Specification scenario precisa de ao menos uma assertion.', `${path}.spec.assertions`);
+    assertions.forEach((assertion, assertionIndex) => validateAssertion(assertion, `${path}.spec.assertions[${assertionIndex}]`, refs.schemaRefs));
+    const extract = assertArray(scenario.spec.extract ?? [], `${path}.spec.extract`, { max: 20 });
+    extract.forEach((item, extractIndex) => validateExtract(item, `${path}.spec.extract[${extractIndex}]`));
+  }
+
+  const expectedSummary = buildSummary(scenarios);
+  if (JSON.stringify(specification.summary) !== JSON.stringify(expectedSummary)) {
+    fail('Summary divergente dos cenários; summary é system-owned.', 'specification.summary', 'TEST_DESIGN_SUMMARY_MISMATCH');
+  }
+
+  return specification;
+}
+
+export const TEST_DESIGN_MODEL_OUTPUT_JSON_SCHEMA_V1 = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'objective', 'scenarios'],
+  properties: {
+    title: { type: 'string', minLength: 1, maxLength: 260 },
+    objective: { type: 'string', minLength: 1, maxLength: 1200 },
+    assumptions: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 500 } },
+    scenarios: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 20,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'scenarioId', 'title', 'objective', 'category', 'priority', 'confidence',
+          'grounding', 'authRequirement', 'request', 'assertions',
+        ],
+        properties: {
+          scenarioId: { type: 'string', pattern: '^[A-Za-z0-9_-]+$', maxLength: 80 },
+          title: { type: 'string', minLength: 1, maxLength: 260 },
+          objective: { type: 'string', minLength: 1, maxLength: 1000 },
+          category: { type: 'string', enum: TEST_SCENARIO_CATEGORIES },
+          priority: { type: 'string', enum: TEST_PRIORITIES },
+          confidence: { type: 'string', enum: TEST_CONFIDENCE_LEVELS },
+          grounding: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['level', 'rationale', 'evidenceRefs', 'schemaRefs'],
+            properties: {
+              level: { type: 'string', enum: TEST_GROUNDING_LEVELS },
+              rationale: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'string', maxLength: 500 } },
+              evidenceRefs: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 160 } },
+              schemaRefs: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 256 } },
+            },
+          },
+          preconditions: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 500 } },
+          authRequirement: { type: 'string', enum: AUTH_REQUIREMENTS },
+          request: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              pathParams: { type: 'object' },
+              query: { type: 'object' },
+              headers: { type: 'object' },
+              body: {},
+            },
+          },
+          assertions: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object' } },
+          extract: { type: 'array', maxItems: 20, items: { type: 'object' } },
+          automationHints: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              needsData: { type: 'boolean' },
+              reviewRequired: { type: 'boolean' },
+              reasons: { type: 'array', maxItems: 10, items: { type: 'string', maxLength: 500 } },
+            },
+          },
+        },
+      },
+    },
+  },
+});

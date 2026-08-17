@@ -11,7 +11,7 @@
     "test:integration": "pwsh -File test/run-integration-tests.ps1",
     "test:generate": "node test/test-generateTests.js",
     "test:router": "node test/test-router.js",
-    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant",
+    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1",
     "test:ai": "node test/test-ai-engine.js",
     "test:autofill-ai": "node test/test-autofill-ai-service.js",
     "test:openai-provider": "node test/test-openai-provider.js",
@@ -31,7 +31,8 @@
     "test:signup-tenant": "node test/test-signup-tenant-provisioning.js",
     "test:observation-grant": "node test/test-observation-grant.js",
     "test:catalog-proxy": "node test/test-catalog-query-proxy.js",
-    "check:07.5.12-a": "node scripts/verify-catalog-proxy-config.mjs && npm run test:router && npm run test:catalog-proxy"
+    "check:07.5.12-a": "node scripts/verify-catalog-proxy-config.mjs && npm run test:router && npm run test:catalog-proxy",
+    "test:f07-6-1": "node test/test-foundation-07-6-1-test-design-contract.js"
   },
   "keywords": [],
   "author": "",
