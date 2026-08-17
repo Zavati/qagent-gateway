@@ -5,7 +5,7 @@ import {
   generateCatalogTestDesignV1,
 } from '../src/intelligence/testDesignService.js';
 import { buildTestDesignPromptV1, TEST_DESIGN_PROMPT_VERSION } from '../src/intelligence/testDesignPrompt.js';
-import { validateTestSpecificationV1 } from '../src/intelligence/testDesignContract.js';
+import { normalizeTestDesignModelOutputV1, validateTestSpecificationV1 } from '../src/intelligence/testDesignContract.js';
 
 const context = {
   contractVersion: 'qagent.test-design.v1',
@@ -295,6 +295,63 @@ await assert.rejects(
     resolveAiConfig: async () => ({ source: 'env', provider: 'gemini', model: 'gemini-test', credentials: { apiKey: 'x' } }),
   }),
   (error) => error?.code === 'AI_UPSTREAM_ERROR',
+);
+
+
+const confidenceVariants = [
+  [0.92, 'HIGH'],
+  ['92%', 'HIGH'],
+  ['high', 'HIGH'],
+  ['VERY_HIGH', 'HIGH'],
+  [0.63, 'MEDIUM'],
+  ['moderate', 'MEDIUM'],
+  ['média', 'MEDIUM'],
+  [0.31, 'LOW'],
+  ['very-low', 'LOW'],
+];
+for (const [input, expected] of confidenceVariants) {
+  const candidate = validOutput();
+  candidate.scenarios[1].confidence = input;
+  const normalized = normalizeTestDesignModelOutputV1(candidate);
+  assert.equal(normalized.output.scenarios[1].confidence, expected, `confidence ${String(input)} should normalize to ${expected}`);
+  assert.ok(normalized.changes.includes('modelOutput.scenarios[1].confidence'));
+}
+
+const numericConfidence = validOutput();
+numericConfidence.scenarios[1].confidence = 0.87;
+let confidenceRepairCalls = 0;
+const normalizedConfidenceResult = await generateCatalogTestDesignV1({
+  env: {}, organizationId: context.organizationId, projectId: context.projectId, endpointId: context.endpoint.endpointId,
+  aiEngine: {
+    async generateJson() { return { json: numericConfidence, provider: 'openai', model: 'gpt-4o-mini', rawText: JSON.stringify(numericConfidence) }; },
+    async repairJson() { confidenceRepairCalls += 1; return validOutput(); },
+  },
+  contextBuilder: async () => contextResult,
+  resolveAiConfig: async () => ({ source: 'env', provider: 'openai', model: 'gpt-4o-mini', credentials: { apiKey: 'x' } }),
+  now: () => new Date('2026-08-17T12:00:00.000Z'),
+});
+assert.equal(confidenceRepairCalls, 0, 'safe confidence normalization should avoid a repair call');
+assert.equal(normalizedConfidenceResult.specification.scenarios[1].confidence, 'HIGH');
+assert.ok(normalizedConfidenceResult.diagnostics.normalizationPaths.includes('modelOutput.scenarios[1].confidence'));
+assert.match(prompt.systemPrompt, /confidence deve ser EXATAMENTE a string HIGH, MEDIUM ou LOW/);
+
+const impossibleConfidence = validOutput();
+impossibleConfidence.scenarios[1].confidence = 120;
+await assert.rejects(
+  () => generateCatalogTestDesignV1({
+    env: {}, organizationId: context.organizationId, projectId: context.projectId, endpointId: context.endpoint.endpointId,
+    aiEngine: {
+      async generateJson() { return { json: impossibleConfidence, provider: 'openai', model: 'gpt-4o-mini', rawText: JSON.stringify(impossibleConfidence) }; },
+      async repairJson() { return impossibleConfidence; },
+    },
+    contextBuilder: async () => contextResult,
+    resolveAiConfig: async () => ({ source: 'env', provider: 'openai', model: 'gpt-4o-mini', credentials: { apiKey: 'x' } }),
+  }),
+  (error) => error?.code === 'AI_TEST_DESIGN_OUTPUT_INVALID'
+    && error?.publicDetails?.validationPath === 'modelOutput.scenarios[1].confidence'
+    && error?.publicDetails?.receivedType === 'number'
+    && error?.publicDetails?.receivedValue === 120
+    && Array.isArray(error?.publicDetails?.expectedValues),
 );
 
 assert.deepEqual(

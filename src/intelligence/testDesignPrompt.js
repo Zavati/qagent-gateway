@@ -43,6 +43,7 @@ REGRAS DE SEGURANÇA E AUTORIDADE:
 - Use SOMENTE evidenceRefs e schemaRefs explicitamente listadas como permitidas.
 - OBSERVED exige referência real de Evidence e/ou Schema.
 - INFERRED deve ser uma inferência defensável a partir do contexto.
+- confidence deve ser EXATAMENTE a string HIGH, MEDIUM ou LOW. Nunca use número, percentual, score decimal, VERY_HIGH, VERY_LOW ou texto livre.
 - ASSUMED representa hipótese e nunca deve usar confidence HIGH.
 - Se autenticação não puder ser provada pelo contexto, prefira authRequirement NONE ou trate a necessidade como hipótese/revisão; não invente credenciais.
 - Automation Readiness é calculada pelo QAgent. Você fornece apenas automationHints.

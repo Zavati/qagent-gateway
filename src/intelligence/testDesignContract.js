@@ -113,7 +113,15 @@ function assertInteger(value, path, { min = -Infinity, max = Infinity } = {}) {
 }
 
 function assertEnum(value, allowed, path) {
-  if (!allowed.includes(value)) fail(`Valor inválido. Permitidos: ${allowed.join(', ')}.`, path);
+  if (!allowed.includes(value)) {
+    const receivedType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+    const details = { allowed: [...allowed], receivedType };
+    if (['string', 'number', 'boolean'].includes(receivedType)) {
+      const text = String(value);
+      if (text.length <= 64) details.receivedValue = value;
+    }
+    fail(`Valor inválido. Permitidos: ${allowed.join(', ')}.`, path, 'TEST_DESIGN_CONTRACT_INVALID', details);
+  }
   return value;
 }
 
@@ -444,6 +452,97 @@ function validateGrounding(grounding, path, refs) {
   if (level === 'OBSERVED' && evidenceRefs.length + schemaRefs.length === 0) {
     fail('Grounding OBSERVED exige evidenceRefs ou schemaRefs reais.', path, 'TEST_DESIGN_GROUNDING_REQUIRED');
   }
+}
+
+function normalizeToken(value) {
+  if (typeof value !== 'string') return value;
+  return value
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function normalizeConfidence(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const score = value >= 0 && value <= 1 ? value * 100 : value;
+    if (score >= 80 && score <= 100) return 'HIGH';
+    if (score >= 50 && score < 80) return 'MEDIUM';
+    if (score >= 0 && score < 50) return 'LOW';
+    return value;
+  }
+
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  const percentMatch = trimmed.match(/^(\d+(?:\.\d+)?)%$/);
+  if (percentMatch) return normalizeConfidence(Number(percentMatch[1]));
+  const numericMatch = trimmed.match(/^\d+(?:\.\d+)?$/);
+  if (numericMatch) return normalizeConfidence(Number(trimmed));
+
+  const token = normalizeToken(trimmed);
+  const aliases = {
+    VERY_HIGH: 'HIGH',
+    HIGH_CONFIDENCE: 'HIGH',
+    ALTA: 'HIGH',
+    ALTO: 'HIGH',
+    MODERATE: 'MEDIUM',
+    MODERATE_CONFIDENCE: 'MEDIUM',
+    MEDIA: 'MEDIUM',
+    MEDIO: 'MEDIUM',
+    VERY_LOW: 'LOW',
+    LOW_CONFIDENCE: 'LOW',
+    BAIXA: 'LOW',
+    BAIXO: 'LOW',
+  };
+  return aliases[token] || token;
+}
+
+function setNormalized(target, key, nextValue, path, changes) {
+  if (!target || !Object.prototype.hasOwnProperty.call(target, key)) return;
+  const prev = target[key];
+  if (Object.is(prev, nextValue)) return;
+  target[key] = nextValue;
+  changes.push(path);
+}
+
+export function normalizeTestDesignModelOutputV1(output) {
+  if (!isPlainObject(output)) return { output, changes: [] };
+  const clone = JSON.parse(JSON.stringify(output));
+  const changes = [];
+
+  for (let index = 0; index < (Array.isArray(clone.scenarios) ? clone.scenarios.length : 0); index += 1) {
+    const scenario = clone.scenarios[index];
+    if (!isPlainObject(scenario)) continue;
+    const base = `modelOutput.scenarios[${index}]`;
+
+    if ('category' in scenario) setNormalized(scenario, 'category', normalizeToken(scenario.category), `${base}.category`, changes);
+    if ('priority' in scenario) setNormalized(scenario, 'priority', normalizeToken(scenario.priority), `${base}.priority`, changes);
+    if ('confidence' in scenario) setNormalized(scenario, 'confidence', normalizeConfidence(scenario.confidence), `${base}.confidence`, changes);
+    if ('authRequirement' in scenario) setNormalized(scenario, 'authRequirement', normalizeToken(scenario.authRequirement), `${base}.authRequirement`, changes);
+
+    if (isPlainObject(scenario.grounding) && 'level' in scenario.grounding) {
+      setNormalized(scenario.grounding, 'level', normalizeToken(scenario.grounding.level), `${base}.grounding.level`, changes);
+    }
+
+    if (Array.isArray(scenario.assertions)) {
+      scenario.assertions.forEach((assertion, assertionIndex) => {
+        if (isPlainObject(assertion) && 'type' in assertion) {
+          setNormalized(assertion, 'type', normalizeToken(assertion.type), `${base}.assertions[${assertionIndex}].type`, changes);
+        }
+      });
+    }
+
+    if (Array.isArray(scenario.extract)) {
+      scenario.extract.forEach((item, extractIndex) => {
+        if (isPlainObject(item) && 'source' in item) {
+          setNormalized(item, 'source', normalizeToken(item.source), `${base}.extract[${extractIndex}].source`, changes);
+        }
+      });
+    }
+  }
+
+  return { output: clone, changes };
 }
 
 export function validateTestDesignModelOutputV1(output, context) {

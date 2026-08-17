@@ -4,6 +4,7 @@ import { resolveAiRuntimeConfig } from '../services/aiRuntimeConfigService.js';
 import { buildCatalogTestDesignContextV1 } from './catalogContextBuilder.js';
 import {
   buildTestSpecificationV1,
+  normalizeTestDesignModelOutputV1,
   TestDesignContractError,
   validateTestDesignModelOutputV1,
   validateTestSpecificationV1,
@@ -33,6 +34,9 @@ function wrapInvalidModelOutput(error, { repairAttempts = 0 } = {}) {
     validationCode: error?.code || 'TEST_DESIGN_CONTRACT_INVALID',
     validationPath: error?.path || null,
   };
+  if (Array.isArray(error?.details?.allowed)) wrapped.details.expectedValues = error.details.allowed.slice(0, 20);
+  if (typeof error?.details?.receivedType === 'string') wrapped.details.receivedType = error.details.receivedType;
+  if (['string', 'number', 'boolean'].includes(typeof error?.details?.receivedValue)) wrapped.details.receivedValue = error.details.receivedValue;
   wrapped.publicDetails = wrapped.details;
   return wrapped;
 }
@@ -44,11 +48,24 @@ function contractRepairInstruction(error) {
   return `A resposta anterior viola o TestDesignModelOutputV1 (${code} em ${path}).
 Regra violada: ${rule}
 Reescreva o objeto COMPLETO, respeitando estritamente OUTPUT_JSON_SCHEMA, os formatos exatos de assertion e CATALOG_CONTEXT_JSON.
+Para confidence use EXATAMENTE uma destas strings: HIGH, MEDIUM, LOW. Nunca use número, percentual, score ou VERY_HIGH/VERY_LOW.
 Não adicione campos extras. Não invente refs. Use somente IDs existentes no contexto. Retorne somente JSON válido.`;
 }
 
 function modelOutputFrom(out) {
   return out?.json && typeof out.json === 'object' ? out.json : null;
+}
+
+function normalizeModelOutput(output, log, stage = 'generate') {
+  const normalized = normalizeTestDesignModelOutputV1(output);
+  if (normalized.changes.length) {
+    log('testDesign_ai_output_normalized', {
+      stage,
+      normalizationCount: normalized.changes.length,
+      normalizationPaths: normalized.changes.slice(0, 20),
+    });
+  }
+  return normalized;
 }
 
 export async function generateCatalogTestDesignV1({
@@ -138,6 +155,13 @@ export async function generateCatalogTestDesignV1({
     out = { provider: aiConfig.provider, model: aiConfig.model, json: modelOutput };
   }
 
+  let normalizationPaths = [];
+  {
+    const normalized = normalizeModelOutput(modelOutput, log, 'generate');
+    modelOutput = normalized.output;
+    normalizationPaths = normalized.changes;
+  }
+
   try {
     validateTestDesignModelOutputV1(modelOutput, context);
   } catch (error) {
@@ -171,6 +195,11 @@ export async function generateCatalogTestDesignV1({
     }, env);
 
     modelOutput = repaired;
+    {
+      const normalized = normalizeModelOutput(modelOutput, log, 'repair');
+      modelOutput = normalized.output;
+      normalizationPaths = [...new Set([...normalizationPaths, ...normalized.changes])];
+    }
     try {
       validateTestDesignModelOutputV1(modelOutput, context);
     } catch (repairError) {
@@ -226,6 +255,8 @@ export async function generateCatalogTestDesignV1({
       scenarioCountRequested: scenarioCount,
       scenarioCountGenerated: specification.summary.scenarioCount,
       repairAttempts,
+      normalizationCount: normalizationPaths.length,
+      normalizationPaths: normalizationPaths.slice(0, 20),
       durationMs,
       context: contextDiagnostics,
     },
