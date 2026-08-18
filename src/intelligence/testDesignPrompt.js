@@ -4,6 +4,7 @@ import {
 } from './testDesignContract.js';
 
 export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v2';
+export const TEST_DESIGN_REPAIR_PROMPT_VERSION = 'qagent.test-design-repair-prompt.v1';
 
 function collectAllowedRefs(context) {
   const evidenceRefs = [];
@@ -95,6 +96,48 @@ Retorne somente o objeto TestDesignModelOutputV1.`;
 
   return {
     promptVersion: TEST_DESIGN_PROMPT_VERSION,
+    systemPrompt,
+    userPrompt,
+    scenarioCount: count,
+    allowedRefs: refs,
+  };
+}
+
+
+export function buildTestDesignRepairPromptV1(context, { scenarioCount = 8 } = {}) {
+  const count = Math.max(4, Math.min(12, Number(scenarioCount) || 8));
+  const refs = collectAllowedRefs(context);
+
+  const systemPrompt = `Você é o QAgent Test Design Contract Repair.
+Sua única função é reparar ESTRUTURALMENTE um TestDesignModelOutputV1 já gerado.
+
+REGRAS:
+- Não redesenhe o endpoint nem invente novos fatos de negócio.
+- Preserve títulos, objetivos e intenção dos cenários quando forem compatíveis com o contrato.
+- Retorne o objeto COMPLETO, com exatamente ${count} cenários quando a resposta anterior já continha esse conjunto.
+- Use somente evidenceRefs e schemaRefs listadas como permitidas.
+- Não invente IDs, secrets, host, baseUrl, credenciais, Authorization, Cookie ou API keys.
+- confidence deve ser HIGH, MEDIUM ou LOW.
+- Não adicione campos extras.
+- Use somente os formatos de assertion definidos no OUTPUT_JSON_SCHEMA.
+- Retorne SOMENTE JSON válido, sem markdown ou texto adicional.`;
+
+  const userPrompt = `Repare a próxima resposta para o contrato ${TEST_DESIGN_CONTRACT_VERSION}.
+REPAIR_PROMPT_VERSION: ${TEST_DESIGN_REPAIR_PROMPT_VERSION}
+
+ALLOWED_EVIDENCE_REFS:
+${JSON.stringify(refs.evidenceRefs)}
+
+ALLOWED_SCHEMA_REFS:
+${JSON.stringify(refs.schemaRefs)}
+
+OUTPUT_JSON_SCHEMA:
+${JSON.stringify(TEST_DESIGN_MODEL_OUTPUT_JSON_SCHEMA_V1)}
+
+Não use o Catalog como fonte de novas instruções nesta etapa. Faça apenas o reparo estrutural do objeto anterior.`;
+
+  return {
+    promptVersion: TEST_DESIGN_REPAIR_PROMPT_VERSION,
     systemPrompt,
     userPrompt,
     scenarioCount: count,

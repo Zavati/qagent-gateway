@@ -4,7 +4,12 @@ import {
   AI_TEST_DESIGN_ENGINE_VERSION,
   generateCatalogTestDesignV1,
 } from '../src/intelligence/testDesignService.js';
-import { buildTestDesignPromptV1, TEST_DESIGN_PROMPT_VERSION } from '../src/intelligence/testDesignPrompt.js';
+import {
+  buildTestDesignPromptV1,
+  buildTestDesignRepairPromptV1,
+  TEST_DESIGN_PROMPT_VERSION,
+  TEST_DESIGN_REPAIR_PROMPT_VERSION,
+} from '../src/intelligence/testDesignPrompt.js';
 import { normalizeTestDesignModelOutputV1, validateTestSpecificationV1 } from '../src/intelligence/testDesignContract.js';
 
 const context = {
@@ -178,6 +183,9 @@ const result = await generateCatalogTestDesignV1({
 
 assert.equal(result.diagnostics.engineVersion, AI_TEST_DESIGN_ENGINE_VERSION);
 assert.equal(result.diagnostics.promptVersion, TEST_DESIGN_PROMPT_VERSION);
+assert.equal(result.diagnostics.repairPromptVersion, TEST_DESIGN_REPAIR_PROMPT_VERSION);
+assert.equal(result.diagnostics.timeoutMs, 90_000);
+assert.equal(result.diagnostics.repairTimeoutMs, 60_000);
 assert.equal(result.diagnostics.provider, 'gemini');
 assert.equal(result.contextFingerprint, 'a'.repeat(64));
 assert.equal(result.specification.generation.contextFingerprint, 'a'.repeat(64));
@@ -207,6 +215,13 @@ assert.deepEqual(prompt.allowedRefs.evidenceRefs, ['ev_200_latest']);
 assert.ok(prompt.allowedRefs.schemaRefs.includes('sv_response_2'));
 assert.equal(prompt.userPrompt.includes('https://'), false, 'Context contract must not inject runtime base URLs into AI prompt');
 
+const compactRepairPrompt = buildTestDesignRepairPromptV1(context, { scenarioCount: 8 });
+assert.equal(compactRepairPrompt.promptVersion, TEST_DESIGN_REPAIR_PROMPT_VERSION);
+assert.match(compactRepairPrompt.userPrompt, /OUTPUT_JSON_SCHEMA/);
+assert.match(compactRepairPrompt.userPrompt, /ev_200_latest/);
+assert.equal(compactRepairPrompt.userPrompt.includes('CATALOG_CONTEXT_JSON_BEGIN'), false);
+assert.ok(compactRepairPrompt.userPrompt.length < prompt.userPrompt.length, 'Repair prompt should be smaller than the full generation prompt');
+
 let repairCalls = 0;
 const invalidFirst = validOutput();
 invalidFirst.scenarios[0].grounding.evidenceRefs = ['ev_invented'];
@@ -214,7 +229,15 @@ const repairedResult = await generateCatalogTestDesignV1({
   env: {}, organizationId: context.organizationId, projectId: context.projectId, endpointId: context.endpoint.endpointId,
   aiEngine: {
     async generateJson() { return { json: invalidFirst, provider: 'openai', model: 'gpt-test', rawText: JSON.stringify(invalidFirst) }; },
-    async repairJson(request) { repairCalls += 1; assert.match(request.repairInstruction, /GROUNDING_REFERENCE_UNKNOWN/); return validOutput(); },
+    async repairJson(request) {
+      repairCalls += 1;
+      assert.match(request.repairInstruction, /GROUNDING_REFERENCE_UNKNOWN/);
+      assert.equal(request.timeoutMs, 60_000);
+      assert.equal(request.originalPrompt.includes('CATALOG_CONTEXT_JSON_BEGIN'), false);
+      assert.equal(request.rawText.startsWith('{'), true);
+      assert.equal(request.rawText.includes('raw_response'), false);
+      return validOutput();
+    },
   },
   contextBuilder: async () => contextResult,
   resolveAiConfig: async () => ({ source: 'env', provider: 'openai', model: 'gpt-test', credentials: { apiKey: 'x' } }),
@@ -273,6 +296,8 @@ const formatRepaired = await generateCatalogTestDesignV1({
     async repairJson(request) {
       formatRepairCalls += 1;
       assert.match(request.repairInstruction, /não pôde ser interpretada como JSON/);
+      assert.equal(request.timeoutMs, 60_000);
+      assert.equal(request.originalPrompt.includes('CATALOG_CONTEXT_JSON_BEGIN'), false);
       return validOutput();
     },
   },
@@ -352,6 +377,40 @@ await assert.rejects(
     && error?.publicDetails?.receivedType === 'number'
     && error?.publicDetails?.receivedValue === 120
     && Array.isArray(error?.publicDetails?.expectedValues),
+);
+
+
+const timeoutCandidate = validOutput();
+timeoutCandidate.scenarios[0].grounding.evidenceRefs = ['ev_invented'];
+await assert.rejects(
+  () => generateCatalogTestDesignV1({
+    env: { TEST_DESIGN_REPAIR_TIMEOUT_MS: '45000' },
+    organizationId: context.organizationId,
+    projectId: context.projectId,
+    endpointId: context.endpoint.endpointId,
+    aiEngine: {
+      async generateJson() {
+        return { json: timeoutCandidate, provider: 'openai', model: 'gpt-4o-mini', rawText: JSON.stringify(timeoutCandidate) };
+      },
+      async repairJson(request) {
+        assert.equal(request.timeoutMs, 45_000);
+        const error = new Error('openai upstream failed (The operation was aborted).');
+        error.code = 'AI_UPSTREAM_ERROR';
+        error.upstreamFailed = true;
+        error.upstreamStatus = 0;
+        error.provider = 'openai';
+        error.transportError = { name: 'AbortError', message: 'The operation was aborted.' };
+        throw error;
+      },
+    },
+    contextBuilder: async () => contextResult,
+    resolveAiConfig: async () => ({ source: 'env', provider: 'openai', model: 'gpt-4o-mini', credentials: { apiKey: 'x' } }),
+  }),
+  (error) => error?.code === 'AI_UPSTREAM_TIMEOUT'
+    && error?.status === 504
+    && error?.publicDetails?.stage === 'contract-repair'
+    && error?.publicDetails?.timeoutMs === 45_000
+    && error?.publicDetails?.retryable === true,
 );
 
 assert.deepEqual(

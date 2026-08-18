@@ -9,7 +9,12 @@ import {
   validateTestDesignModelOutputV1,
   validateTestSpecificationV1,
 } from './testDesignContract.js';
-import { buildTestDesignPromptV1, TEST_DESIGN_PROMPT_VERSION } from './testDesignPrompt.js';
+import {
+  buildTestDesignPromptV1,
+  buildTestDesignRepairPromptV1,
+  TEST_DESIGN_PROMPT_VERSION,
+  TEST_DESIGN_REPAIR_PROMPT_VERSION,
+} from './testDesignPrompt.js';
 import { applySemanticGroundingGuardV1 } from './semanticGroundingGuard.js';
 
 export const AI_TEST_DESIGN_ENGINE_VERSION = 'qagent.ai-test-design-engine.v1';
@@ -19,12 +24,28 @@ function logger(env) {
   return (...args) => { try { console.log(...args); } catch {} };
 }
 
-function rawTextFromAi(out) {
-  if (out?.contentText) return String(out.contentText);
-  if (out?.rawText) return String(out.rawText);
-  if (out?.json) return JSON.stringify(out.json);
-  return '';
+
+function isAiAbortTimeout(error) {
+  if (!error?.upstreamFailed || Number(error?.upstreamStatus || 0) !== 0) return false;
+  const name = String(error?.transportError?.name || '').toLowerCase();
+  const message = String(error?.transportError?.message || error?.upstreamMessage || error?.message || '').toLowerCase();
+  return name === 'aborterror' || message.includes('aborted') || message.includes('aborterror');
 }
+
+function wrapAiTimeout(error, { stage, timeoutMs } = {}) {
+  const wrapped = new Error('O provider de IA excedeu o tempo limite durante a geração do Test Design.');
+  wrapped.status = 504;
+  wrapped.code = 'AI_UPSTREAM_TIMEOUT';
+  wrapped.details = {
+    provider: error?.provider || null,
+    stage: stage || 'unknown',
+    timeoutMs: Number(timeoutMs || 0) || null,
+    retryable: true,
+  };
+  wrapped.publicDetails = wrapped.details;
+  return wrapped;
+}
+
 
 function wrapInvalidModelOutput(error, { repairAttempts = 0 } = {}) {
   const wrapped = new Error('A IA retornou um Test Design incompatível com o contrato qagent.test-design.v1.');
@@ -96,6 +117,8 @@ export async function generateCatalogTestDesignV1({
   const prompt = buildTestDesignPromptV1(context, { scenarioCount });
   const maxOutputTokens = Math.max(1800, Math.min(8000, getEnvNum(env, 'TEST_DESIGN_MAX_OUTPUT_TOKENS', 5500)));
   const timeoutMs = Math.max(15_000, Math.min(120_000, getEnvNum(env, 'TEST_DESIGN_TIMEOUT_MS', 90_000)));
+  const repairTimeoutMs = Math.max(20_000, Math.min(90_000, getEnvNum(env, 'TEST_DESIGN_REPAIR_TIMEOUT_MS', 60_000)));
+  const repairPrompt = buildTestDesignRepairPromptV1(context, { scenarioCount });
 
   let out;
   let modelOutput;
@@ -128,7 +151,21 @@ export async function generateCatalogTestDesignV1({
     modelOutput = modelOutputFrom(out);
   } catch (generationError) {
     const rawText = String(generationError?.contentText || generationError?.rawText || '');
-    if (generationError?.upstreamFailed || !rawText) throw generationError;
+    if (generationError?.upstreamFailed) {
+      if (isAiAbortTimeout(generationError)) {
+        log('testDesign_ai_timeout', {
+          stage: 'generate',
+          provider: aiConfig.provider,
+          model: aiConfig.model,
+          endpointId: context.endpoint.endpointId,
+          contextFingerprint,
+          timeoutMs,
+        });
+        throw wrapAiTimeout(generationError, { stage: 'generate', timeoutMs });
+      }
+      throw generationError;
+    }
+    if (!rawText) throw generationError;
 
     repairAttempts += 1;
     log('testDesign_ai_format_repair', {
@@ -138,20 +175,35 @@ export async function generateCatalogTestDesignV1({
       model: aiConfig.model,
     });
 
-    modelOutput = await aiEngine.repairJson({
-      capability: 'test-design',
-      provider: aiConfig.provider,
-      credentials: aiConfig.credentials,
-      model: aiConfig.model,
-      systemPrompt: prompt.systemPrompt,
-      originalPrompt: prompt.userPrompt,
-      rawText,
-      repairInstruction: 'A resposta anterior não pôde ser interpretada como JSON. Gere novamente o objeto COMPLETO TestDesignModelOutputV1, respeitando estritamente OUTPUT_JSON_SCHEMA e as refs permitidas. Retorne somente JSON válido.',
-      retries: 0,
-      timeoutMs: Math.min(timeoutMs, 30_000),
-      maxOutputTokens,
-      temperature: 0,
-    }, env);
+    try {
+      modelOutput = await aiEngine.repairJson({
+        capability: 'test-design',
+        provider: aiConfig.provider,
+        credentials: aiConfig.credentials,
+        model: aiConfig.model,
+        systemPrompt: repairPrompt.systemPrompt,
+        originalPrompt: repairPrompt.userPrompt,
+        rawText,
+        repairInstruction: 'A resposta anterior não pôde ser interpretada como JSON. Gere novamente o objeto COMPLETO TestDesignModelOutputV1, respeitando estritamente OUTPUT_JSON_SCHEMA e as refs permitidas. Retorne somente JSON válido.',
+        retries: 0,
+        timeoutMs: repairTimeoutMs,
+        maxOutputTokens,
+        temperature: 0,
+      }, env);
+    } catch (repairError) {
+      if (isAiAbortTimeout(repairError)) {
+        log('testDesign_ai_timeout', {
+          stage: 'format-repair',
+          provider: aiConfig.provider,
+          model: aiConfig.model,
+          endpointId: context.endpoint.endpointId,
+          contextFingerprint,
+          timeoutMs: repairTimeoutMs,
+        });
+        throw wrapAiTimeout(repairError, { stage: 'format-repair', timeoutMs: repairTimeoutMs });
+      }
+      throw repairError;
+    }
 
     out = { provider: aiConfig.provider, model: aiConfig.model, json: modelOutput };
   }
@@ -180,20 +232,36 @@ export async function generateCatalogTestDesignV1({
       model: out?.model || aiConfig.model,
     });
 
-    const repaired = await aiEngine.repairJson({
-      capability: 'test-design',
-      provider: aiConfig.provider,
-      credentials: aiConfig.credentials,
-      model: aiConfig.model,
-      systemPrompt: prompt.systemPrompt,
-      originalPrompt: prompt.userPrompt,
-      rawText: rawTextFromAi(out),
-      repairInstruction: contractRepairInstruction(error),
-      retries: 0,
-      timeoutMs: Math.min(timeoutMs, 30_000),
-      maxOutputTokens,
-      temperature: 0,
-    }, env);
+    let repaired;
+    try {
+      repaired = await aiEngine.repairJson({
+        capability: 'test-design',
+        provider: aiConfig.provider,
+        credentials: aiConfig.credentials,
+        model: aiConfig.model,
+        systemPrompt: repairPrompt.systemPrompt,
+        originalPrompt: repairPrompt.userPrompt,
+        rawText: JSON.stringify(modelOutput),
+        repairInstruction: contractRepairInstruction(error),
+        retries: 0,
+        timeoutMs: repairTimeoutMs,
+        maxOutputTokens,
+        temperature: 0,
+      }, env);
+    } catch (repairError) {
+      if (isAiAbortTimeout(repairError)) {
+        log('testDesign_ai_timeout', {
+          stage: 'contract-repair',
+          provider: out?.provider || aiConfig.provider,
+          model: out?.model || aiConfig.model,
+          endpointId: context.endpoint.endpointId,
+          contextFingerprint,
+          timeoutMs: repairTimeoutMs,
+        });
+        throw wrapAiTimeout(repairError, { stage: 'contract-repair', timeoutMs: repairTimeoutMs });
+      }
+      throw repairError;
+    }
 
     modelOutput = repaired;
     {
@@ -264,6 +332,7 @@ export async function generateCatalogTestDesignV1({
     diagnostics: {
       engineVersion: AI_TEST_DESIGN_ENGINE_VERSION,
       promptVersion: TEST_DESIGN_PROMPT_VERSION,
+      repairPromptVersion: TEST_DESIGN_REPAIR_PROMPT_VERSION,
       provider,
       model,
       aiConfigSource: aiConfig.source,
@@ -273,6 +342,8 @@ export async function generateCatalogTestDesignV1({
       normalizationCount: normalizationPaths.length,
       normalizationPaths: normalizationPaths.slice(0, 20),
       semanticGuard: semanticGuard.diagnostics,
+      timeoutMs,
+      repairTimeoutMs,
       durationMs,
       context: contextDiagnostics,
     },
