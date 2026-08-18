@@ -1,4 +1,4 @@
-export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1';
+export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.1';
 
 const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
 const CONFIDENCE_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2 });
@@ -7,6 +7,11 @@ const LATENCY_RE = /(?:lat[eê]ncia|latency|tempo\s+de\s+resposta|response\s+tim
 const TARGET_PATH_MUTATION_RE = /(?:(?:caminho|path|rota|endpoint|url)\s+(?:inv[aá]lid[oa]?|inexistent[ea]?|desconhecid[oa]?)|(?:inv[aá]lid[oa]?|inexistent[ea]?|desconhecid[oa]?)\s+(?:caminho|path|rota|endpoint|url)|invalid\s+(?:path|route|endpoint|url)|unknown\s+(?:path|route|endpoint)|non[-\s]?existent\s+(?:path|route|endpoint))/i;
 const TARGET_METHOD_MUTATION_RE = /(?:(?:m[eé]todo(?:\s+http)?|http\s+method)\s+(?:inv[aá]lid[oa]?|n[aã]o\s+permitid[oa]?|n[aã]o\s+suportad[oa]?)|(?:inv[aá]lid[oa]?|n[aã]o\s+permitid[oa]?|n[aã]o\s+suportad[oa]?)\s+(?:m[eé]todo(?:\s+http)?)|invalid\s+(?:http\s+)?method|method\s+not\s+allowed|unsupported\s+(?:http\s+)?method)/i;
 const FAULT_INJECTION_RE = /(?:erro\s+interno(?:\s+do\s+servidor)?|falha\s+interna(?:\s+do\s+servidor)?|internal\s+server\s+(?:error|failure)|server\s+(?:error|failure)|fault\s+injection|simul(?:ar|ando|ação).*?(?:erro|falha|500)|for[cç](?:ar|ando).*?(?:erro|falha|500)|induz(?:ir|indo).*?(?:erro|falha|500))/i;
+const NON_EMPTY_INTENT_RE = /(?:n[aã]o\s+(?:est[aá]\s+|esteja\s+)?vazi[oa]|lista\s+n[aã]o\s+vazia|array\s+n[aã]o\s+vazi[oa]|non[-\s]?empty|not\s+empty|at\s+least\s+one|ao\s+menos\s+um|pelo\s+menos\s+um)/i;
+const UUID_INTENT_RE = /(?:\buuid\b|formato\s+uuid|uuid\s+v[aá]lid[oa]?|valid\s+uuid)/i;
+const BOOLEAN_INTENT_RE = /(?:\bboolean(?:o|a)?\b|tipo\s+boolean|boolean\s+type|true\s*\/\s*false)/i;
+const DATE_TIME_INTENT_RE = /(?:data(?:\s+e\s+hora)?\s+v[aá]lid[oa]?|date[-\s]?time|datetime|timestamp\s+v[aá]lid[oa]?|valid\s+(?:date|datetime|timestamp))/i;
+const COUNT_RELATION_INTENT_RE = /(?:(?:contagem|quantidade|count).{0,100}(?:corret[oa]|correspon|equival|n[uú]mero\s+de\s+(?:itens|elementos)|tamanho\s+da\s+lista)|(?:matches|equals|corresponds).{0,60}(?:number|length|count).{0,60}(?:items|elements|array|list))/i;
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -196,6 +201,51 @@ function schemaAllowsExactValue(node, expected) {
 function addSchemaGrounding(scenario, track) {
   const ref = track?.trackId || track?.currentVersionId || track?.currentSchemaHash;
   if (ref) boundedPush(scenario.grounding.schemaRefs, ref, 20);
+}
+
+function scenarioHasSchemaAssertionForTrack(scenario, knowledge, track) {
+  return (scenario?.assertions || []).some((assertion) => {
+    if (assertion?.type !== 'SCHEMA') return false;
+    return knowledge.schemaByRef.get(assertion.schemaRef) === track;
+  });
+}
+
+function schemaAssertionProvesJsonPathCapability(scenario, knowledge, responseTracks, predicate) {
+  for (const assertion of scenario?.assertions || []) {
+    if (!['JSON_PATH_EXISTS', 'JSON_PATH_EQUALS'].includes(assertion?.type)) continue;
+    const support = findSchemaSupport(responseTracks, assertion.path);
+    if (!support.node || !support.track || !predicate(support.node)) continue;
+    if (scenarioHasSchemaAssertionForTrack(scenario, knowledge, support.track)) return true;
+  }
+  return false;
+}
+
+function jsonPathEqualsProvesNonEmpty(scenario) {
+  return (scenario?.assertions || []).some((assertion) => (
+    assertion?.type === 'JSON_PATH_EQUALS'
+    && Array.isArray(assertion.expected)
+    && assertion.expected.length > 0
+  ));
+}
+
+function schemaAssertionProvesNonEmpty(scenario, knowledge, responseTracks) {
+  return schemaAssertionProvesJsonPathCapability(
+    scenario,
+    knowledge,
+    responseTracks,
+    (node) => node?.type === 'array' && Number.isInteger(node?.minItems) && node.minItems >= 1,
+  );
+}
+
+function addAssertionCapabilityGap({ scenario, index, addIssue, reason }) {
+  markReview(scenario, reason);
+  addIssue({
+    code: 'SEMANTIC_ASSERTION_CAPABILITY_GAP',
+    path: `modelOutput.scenarios[${index}].assertions`,
+    severity: 'REVIEW',
+    reason,
+    action: 'REVIEW_REQUIRED',
+  });
 }
 
 function addEvidenceGroundingForStatus(scenario, knowledge, statusCode) {
@@ -480,6 +530,56 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     const reason = 'O objetivo menciona latência/performance, mas qagent.api-test-dsl.v1 ainda não possui assertion de latência; o cenário não é executável como está.';
     markReview(scenario, reason);
     addIssue({ code: 'SEMANTIC_ASSERTION_COVERAGE_GAP', path: `modelOutput.scenarios[${index}].assertions`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
+  }
+
+  if (COUNT_RELATION_INTENT_RE.test(semanticText)) {
+    addAssertionCapabilityGap({
+      scenario,
+      index,
+      addIssue,
+      reason: 'O objetivo exige validar correção/relação de contagem (por exemplo count versus tamanho da lista), mas qagent.api-test-dsl.v1 não possui assertion relacional entre dois valores JSON.',
+    });
+  }
+
+  if (NON_EMPTY_INTENT_RE.test(semanticText)
+    && !jsonPathEqualsProvesNonEmpty(scenario)
+    && !schemaAssertionProvesNonEmpty(scenario, knowledge, responseTracks)) {
+    addAssertionCapabilityGap({
+      scenario,
+      index,
+      addIssue,
+      reason: 'O objetivo exige provar que uma lista/array não está vazio, mas as assertions atuais só provam existência/estrutura; a DSL v1 não expressa cardinalidade sem uma constraint minItems coberta por SCHEMA.',
+    });
+  }
+
+  if (UUID_INTENT_RE.test(semanticText)
+    && !schemaAssertionProvesJsonPathCapability(scenario, knowledge, responseTracks, (node) => String(node?.format || '').toLowerCase() === 'uuid')) {
+    addAssertionCapabilityGap({
+      scenario,
+      index,
+      addIssue,
+      reason: 'O objetivo afirma formato UUID, mas JSON_PATH_EXISTS só prova presença. Para provar o formato com a DSL v1 é necessário um SCHEMA assertion cujo schema estrutural modele esse campo como format=uuid.',
+    });
+  }
+
+  if (BOOLEAN_INTENT_RE.test(semanticText)
+    && !schemaAssertionProvesJsonPathCapability(scenario, knowledge, responseTracks, (node) => node?.type === 'boolean')) {
+    addAssertionCapabilityGap({
+      scenario,
+      index,
+      addIssue,
+      reason: 'O objetivo afirma tipo boolean, mas JSON_PATH_EXISTS só prova presença. Para provar o tipo com a DSL v1 é necessário um SCHEMA assertion cujo schema estrutural modele esse campo como boolean.',
+    });
+  }
+
+  if (DATE_TIME_INTENT_RE.test(semanticText)
+    && !schemaAssertionProvesJsonPathCapability(scenario, knowledge, responseTracks, (node) => ['date-time', 'date', 'time'].includes(String(node?.format || '').toLowerCase()))) {
+    addAssertionCapabilityGap({
+      scenario,
+      index,
+      addIssue,
+      reason: 'O objetivo afirma formato de data/hora válido, mas JSON_PATH_EXISTS só prova presença. Para provar o formato com a DSL v1 é necessário um SCHEMA assertion cujo schema estrutural modele o campo com format date/date-time/time.',
+    });
   }
 
   for (const extract of scenario.extract || []) {

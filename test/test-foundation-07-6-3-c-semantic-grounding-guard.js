@@ -28,6 +28,8 @@ const context = {
               id: { type: 'string', format: 'uuid' },
               name: { type: 'string' },
               isDeleted: { type: 'boolean' },
+              userId: { type: 'string', format: 'uuid' },
+              createdAt: { type: 'string', format: 'date-time' },
             },
           },
         },
@@ -266,9 +268,126 @@ assert.ok(executableSpec.scenarios[0].automation.blockers.some((reason) => /targ
 assert.ok(executableSpec.scenarios[2].automation.blockers.some((reason) => /fault injection/i.test(reason)));
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 8 });
-assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v3');
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v4');
 assert.match(prompt.systemPrompt, /target mutation/i);
 assert.match(prompt.systemPrompt, /fault injection/i);
+assert.match(prompt.systemPrompt, /JSON_PATH_EXISTS prova SOMENTE/i);
+assert.match(prompt.systemPrompt, /UUID, boolean, date\/date-time/i);
+assert.match(prompt.systemPrompt, /contagem correta/i);
+
+// Fix 3: scenario intent must be provable by the current assertion vocabulary.
+const capabilityOutput = {
+  title: 'Semantic assertion capability regression pack',
+  objective: 'Reproduzir gaps entre intenção do cenário e capacidade real da DSL v1.',
+  assumptions: [],
+  scenarios: [
+    baseScenario('COUNT_CAP_012', {
+      title: 'Verificar contagem de tokens na resposta',
+      objective: 'Confirmar que a contagem de tokens retornada na resposta é correta e corresponde ao número de itens.',
+      category: 'DATA_VARIATION',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Schema possui count.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.count' },
+      ],
+    }),
+    baseScenario('NONEMPTY_CAP_013', {
+      title: 'Verificar se a lista de tokens não está vazia',
+      objective: 'Assegurar que a lista de tokens retornada não está vazia quando existem tokens.',
+      category: 'DATA_VARIATION',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Schema possui contents.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents' },
+      ],
+    }),
+    baseScenario('UUID_CAP_014', {
+      title: 'Verificar token com ID válido',
+      objective: 'Confirmar que cada token possui um ID válido no formato UUID.',
+      category: 'DATA_VARIATION',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Schema possui id.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents[*].id' },
+      ],
+    }),
+    baseScenario('BOOL_CAP_015', {
+      title: 'Verificar token com campo isDeleted',
+      objective: 'Confirmar que o campo isDeleted está presente e é booleano.',
+      category: 'DATA_VARIATION',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Schema possui isDeleted.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents[*].isDeleted' },
+      ],
+    }),
+    baseScenario('DATE_CAP_016', {
+      title: 'Verificar token com campo createdAt',
+      objective: 'Confirmar que o campo createdAt está presente e é uma data válida.',
+      category: 'DATA_VARIATION',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Schema possui createdAt.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents[*].createdAt' },
+      ],
+    }),
+    baseScenario('UUID_SCHEMA_OK_017', {
+      title: 'Validar contrato UUID do token',
+      objective: 'Confirmar via contrato que o campo id possui formato UUID.',
+      category: 'SCHEMA_CONTRACT',
+      grounding: { level: 'OBSERVED', rationale: ['Schema estrutural observado.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents[*].id' },
+        { type: 'SCHEMA', schemaRef: 'track_response_200' },
+      ],
+    }),
+    baseScenario('BOOL_SCHEMA_OK_018', {
+      title: 'Validar contrato boolean do token',
+      objective: 'Confirmar via contrato que o campo isDeleted é booleano.',
+      category: 'SCHEMA_CONTRACT',
+      grounding: { level: 'OBSERVED', rationale: ['Schema estrutural observado.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents[*].isDeleted' },
+        { type: 'SCHEMA', schemaRef: 'track_response_200' },
+      ],
+    }),
+    baseScenario('DATE_SCHEMA_OK_019', {
+      title: 'Validar contrato date-time do token',
+      objective: 'Confirmar via contrato que o campo createdAt é uma data válida no formato date-time.',
+      category: 'SCHEMA_CONTRACT',
+      grounding: { level: 'OBSERVED', rationale: ['Schema estrutural observado.'], evidenceRefs: ['ev_200_a'], schemaRefs: ['track_response_200'] },
+      assertions: [
+        { type: 'STATUS', expectedStatusCodes: [200] },
+        { type: 'JSON_PATH_EXISTS', path: '$.contents[*].createdAt' },
+        { type: 'SCHEMA', schemaRef: 'track_response_200' },
+      ],
+    }),
+  ],
+};
+assert.doesNotThrow(() => validateTestDesignModelOutputV1(capabilityOutput, context));
+const capabilityGuard = applySemanticGroundingGuardV1(capabilityOutput, context);
+assert.equal(capabilityGuard.diagnostics.issuesByCode.SEMANTIC_ASSERTION_CAPABILITY_GAP, 5);
+for (const scenario of capabilityGuard.output.scenarios.slice(0, 5)) {
+  assert.equal(scenario.automationHints.reviewRequired, true);
+  assert.match(scenario.automationHints.reasons.join(' '), /DSL v1|assertion|SCHEMA/i);
+}
+for (const scenario of capabilityGuard.output.scenarios.slice(5)) {
+  assert.equal(scenario.automationHints.reviewRequired, false);
+}
+const capabilitySpec = buildTestSpecificationV1({
+  context,
+  modelOutput: capabilityGuard.output,
+  generation: { provider: 'openai', model: 'gpt-4o-mini', generatedAt: '2026-08-18T00:35:08.870Z', contextFingerprint: 'd'.repeat(64) },
+});
+for (const scenario of capabilitySpec.scenarios.slice(0, 5)) assert.equal(scenario.automation.readiness, 'REVIEW_REQUIRED');
+for (const scenario of capabilitySpec.scenarios.slice(5)) assert.equal(scenario.automation.readiness, 'NEEDS_ENVIRONMENT');
 
 let generateCalls = 0;
 const serviceResult = await generateCatalogTestDesignV1({
