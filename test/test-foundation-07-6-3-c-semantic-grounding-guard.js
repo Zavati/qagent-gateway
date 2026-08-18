@@ -34,6 +34,7 @@ const context = {
           },
         },
         count: { type: 'integer' },
+        score: { type: 'number' },
       },
     },
     versions: [
@@ -268,11 +269,11 @@ assert.ok(executableSpec.scenarios[0].automation.blockers.some((reason) => /targ
 assert.ok(executableSpec.scenarios[2].automation.blockers.some((reason) => /fault injection/i.test(reason)));
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 8 });
-assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v4');
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v5');
 assert.match(prompt.systemPrompt, /target mutation/i);
 assert.match(prompt.systemPrompt, /fault injection/i);
 assert.match(prompt.systemPrompt, /JSON_PATH_EXISTS prova SOMENTE/i);
-assert.match(prompt.systemPrompt, /UUID, boolean, date\/date-time/i);
+assert.match(prompt.systemPrompt, /UUID, boolean, date\/date-time, integer, number, string, array ou object/i);
 assert.match(prompt.systemPrompt, /contagem correta/i);
 
 // Fix 3: scenario intent must be provable by the current assertion vocabulary.
@@ -388,6 +389,92 @@ const capabilitySpec = buildTestSpecificationV1({
 });
 for (const scenario of capabilitySpec.scenarios.slice(0, 5)) assert.equal(scenario.automation.readiness, 'REVIEW_REQUIRED');
 for (const scenario of capabilitySpec.scenarios.slice(5)) assert.equal(scenario.automation.readiness, 'NEEDS_ENVIRONMENT');
+
+// Fix 4: JSON_PATH_EXISTS cannot prove primitive/container types without a matching SCHEMA assertion.
+const primitiveTypeCapabilityOutput = {
+  title: 'Semantic primitive/container type capability regression pack',
+  objective: 'Garantir que existência de JSONPath não seja confundida com validação de tipo.',
+  assumptions: [],
+  scenarios: [
+    baseScenario('INTEGER_CAP_020', {
+      title: "Verificar campo 'count' na resposta",
+      objective: "Assegurar que o campo 'count' existe e é um inteiro.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.count' }],
+    }),
+    baseScenario('ARRAY_CAP_021', {
+      title: "Verificar presença de 'contents' na resposta",
+      objective: "Confirmar que o campo 'contents' existe e é um array.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.contents' }],
+    }),
+    baseScenario('STRING_CAP_022', {
+      title: "Verificar nome do token",
+      objective: "Confirmar que o campo name existe e é uma string.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.contents[*].name' }],
+    }),
+    baseScenario('OBJECT_CAP_023', {
+      title: "Verificar item da lista",
+      objective: "Confirmar que cada item de contents é um objeto.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.contents[*]' }],
+    }),
+    baseScenario('NUMBER_CAP_024', {
+      title: "Verificar score",
+      objective: "Confirmar que o campo score existe e é um número.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.score' }],
+    }),
+    baseScenario('INTEGER_SCHEMA_OK_025', {
+      title: "Validar contrato integer de count",
+      objective: "Confirmar via contrato que o campo count é um inteiro.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.count' }, { type: 'SCHEMA', schemaRef: 'track_response_200' }],
+    }),
+    baseScenario('ARRAY_SCHEMA_OK_026', {
+      title: "Validar contrato array de contents",
+      objective: "Confirmar via contrato que o campo contents é um array.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.contents' }, { type: 'SCHEMA', schemaRef: 'track_response_200' }],
+    }),
+    baseScenario('STRING_SCHEMA_OK_027', {
+      title: "Validar contrato string de name",
+      objective: "Confirmar via contrato que o campo name é uma string.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.contents[*].name' }, { type: 'SCHEMA', schemaRef: 'track_response_200' }],
+    }),
+    baseScenario('OBJECT_SCHEMA_OK_028', {
+      title: "Validar contrato object de item",
+      objective: "Confirmar via contrato que cada item de contents é um objeto.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.contents[*]' }, { type: 'SCHEMA', schemaRef: 'track_response_200' }],
+    }),
+    baseScenario('NUMBER_SCHEMA_OK_029', {
+      title: "Validar contrato number de score",
+      objective: "Confirmar via contrato que o campo score é um número.",
+      category: 'SCHEMA_CONTRACT',
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [200] }, { type: 'JSON_PATH_EXISTS', path: '$.score' }, { type: 'SCHEMA', schemaRef: 'track_response_200' }],
+    }),
+  ],
+};
+assert.doesNotThrow(() => validateTestDesignModelOutputV1(primitiveTypeCapabilityOutput, context));
+const primitiveTypeGuard = applySemanticGroundingGuardV1(primitiveTypeCapabilityOutput, context);
+assert.equal(primitiveTypeGuard.diagnostics.issuesByCode.SEMANTIC_ASSERTION_CAPABILITY_GAP, 5);
+for (const scenario of primitiveTypeGuard.output.scenarios.slice(0, 5)) {
+  assert.equal(scenario.automationHints.reviewRequired, true);
+  assert.match(scenario.automationHints.reasons.join(' '), /JSON_PATH_EXISTS.*presen[cç]a|SCHEMA assertion|type=/i);
+}
+for (const scenario of primitiveTypeGuard.output.scenarios.slice(5)) {
+  assert.equal(scenario.automationHints.reviewRequired, false);
+}
+const primitiveTypeSpec = buildTestSpecificationV1({
+  context,
+  modelOutput: primitiveTypeGuard.output,
+  generation: { provider: 'openai', model: 'gpt-4o-mini', generatedAt: '2026-08-18T00:48:59.592Z', contextFingerprint: 'e'.repeat(64) },
+});
+for (const scenario of primitiveTypeSpec.scenarios.slice(0, 5)) assert.equal(scenario.automation.readiness, 'REVIEW_REQUIRED');
+for (const scenario of primitiveTypeSpec.scenarios.slice(5)) assert.equal(scenario.automation.readiness, 'NEEDS_ENVIRONMENT');
 
 let generateCalls = 0;
 const serviceResult = await generateCatalogTestDesignV1({

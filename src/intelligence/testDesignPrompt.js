@@ -3,7 +3,7 @@ import {
   TEST_DESIGN_CONTRACT_VERSION,
 } from './testDesignContract.js';
 
-export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v4';
+export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v5';
 export const TEST_DESIGN_REPAIR_PROMPT_VERSION = 'qagent.test-design-repair-prompt.v1';
 
 function collectAllowedRefs(context) {
@@ -65,7 +65,7 @@ QUALIDADE:
 - O HTTP method e o path do target são system-owned e ficam fixos no endpoint observado. Não gere cenários cuja execução dependa de usar método inválido/não permitido, caminho/rota inválida ou outro endpoint; qagent.api-test-dsl.v1 ainda não suporta target mutation.
 - qagent.api-test-dsl.v1 ainda não possui fault injection, mock de upstream ou setup para provocar erro interno/500. Não apresente cenários de "forçar/simular falha interna do servidor" como executáveis; se a ideia ainda for útil, marque automationHints.reviewRequired=true e grounding ASSUMED/LOW.
 - JSON_PATH_EXISTS prova SOMENTE que o caminho existe; ele não prova tipo, formato, cardinalidade, valor mínimo/máximo ou relação entre campos.
-- Para afirmar que um campo é UUID, boolean, date/date-time etc., inclua também uma assertion SCHEMA com um schemaRef permitido cujo schema estrutural realmente modele esse tipo/formato. Se isso não for possível, não descreva o cenário como se validasse o tipo/formato; marque reviewRequired=true.
+- Para afirmar que um campo é UUID, boolean, date/date-time, integer, number, string, array ou object, inclua também uma assertion SCHEMA com um schemaRef permitido cujo schema estrutural realmente modele esse tipo/formato. JSON_PATH_EXISTS sozinho prova apenas presença. Se isso não for possível, não descreva o cenário como se validasse o tipo/formato; marque reviewRequired=true.
 - Não descreva um cenário como validando lista/array não vazio usando apenas JSON_PATH_EXISTS. Cardinalidade só é comprovável nesta DSL quando existir constraint estrutural adequada (ex.: minItems) coberta por SCHEMA; caso contrário marque reviewRequired=true.
 - qagent.api-test-dsl.v1 não possui assertion relacional para provar que count corresponde ao tamanho de contents/array. Não afirme "contagem correta" se as assertions apenas verificam existência.
 - Evite criar vários DATA_VARIATION que apenas repetem presença/tipo de campos já cobertos por um único SCHEMA_CONTRACT. Prefira um cenário de contrato de schema quando ele representa a mesma intenção com mais fidelidade.

@@ -1,4 +1,4 @@
-export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.1';
+export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.2';
 
 const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
 const CONFIDENCE_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2 });
@@ -11,6 +11,11 @@ const NON_EMPTY_INTENT_RE = /(?:n[aã]o\s+(?:est[aá]\s+|esteja\s+)?vazi[oa]|lis
 const UUID_INTENT_RE = /(?:\buuid\b|formato\s+uuid|uuid\s+v[aá]lid[oa]?|valid\s+uuid)/i;
 const BOOLEAN_INTENT_RE = /(?:\bboolean(?:o|a)?\b|tipo\s+boolean|boolean\s+type|true\s*\/\s*false)/i;
 const DATE_TIME_INTENT_RE = /(?:data(?:\s+e\s+hora)?\s+v[aá]lid[oa]?|date[-\s]?time|datetime|timestamp\s+v[aá]lid[oa]?|valid\s+(?:date|datetime|timestamp))/i;
+const INTEGER_INTENT_RE = /(?:(?:tipo|type)\s+(?:integer|inteiro|inteira)\b|(?:^|\s)(?:é|seja|deve\s+ser|is|should\s+be)\s+(?:um|uma|a|an)?\s*(?:integer|inteiro|inteira)\b|\b(?:integer|inteiro|inteira)\s+(?:v[aá]lid[oa]?|type)\b)/i;
+const NUMBER_INTENT_RE = /(?:(?:tipo|type)\s+(?:number|numeric|n[uú]mero|num[eé]rico|num[eé]rica|decimal|float)\b|(?:^|\s)(?:é|seja|deve\s+ser|is|should\s+be)\s+(?:um|uma|a|an)?\s*(?:number|numeric|n[uú]mero|num[eé]rico|num[eé]rica|decimal|float)\b)/i;
+const STRING_INTENT_RE = /(?:(?:tipo|type)\s+(?:string|texto)\b|(?:^|\s)(?:é|seja|deve\s+ser|is|should\s+be)\s+(?:um|uma|a|an)?\s*(?:string|texto)\b)/i;
+const ARRAY_INTENT_RE = /(?:(?:tipo|type)\s+(?:array|lista)\b|(?:^|\s)(?:é|seja|deve\s+ser|is|should\s+be)\s+(?:um|uma|a|an)?\s*(?:array|lista)\b)/i;
+const OBJECT_INTENT_RE = /(?:(?:tipo|type)\s+(?:object|objeto)\b|(?:^|\s)(?:é|seja|deve\s+ser|is|should\s+be)\s+(?:um|uma|a|an)?\s*(?:object|objeto)\b)/i;
 const COUNT_RELATION_INTENT_RE = /(?:(?:contagem|quantidade|count).{0,100}(?:corret[oa]|correspon|equival|n[uú]mero\s+de\s+(?:itens|elementos)|tamanho\s+da\s+lista)|(?:matches|equals|corresponds).{0,60}(?:number|length|count).{0,60}(?:items|elements|array|list))/i;
 
 function cloneJson(value) {
@@ -579,6 +584,52 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
       index,
       addIssue,
       reason: 'O objetivo afirma formato de data/hora válido, mas JSON_PATH_EXISTS só prova presença. Para provar o formato com a DSL v1 é necessário um SCHEMA assertion cujo schema estrutural modele o campo com format date/date-time/time.',
+    });
+  }
+
+  const genericTypeChecks = [
+    {
+      regex: INTEGER_INTENT_RE,
+      type: 'integer',
+      predicate: (node) => node?.type === 'integer',
+      label: 'integer/inteiro',
+    },
+    {
+      regex: NUMBER_INTENT_RE,
+      type: 'number',
+      predicate: (node) => node?.type === 'number',
+      label: 'number/numérico',
+    },
+    {
+      regex: STRING_INTENT_RE,
+      type: 'string',
+      predicate: (node) => node?.type === 'string',
+      label: 'string/texto',
+    },
+    {
+      regex: ARRAY_INTENT_RE,
+      type: 'array',
+      predicate: (node) => node?.type === 'array',
+      label: 'array/lista',
+    },
+    {
+      regex: OBJECT_INTENT_RE,
+      type: 'object',
+      predicate: (node) => node?.type === 'object',
+      label: 'object/objeto',
+    },
+  ];
+
+  for (const check of genericTypeChecks) {
+    if (!check.regex.test(semanticText)) continue;
+    const hasJsonPathAssertion = (scenario?.assertions || []).some((assertion) => ['JSON_PATH_EXISTS', 'JSON_PATH_EQUALS'].includes(assertion?.type));
+    if (!hasJsonPathAssertion) continue;
+    if (schemaAssertionProvesJsonPathCapability(scenario, knowledge, responseTracks, check.predicate)) continue;
+    addAssertionCapabilityGap({
+      scenario,
+      index,
+      addIssue,
+      reason: `O objetivo afirma tipo ${check.label}, mas JSON_PATH_EXISTS só prova presença. Para provar o tipo com a DSL v1 é necessário um SCHEMA assertion cujo schema estrutural modele esse campo como type=${check.type}.`,
     });
   }
 
