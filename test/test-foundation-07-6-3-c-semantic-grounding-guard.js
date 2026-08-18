@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { applySemanticGroundingGuardV1, SEMANTIC_GROUNDING_GUARD_VERSION } from '../src/intelligence/semanticGroundingGuard.js';
 import { buildTestSpecificationV1, validateTestDesignModelOutputV1, validateTestSpecificationV1 } from '../src/intelligence/testDesignContract.js';
 import { generateCatalogTestDesignV1 } from '../src/intelligence/testDesignService.js';
+import { buildTestDesignPromptV1, TEST_DESIGN_PROMPT_VERSION } from '../src/intelligence/testDesignPrompt.js';
 
 const context = {
   contractVersion: 'qagent.test-design.v1',
@@ -205,6 +206,69 @@ assert.equal(specification.scenarios[6].automation.readiness, 'REVIEW_REQUIRED')
 assert.equal(specification.scenarios[7].automation.readiness, 'NEEDS_ENVIRONMENT');
 assert.ok(specification.scenarios[1].automation.blockers.some((reason) => /valor literal/i.test(reason)));
 assert.ok(specification.scenarios[0].automation.blockers.some((reason) => /API Service de runtime/i.test(reason)));
+
+// Fix 2: intent can demand a target/failure mechanism that the DSL cannot execute.
+const executabilityOutput = {
+  title: 'Semantic executability regression pack',
+  objective: 'Reproduzir target mutation e fault injection observados na geração real.',
+  assumptions: [],
+  scenarios: [
+    baseScenario('TARGET_PATH_009', {
+      title: 'Caminho Inválido para Listagem de Tokens',
+      objective: 'Verificar a resposta do endpoint quando um caminho inválido é acessado.',
+      category: 'NEGATIVE',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Hipótese negativa.'], evidenceRefs: [], schemaRefs: [] },
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [404] }],
+    }),
+    baseScenario('TARGET_METHOD_010', {
+      title: 'Método Inválido ao Listar Tokens',
+      objective: 'Verificar a resposta do endpoint quando um método HTTP inválido é utilizado.',
+      category: 'NEGATIVE',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Hipótese negativa.'], evidenceRefs: [], schemaRefs: [] },
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [405] }],
+    }),
+    baseScenario('FAULT_011', {
+      title: 'Erro Interno do Servidor ao Listar Tokens',
+      objective: 'Verificar a resposta do endpoint em caso de erro interno do servidor.',
+      category: 'NEGATIVE',
+      confidence: 'LOW',
+      grounding: { level: 'INFERRED', rationale: ['Hipótese de falha.'], evidenceRefs: [], schemaRefs: [] },
+      assertions: [{ type: 'STATUS', expectedStatusCodes: [500] }],
+    }),
+  ],
+};
+assert.doesNotThrow(() => validateTestDesignModelOutputV1(executabilityOutput, context));
+const executableGuard = applySemanticGroundingGuardV1(executabilityOutput, context);
+assert.equal(executableGuard.diagnostics.issuesByCode.SEMANTIC_TARGET_MUTATION_UNSUPPORTED, 2);
+assert.equal(executableGuard.diagnostics.issuesByCode.SEMANTIC_FAULT_INJECTION_UNSUPPORTED, 1);
+for (const scenario of executableGuard.output.scenarios) {
+  assert.equal(scenario.grounding.level, 'ASSUMED');
+  assert.equal(scenario.confidence, 'LOW');
+  assert.equal(scenario.automationHints.reviewRequired, true);
+}
+assert.match(executableGuard.output.scenarios[0].automationHints.reasons.join(' '), /path.*fixa|target mutation/i);
+assert.match(executableGuard.output.scenarios[1].automationHints.reasons.join(' '), /HTTP Method.*fixa|target mutation/i);
+assert.match(executableGuard.output.scenarios[2].automationHints.reasons.join(' '), /fault injection|falha interna/i);
+
+const executableSpec = buildTestSpecificationV1({
+  context,
+  modelOutput: executableGuard.output,
+  generation: { provider: 'openai', model: 'gpt-4o-mini', generatedAt: '2026-08-18T00:07:19.616Z', contextFingerprint: 'c'.repeat(64) },
+});
+for (const scenario of executableSpec.scenarios) {
+  assert.equal(scenario.automation.readiness, 'REVIEW_REQUIRED');
+  assert.equal(scenario.spec.target.method, 'GET');
+  assert.equal(scenario.spec.target.path, '/core-api/api-token-list');
+}
+assert.ok(executableSpec.scenarios[0].automation.blockers.some((reason) => /target mutation/i.test(reason)));
+assert.ok(executableSpec.scenarios[2].automation.blockers.some((reason) => /fault injection/i.test(reason)));
+
+const prompt = buildTestDesignPromptV1(context, { scenarioCount: 8 });
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v3');
+assert.match(prompt.systemPrompt, /target mutation/i);
+assert.match(prompt.systemPrompt, /fault injection/i);
 
 let generateCalls = 0;
 const serviceResult = await generateCatalogTestDesignV1({

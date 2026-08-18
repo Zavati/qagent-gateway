@@ -373,3 +373,5 @@ A chave `AI_CREDENTIALS_KEY_V1` deve existir somente em `.dev.vars` local ou com
 
 Comando node para gerar chave aleatoria 
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+### Foundation 07.6.3-C Fix 2 — Semantic Executability Guard
+Adds deterministic `SEMANTIC_TARGET_MUTATION_UNSUPPORTED` and `SEMANTIC_FAULT_INJECTION_UNSUPPORTED` checks so Test Design does not present invalid-path/method or forced-server-failure ideas as executable DSL v1 automation. Test Design prompt advances to `qagent.test-design-prompt.v3`.

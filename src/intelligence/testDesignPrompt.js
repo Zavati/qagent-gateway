@@ -3,7 +3,7 @@ import {
   TEST_DESIGN_CONTRACT_VERSION,
 } from './testDesignContract.js';
 
-export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v2';
+export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v3';
 export const TEST_DESIGN_REPAIR_PROMPT_VERSION = 'qagent.test-design-repair-prompt.v1';
 
 function collectAllowedRefs(context) {
@@ -62,6 +62,8 @@ QUALIDADE:
 - Não trate 4xx/5xx não observados como OBSERVED. Se forem apenas hipótese, use INFERRED/ASSUMED e automationHints.reviewRequired=true.
 - Não gere cenário de autenticação/401/403 sem sinal de auth no contexto; se ainda for uma hipótese de valor, marque reviewRequired=true.
 - A DSL v1 ainda não possui assertion de latência. Não descreva um cenário como validando limite de performance/latência se nenhuma assertion puder realmente verificar esse objetivo.
+- O HTTP method e o path do target são system-owned e ficam fixos no endpoint observado. Não gere cenários cuja execução dependa de usar método inválido/não permitido, caminho/rota inválida ou outro endpoint; qagent.api-test-dsl.v1 ainda não suporta target mutation.
+- qagent.api-test-dsl.v1 ainda não possui fault injection, mock de upstream ou setup para provocar erro interno/500. Não apresente cenários de "forçar/simular falha interna do servidor" como executáveis; se a ideia ainda for útil, marque automationHints.reviewRequired=true e grounding ASSUMED/LOW.
 - Sempre inclua pelo menos uma assertion STATUS; quando existir schema de resposta aplicável, prefira também SCHEMA e/ou CONTENT_TYPE.
 - Formatos válidos de assertion são EXATAMENTE:
   STATUS: {\"type\":\"STATUS\",\"expectedStatusCodes\":[200]}

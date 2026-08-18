@@ -4,6 +4,9 @@ const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
 const CONFIDENCE_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2 });
 const HTTP_AUTH_STATUSES = new Set([401, 403]);
 const LATENCY_RE = /(?:lat[eê]ncia|latency|tempo\s+de\s+resposta|response\s+time|performance|desempenho)/i;
+const TARGET_PATH_MUTATION_RE = /(?:(?:caminho|path|rota|endpoint|url)\s+(?:inv[aá]lid[oa]?|inexistent[ea]?|desconhecid[oa]?)|(?:inv[aá]lid[oa]?|inexistent[ea]?|desconhecid[oa]?)\s+(?:caminho|path|rota|endpoint|url)|invalid\s+(?:path|route|endpoint|url)|unknown\s+(?:path|route|endpoint)|non[-\s]?existent\s+(?:path|route|endpoint))/i;
+const TARGET_METHOD_MUTATION_RE = /(?:(?:m[eé]todo(?:\s+http)?|http\s+method)\s+(?:inv[aá]lid[oa]?|n[aã]o\s+permitid[oa]?|n[aã]o\s+suportad[oa]?)|(?:inv[aá]lid[oa]?|n[aã]o\s+permitid[oa]?|n[aã]o\s+suportad[oa]?)\s+(?:m[eé]todo(?:\s+http)?)|invalid\s+(?:http\s+)?method|method\s+not\s+allowed|unsupported\s+(?:http\s+)?method)/i;
+const FAULT_INJECTION_RE = /(?:erro\s+interno(?:\s+do\s+servidor)?|falha\s+interna(?:\s+do\s+servidor)?|internal\s+server\s+(?:error|failure)|server\s+(?:error|failure)|fault\s+injection|simul(?:ar|ando|ação).*?(?:erro|falha|500)|for[cç](?:ar|ando).*?(?:erro|falha|500)|induz(?:ir|indo).*?(?:erro|falha|500))/i;
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -451,6 +454,28 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
   }
 
   const semanticText = `${scenario.title || ''} ${scenario.objective || ''}`;
+
+  if (TARGET_PATH_MUTATION_RE.test(semanticText)) {
+    const reason = `O cenário exige alterar o path/rota alvo, mas qagent.api-test-dsl.v1 fixa o path em '${context?.endpoint?.normalizedPath || 'endpoint observado'}'; target mutation ainda não é suportada.`;
+    markAssumption(scenario, reason);
+    markReview(scenario, reason);
+    addIssue({ code: 'SEMANTIC_TARGET_MUTATION_UNSUPPORTED', path: `modelOutput.scenarios[${index}].objective`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
+  }
+
+  if (TARGET_METHOD_MUTATION_RE.test(semanticText)) {
+    const reason = `O cenário exige alterar o HTTP Method, mas qagent.api-test-dsl.v1 fixa o method em '${String(context?.endpoint?.method || '').toUpperCase() || 'método observado'}'; target mutation ainda não é suportada.`;
+    markAssumption(scenario, reason);
+    markReview(scenario, reason);
+    addIssue({ code: 'SEMANTIC_TARGET_MUTATION_UNSUPPORTED', path: `modelOutput.scenarios[${index}].objective`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
+  }
+
+  if (FAULT_INJECTION_RE.test(semanticText) && statuses.some((status) => Number(status) >= 500)) {
+    const reason = 'O cenário depende de provocar ou reproduzir uma falha interna do servidor, mas qagent.api-test-dsl.v1 ainda não possui fault injection, mock ou setup capaz de criar essa condição de forma determinística.';
+    markAssumption(scenario, reason);
+    markReview(scenario, reason);
+    addIssue({ code: 'SEMANTIC_FAULT_INJECTION_UNSUPPORTED', path: `modelOutput.scenarios[${index}].objective`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
+  }
+
   if (LATENCY_RE.test(semanticText)) {
     const reason = 'O objetivo menciona latência/performance, mas qagent.api-test-dsl.v1 ainda não possui assertion de latência; o cenário não é executável como está.';
     markReview(scenario, reason);
