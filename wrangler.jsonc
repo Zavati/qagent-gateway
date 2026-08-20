@@ -9,6 +9,10 @@
 		{
 			"binding": "CATALOG_QUERY_SERVICE",
 			"service": "qagent-catalog"
+		},
+		{
+			"binding": "TEST_REGISTRY_SERVICE",
+			"service": "qagent-test-registry"
 		}
 	],
 	"vars": {
@@ -39,7 +43,10 @@
 		"EMAIL_DISPATCH_WEBHOOK_URL": "",
 		// Foundation 07.5.12-A - internal Catalog Query API proxy
 		"CATALOG_QUERY_BASE_URL": "https://api.apiqagent.com",
-		"CATALOG_QUERY_TIMEOUT_MS": "10000"
+		"CATALOG_QUERY_TIMEOUT_MS": "10000",
+		// Foundation 07.6.5-C - internal Test Registry persistence
+		"TEST_REGISTRY_TIMEOUT_MS": "10000",
+		"TEST_REGISTRY_PERSIST_RETRIES": "1"
 	},
 	"d1_databases": [
 		{

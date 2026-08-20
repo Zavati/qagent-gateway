@@ -2,7 +2,7 @@ import { getEnvNum } from '../lib/config.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import { buildCatalogTestDesignContextV1 } from '../intelligence/catalogContextBuilder.js';
-import { generateCatalogTestDesignV1 } from '../intelligence/testDesignService.js';
+import { generateAndPersistCatalogTestDesignV1 } from '../intelligence/testDesignPersistence.js';
 
 export async function getConsoleTestDesignContext(req, env, { projectId, endpointId }) {
   const tenant = await requireConsoleTenant(req, env);
@@ -31,7 +31,7 @@ export async function postConsoleTestDesign(req, env, { projectId, endpointId },
     });
   }
 
-  const result = await generateCatalogTestDesignV1({
+  const result = await generateAndPersistCatalogTestDesignV1({
     env,
     organizationId: tenant.organizationId,
     projectId,

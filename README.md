@@ -373,3 +373,17 @@ A chave `AI_CREDENTIALS_KEY_V1` deve existir somente em `.dev.vars` local ou com
 
 Comando node para gerar chave aleatoria 
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+---
+
+## Foundation 07.6.5-C — Test Registry Persistence
+
+The Test Design POST now persists the final validated `qagent.test-spec.v1` in the independent Test Registry through the Cloudflare `TEST_REGISTRY_SERVICE` binding.
+
+Validation commands:
+
+```bash
+npm run check:07.6.5-c
+npm run test:all
+```
+
+The Browser never calls the Registry directly. Gateway tenant/project authorization remains authoritative.
