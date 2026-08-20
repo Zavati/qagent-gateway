@@ -189,3 +189,140 @@ export async function appendTestDesignVersion({
 
   throw lastError || new TestRegistryClientError('Test Registry persistence failed.');
 }
+
+
+function validateLatestSuccessEnvelope(body, { organizationId, projectId, endpointId }) {
+  if (body?.status !== 'ok' || !body?.data || typeof body.data.exists !== 'boolean') {
+    throw new TestRegistryClientError('Test Registry returned an invalid retrieval response.', {
+      code: 'TEST_REGISTRY_RESPONSE_INVALID',
+      status: 502,
+      retryable: true,
+    });
+  }
+
+  if (body.data.exists === false) {
+    return { exists: false, testDesign: null };
+  }
+
+  const root = body.data.testDesign;
+  const version = body.data.version;
+  const specification = version?.specification;
+  const source = specification?.source;
+
+  const valid = Boolean(
+    root
+    && version
+    && typeof root.id === 'string'
+    && typeof version.id === 'string'
+    && version.testDesignId === root.id
+    && Number.isInteger(version.version)
+    && version.version >= 1
+    && root.latestVersion === version.version
+    && root.latestVersionId === version.id
+    && root.organizationId === organizationId
+    && root.projectId === projectId
+    && root.endpointId === endpointId
+    && version.organizationId === organizationId
+    && version.projectId === projectId
+    && version.endpointId === endpointId
+    && typeof version.contextFingerprint === 'string'
+    && version.contextFingerprint.length > 0
+    && typeof version.createdAt === 'string'
+    && specification
+    && typeof specification === 'object'
+    && !Array.isArray(specification)
+    && specification.contractVersion === 'qagent.test-design.v1'
+    && specification.specificationVersion === 'qagent.test-spec.v1'
+    && source?.organizationId === organizationId
+    && source?.projectId === projectId
+    && source?.endpointId === endpointId
+  );
+
+  if (!valid) {
+    throw new TestRegistryClientError('Test Registry returned an invalid or cross-scope Test Design.', {
+      code: 'TEST_REGISTRY_RESPONSE_INVALID',
+      status: 502,
+      retryable: true,
+    });
+  }
+
+  return {
+    exists: true,
+    testDesign: {
+      id: root.id,
+      versionId: version.id,
+      version: version.version,
+      createdAt: version.createdAt,
+      contextFingerprint: version.contextFingerprint,
+      specification,
+    },
+  };
+}
+
+export async function getLatestTestDesign({
+  env,
+  organizationId,
+  projectId,
+  endpointId,
+  fetchImpl = null,
+} = {}) {
+  const binding = env?.TEST_REGISTRY_SERVICE;
+  if (!fetchImpl && (!binding || typeof binding.fetch !== 'function')) {
+    throw new TestRegistryClientError('Test Registry service binding is not configured.', {
+      code: 'TEST_REGISTRY_NOT_CONFIGURED',
+      status: 503,
+      retryable: true,
+    });
+  }
+
+  const timeoutMs = resolveTimeoutMs(env);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const path = `/v1/test-registry/projects/${encodeURIComponent(projectId)}/endpoints/${encodeURIComponent(endpointId)}/test-design/latest`;
+  const request = new Request(`${INTERNAL_BASE_URL}${path}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-QAgent-Organization-Id': organizationId,
+      'X-QAgent-Project-Id': projectId,
+    },
+    signal: controller.signal,
+  });
+
+  let response;
+  try {
+    response = fetchImpl ? await fetchImpl(request) : await binding.fetch(request);
+  } catch (error) {
+    const isTimeout = error?.name === 'AbortError';
+    throw new TestRegistryClientError(
+      isTimeout ? 'Test Registry retrieval timed out.' : 'Test Registry service is unavailable.',
+      {
+        code: isTimeout ? 'TEST_REGISTRY_UPSTREAM_TIMEOUT' : 'TEST_REGISTRY_UPSTREAM_UNAVAILABLE',
+        status: isTimeout ? 504 : 503,
+        retryable: true,
+        detail: { timeoutMs },
+        cause: error,
+      },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const text = await response.text();
+  const body = safeParseJson(text);
+  if (!response.ok) {
+    throw new TestRegistryClientError('Test Registry rejected Test Design retrieval.', {
+      code: 'TEST_REGISTRY_UPSTREAM_REJECTED',
+      status: response.status >= 500 ? 503 : 502,
+      retryable: response.status >= 500 || response.status === 429,
+      upstreamStatus: response.status,
+      upstreamCode: typeof body?.code === 'string' ? body.code : null,
+      detail: {
+        upstreamStatus: response.status,
+        upstreamCode: typeof body?.code === 'string' ? body.code : null,
+      },
+    });
+  }
+
+  return validateLatestSuccessEnvelope(body, { organizationId, projectId, endpointId });
+}

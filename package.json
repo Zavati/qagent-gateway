@@ -11,7 +11,7 @@
     "test:integration": "pwsh -File test/run-integration-tests.ps1",
     "test:generate": "node test/test-generateTests.js",
     "test:router": "node test/test-router.js",
-    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1 && npm run test:f07-6-2 && npm run test:f07-6-3 && npm run test:f07-6-3-c && npm run test:f07-6-5-c",
+    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1 && npm run test:f07-6-2 && npm run test:f07-6-3 && npm run test:f07-6-3-c && npm run test:f07-6-5-c && npm run test:f07-6-5-d",
     "test:ai": "node test/test-ai-engine.js",
     "test:autofill-ai": "node test/test-autofill-ai-service.js",
     "test:openai-provider": "node test/test-openai-provider.js",
@@ -37,7 +37,9 @@
     "test:f07-6-3": "node test/test-foundation-07-6-3-ai-test-design-engine.js",
     "test:f07-6-3-c": "node test/test-foundation-07-6-3-c-semantic-grounding-guard.js",
     "test:f07-6-5-c": "node test/test-foundation-07-6-5-c-test-registry-persistence.js",
-    "check:07.6.5-c": "node scripts/verify-test-registry-config.mjs && npm run test:f07-6-5-c"
+    "check:07.6.5-c": "node scripts/verify-test-registry-config.mjs && npm run test:f07-6-5-c",
+    "test:f07-6-5-d": "node test/test-foundation-07-6-5-d-test-registry-retrieval.js",
+    "check:07.6.5-d": "node scripts/verify-test-registry-config.mjs && npm run test:router && npm run test:f07-6-5-c && npm run test:f07-6-5-d"
   },
   "keywords": [],
   "author": "",

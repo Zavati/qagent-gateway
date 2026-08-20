@@ -3,6 +3,7 @@ import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import { buildCatalogTestDesignContextV1 } from '../intelligence/catalogContextBuilder.js';
 import { generateAndPersistCatalogTestDesignV1 } from '../intelligence/testDesignPersistence.js';
+import { loadLatestPersistedTestDesignV1 } from '../intelligence/testDesignRetrieval.js';
 
 export async function getConsoleTestDesignContext(req, env, { projectId, endpointId }) {
   const tenant = await requireConsoleTenant(req, env);
@@ -13,6 +14,33 @@ export async function getConsoleTestDesignContext(req, env, { projectId, endpoin
     projectId,
     endpointId,
   });
+  return {
+    status: 'ok',
+    data: result,
+  };
+}
+
+
+export async function getConsoleTestDesign(
+  req,
+  env,
+  { projectId, endpointId },
+  {
+    requireTenant = requireConsoleTenant,
+    getProject = getOrganizationProject,
+    loadLatest = loadLatestPersistedTestDesignV1,
+  } = {},
+) {
+  const tenant = await requireTenant(req, env);
+  await getProject(env, tenant.organizationId, projectId);
+
+  const result = await loadLatest({
+    env,
+    organizationId: tenant.organizationId,
+    projectId,
+    endpointId,
+  });
+
   return {
     status: 'ok',
     data: result,

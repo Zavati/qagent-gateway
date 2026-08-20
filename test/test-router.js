@@ -51,6 +51,7 @@ expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/evide
 expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/schemas', 'consoleCatalogEndpointSchemasGet', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/lifecycle-history', 'consoleCatalogEndpointLifecycleHistoryList', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('GET', '/v1/console/projects/prj_123/intelligence/endpoints/cep_789/test-design-context', 'consoleIntelligenceTestDesignContextGet', { projectId: 'prj_123', endpointId: 'cep_789' });
+expectRoute('GET', '/v1/console/projects/prj_123/intelligence/endpoints/cep_789/test-design', 'consoleIntelligenceTestDesignGet', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('POST', '/v1/console/projects/prj_123/intelligence/endpoints/cep_789/test-design', 'consoleIntelligenceTestDesignPost', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('GET', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesList', { projectId: 'prj_123' });
 expectRoute('POST', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesCreate', { projectId: 'prj_123' });

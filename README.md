@@ -387,3 +387,8 @@ npm run test:all
 ```
 
 The Browser never calls the Registry directly. Gateway tenant/project authorization remains authoritative.
+
+
+## Foundation 07.6.5-D — Retrieval API
+
+O Gateway expõe `GET /v1/console/projects/:projectId/intelligence/endpoints/:endpointId/test-design` para recuperar a latest immutable Test Design Version via `TEST_REGISTRY_SERVICE`, após autenticação Console e autorização do Project. Consulte `FOUNDATION-07.6.5-D.md` e `APPLY-FOUNDATION-07.6.5-D.md`.
