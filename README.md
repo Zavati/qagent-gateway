@@ -392,3 +392,20 @@ The Browser never calls the Registry directly. Gateway tenant/project authorizat
 ## Foundation 07.6.5-D — Retrieval API
 
 O Gateway expõe `GET /v1/console/projects/:projectId/intelligence/endpoints/:endpointId/test-design` para recuperar a latest immutable Test Design Version via `TEST_REGISTRY_SERVICE`, após autenticação Console e autorização do Project. Consulte `FOUNDATION-07.6.5-D.md` e `APPLY-FOUNDATION-07.6.5-D.md`.
+
+## Foundation 07.7.2 — Run Contract + Execution Plan
+
+O Gateway cria Runs imutavelmente vinculados a `testDesignVersionId`, Environment, Runtime Snapshot e Execution Plan. Somente cenários `READY` são aceitos; nenhum HTTP é executado nesta Foundation.
+
+## Foundation 07.7.2-A — Execution Readiness Bridge Hardening
+
+O Catalog Context Builder v1.1 separa identidade lógica do API Service da resolução física de Environment. Um origin observado pode resolver um único `apiServiceKey` mesmo quando o `environmentId` observado pelo Knowledge Layer não coincide com o ID do Environment configurado no Control Plane. Ambiguidade continua fail-closed.
+
+Validação:
+
+```bash
+npm run check:07.7.2-a
+npm run test:all
+```
+
+Consulte `FOUNDATION-07.7.2-A.md` e `APPLY-FOUNDATION-07.7.2-A.md`.

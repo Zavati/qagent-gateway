@@ -702,3 +702,65 @@ requiresExecutionConfirmation = boolean
 ```
 
 Foundation 07.7.2 materializes `EXPLICIT_CONFIG`. The discovered fallback is a mandatory Runtime Integration gate before broad Runner execution.
+
+---
+
+# Addendum — 07.7.2-A Execution Readiness Bridge Hardening
+
+Production validation after 07.7.2 revealed that `READY` existed but logical API Service resolution was overly coupled to Catalog Environment IDs.
+
+## Architectural correction
+
+```text
+Test Design time:
+Observed endpoint origin
+→ unique logical API Service
+→ apiServiceKey
+
+Run creation time:
+apiServiceKey + selected environmentId
+→ exact Environment API Binding
+→ baseUrl
+```
+
+The Test Design remains Environment-independent as originally intended.
+
+`environmentCoverageStatus` is diagnostic and must not erase a unique service identity.
+
+Ambiguous service identities remain blocked.
+
+## Auth
+
+Auth Profile availability at Test Design time is environment-independent and means usable in at least one configured Environment of the resolved service. Exact selected-Environment validation remains a Run responsibility.
+
+Sanitized auth-observation provenance (`authObserved`, `authScheme`) is still a pre-HTTP hardening item; observed credential values remain forbidden.
+
+## Gates
+
+```text
+real simple GET
++ unique service origin
++ usable Auth Profile
++ grounded 2xx/schema
++ no data/review blocker
+→ READY
+```
+
+Then:
+
+```text
+READY persisted tdv_*
+→ POST Run
+→ CREATED
+→ no HTTP yet
+```
+
+## Next
+
+After 07.7.2-A production validation:
+
+```text
+07.7.2-B — Zero-Config Runtime Bootstrap v1
+```
+
+Implement safe discovered-runtime fallback without merging Catalog discovered Services with configured Control Plane API Services.

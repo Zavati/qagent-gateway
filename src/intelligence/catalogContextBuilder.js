@@ -13,7 +13,7 @@ import { listProjectEnvironmentApiBindings } from '../services/environmentApiBin
 import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.1';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -70,51 +70,105 @@ function observedEnvironmentIds(endpointDetail) {
 }
 
 function buildRuntimeServiceMapping(endpointDetail, controlPlane) {
+  // 07.7.2-A: Test Design resolves logical service identity independently from
+  // the Environment selected later by a Run. Environment coverage remains a
+  // diagnostic/safety signal, but it no longer nulls a uniquely identified
+  // API Service merely because every observed Environment is not configured.
   const environmentIds = observedEnvironmentIds(endpointDetail);
   const catalogBindings = (endpointDetail?.bindings || [])
     .map((binding) => ({ environmentId: nullableString(binding?.environmentId), origin: catalogBindingOrigin(binding) }))
     .filter((binding) => binding.origin);
+  const observedOrigins = uniqueStrings(catalogBindings.map((binding) => binding.origin));
 
   const candidates = [];
   for (const service of controlPlane.apiServices || []) {
-    const serviceBindings = (controlPlane.apiBindings || []).filter((binding) => binding.apiServiceId === service.apiServiceId);
+    if (service?.status === 'archived') continue;
+    const serviceBindings = (controlPlane.apiBindings || []).filter((binding) => (
+      binding.apiServiceId === service.apiServiceId && binding?.status !== 'archived'
+    ));
+    const configuredOrigins = uniqueStrings(serviceBindings.map((binding) => safeHttpOrigin(binding.baseUrl)));
+    const matchedOrigins = configuredOrigins.filter((origin) => observedOrigins.includes(origin));
+    if (!matchedOrigins.length) continue;
+
     const matchedEnvironments = new Set();
-    for (const runtimeBinding of serviceBindings) {
-      const runtimeOrigin = safeHttpOrigin(runtimeBinding.baseUrl);
-      if (!runtimeOrigin) continue;
-      const environmentId = nullableString(runtimeBinding.environmentId);
-      const matched = catalogBindings.some((catalogBinding) => {
-        if (catalogBinding.origin !== runtimeOrigin) return false;
-        if (environmentId && catalogBinding.environmentId) return environmentId === catalogBinding.environmentId;
-        return true;
-      });
-      if (matched && environmentId) matchedEnvironments.add(environmentId);
+    for (const catalogBinding of catalogBindings) {
+      if (!catalogBinding.environmentId) continue;
+      const exactEnvironmentBinding = serviceBindings.some((runtimeBinding) => (
+        nullableString(runtimeBinding.environmentId) === catalogBinding.environmentId
+        && safeHttpOrigin(runtimeBinding.baseUrl) === catalogBinding.origin
+      ));
+      if (exactEnvironmentBinding) matchedEnvironments.add(catalogBinding.environmentId);
     }
-    if (matchedEnvironments.size > 0) {
-      candidates.push({
-        apiServiceId: service.apiServiceId,
-        serviceKey: service.serviceKey,
-        matchedEnvironmentIds: [...matchedEnvironments].sort(),
-        matchCount: matchedEnvironments.size,
-        complete: environmentIds.length > 0 && environmentIds.every((environmentId) => matchedEnvironments.has(environmentId)),
-      });
-    }
+
+    const configuredEnvironmentIds = uniqueStrings(serviceBindings.map((binding) => binding.environmentId));
+    candidates.push({
+      apiServiceId: service.apiServiceId,
+      serviceKey: service.serviceKey,
+      matchedOrigins: [...matchedOrigins].sort(),
+      originMatchCount: matchedOrigins.length,
+      matchedEnvironmentIds: [...matchedEnvironments].sort(),
+      configuredEnvironmentIds,
+      environmentMatchCount: matchedEnvironments.size,
+    });
   }
 
-  candidates.sort((a, b) => b.matchCount - a.matchCount || String(a.serviceKey).localeCompare(String(b.serviceKey)));
+  candidates.sort((a, b) => (
+    b.originMatchCount - a.originMatchCount
+    || b.environmentMatchCount - a.environmentMatchCount
+    || String(a.serviceKey).localeCompare(String(b.serviceKey))
+  ));
+
   if (!candidates.length) {
-    return { apiServiceKey: null, status: 'UNMATCHED', environmentIds, candidates: [] };
+    return {
+      apiServiceId: null,
+      apiServiceKey: null,
+      status: 'UNMATCHED',
+      resolutionSource: null,
+      environmentIds,
+      observedOrigins,
+      environmentCoverageStatus: environmentIds.length ? 'NONE' : 'NOT_APPLICABLE',
+      candidates: [],
+    };
   }
 
-  const bestCount = candidates[0].matchCount;
-  const best = candidates.filter((candidate) => candidate.matchCount === bestCount);
+  const bestOriginCount = candidates[0].originMatchCount;
+  const bestEnvironmentCount = candidates[0].environmentMatchCount;
+  const best = candidates.filter((candidate) => (
+    candidate.originMatchCount === bestOriginCount
+    && candidate.environmentMatchCount === bestEnvironmentCount
+  ));
   if (best.length > 1) {
-    return { apiServiceKey: null, status: 'AMBIGUOUS', environmentIds, candidates };
+    return {
+      apiServiceId: null,
+      apiServiceKey: null,
+      status: 'AMBIGUOUS',
+      resolutionSource: 'ORIGIN',
+      environmentIds,
+      observedOrigins,
+      environmentCoverageStatus: environmentIds.length ? 'AMBIGUOUS' : 'NOT_APPLICABLE',
+      candidates,
+    };
   }
-  if (!best[0].complete) {
-    return { apiServiceKey: null, status: 'PARTIAL', environmentIds, candidates };
-  }
-  return { apiServiceKey: best[0].serviceKey, status: 'MATCHED', environmentIds, candidates };
+
+  const selected = best[0];
+  const environmentCoverageStatus = !environmentIds.length
+    ? 'NOT_APPLICABLE'
+    : environmentIds.every((environmentId) => selected.matchedEnvironmentIds.includes(environmentId))
+      ? 'COMPLETE'
+      : selected.matchedEnvironmentIds.length > 0
+        ? 'PARTIAL'
+        : 'NONE';
+
+  return {
+    apiServiceId: selected.apiServiceId,
+    apiServiceKey: selected.serviceKey,
+    status: 'MATCHED',
+    resolutionSource: 'ORIGIN',
+    environmentIds,
+    observedOrigins,
+    environmentCoverageStatus,
+    candidates,
+  };
 }
 
 function profileUsableForEnvironment(profile, binding) {
@@ -123,27 +177,45 @@ function profileUsableForEnvironment(profile, binding) {
   return binding.credentialsConfigured === true;
 }
 
-function buildAuthRuntime(controlPlane, observedEnvironmentIdsValue) {
-  const environmentIds = observedEnvironmentIdsValue || [];
-  if (!environmentIds.length) {
-    return { availableAuthProfileRefs: [], defaultAuthProfileRef: null, completeProfileCount: 0 };
-  }
+function buildAuthRuntime(controlPlane, runtimeMapping) {
+  // Test Design is Environment-independent. A profile is therefore considered
+  // available when it is executable in at least one Environment where the
+  // resolved API Service is configured. The selected Run Environment performs
+  // the strict per-Environment validation later in Execution Plan materialization.
+  const serviceEnvironmentIds = runtimeMapping?.apiServiceId
+    ? uniqueStrings((controlPlane.apiBindings || [])
+      .filter((binding) => binding.apiServiceId === runtimeMapping.apiServiceId && binding?.status !== 'archived' && safeHttpOrigin(binding.baseUrl))
+      .map((binding) => binding.environmentId))
+    : [];
+  const activeEnvironmentIds = uniqueStrings((controlPlane.environments || [])
+    .filter((environment) => environment?.status !== 'archived')
+    .map((environment) => environment.environmentId));
+  const eligibleEnvironmentIds = serviceEnvironmentIds.length ? serviceEnvironmentIds : activeEnvironmentIds;
 
   const available = [];
+  const profileCoverage = [];
   for (const profile of controlPlane.authProfiles || []) {
     if (profile.status === 'archived' || profile.enabled === false || profile.type === 'none') continue;
     const bindings = (controlPlane.authBindings || []).filter((binding) => binding.authProfileId === profile.authProfileId);
-    const complete = environmentIds.every((environmentId) => {
+    const usableEnvironmentIds = eligibleEnvironmentIds.filter((environmentId) => {
       const binding = bindings.find((item) => item.environmentId === environmentId);
       return profileUsableForEnvironment(profile, binding);
     });
-    if (complete) available.push(profile.authProfileId);
+    if (usableEnvironmentIds.length) {
+      available.push(profile.authProfileId);
+      profileCoverage.push({
+        authProfileId: profile.authProfileId,
+        usableEnvironmentIds: [...usableEnvironmentIds].sort(),
+      });
+    }
   }
   available.sort();
   return {
     availableAuthProfileRefs: available,
     defaultAuthProfileRef: available.length === 1 ? available[0] : null,
     completeProfileCount: available.length,
+    eligibleEnvironmentCount: eligibleEnvironmentIds.length,
+    profileCoverage,
   };
 }
 
@@ -346,7 +418,7 @@ export async function buildCatalogTestDesignContextV1({
   }
 
   const runtimeMapping = buildRuntimeServiceMapping(endpointDetail, controlPlane || {});
-  const authRuntime = buildAuthRuntime(controlPlane || {}, runtimeMapping.environmentIds);
+  const authRuntime = buildAuthRuntime(controlPlane || {}, runtimeMapping);
   const schemaTracks = Array.isArray(catalog?.schemas?.tracks) ? catalog.schemas.tracks : [];
   let structuralSchemasIncluded = 0;
   const schemas = schemaTracks.slice(0, resolvedLimits.schemaTrackLimit).map((track) => {
@@ -381,14 +453,18 @@ export async function buildCatalogTestDesignContextV1({
     builderVersion: CATALOG_CONTEXT_BUILDER_VERSION,
     runtimeMapping: {
       status: runtimeMapping.status,
+      resolutionSource: runtimeMapping.resolutionSource,
       observedEnvironmentCount: runtimeMapping.environmentIds.length,
+      observedOriginCount: runtimeMapping.observedOrigins.length,
       configuredApiServiceCount: (controlPlane?.apiServices || []).length,
       candidateCount: runtimeMapping.candidates.length,
       selectedApiServiceKey: runtimeMapping.apiServiceKey,
+      environmentCoverageStatus: runtimeMapping.environmentCoverageStatus,
     },
     auth: {
       configuredProfileCount: (controlPlane?.authProfiles || []).filter((profile) => profile.enabled !== false && profile.status !== 'archived').length,
       completeProfileCount: authRuntime.completeProfileCount,
+      eligibleEnvironmentCount: authRuntime.eligibleEnvironmentCount,
       defaultSelected: Boolean(authRuntime.defaultAuthProfileRef),
     },
     schemas: {

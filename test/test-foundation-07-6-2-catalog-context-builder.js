@@ -148,8 +148,8 @@ assert.equal(result.context.contractVersion, 'qagent.test-design.v1');
 assert.equal(result.context.endpoint.endpointId, endpointId);
 assert.equal(result.context.endpoint.method, 'POST');
 assert.equal(result.context.runtime.apiServiceKey, 'checkout');
-assert.deepEqual(result.context.runtime.availableAuthProfileRefs, ['authp_customer']);
-assert.equal(result.context.runtime.defaultAuthProfileRef, 'authp_customer');
+assert.deepEqual(result.context.runtime.availableAuthProfileRefs, ['authp_customer', 'authp_partial']);
+assert.equal(result.context.runtime.defaultAuthProfileRef, null);
 assert.equal(result.diagnostics.runtimeMapping.status, 'MATCHED');
 assert.equal(result.context.environments.find((item) => item.environmentId === 'env_stg')?.name, 'STG');
 assert.equal(result.context.schemas.length, 2);
@@ -183,8 +183,41 @@ const partial = await buildCatalogTestDesignContextV1({
   organizationId, projectId, endpointId, catalogLoader,
   controlPlaneLoader: async () => partialControlPlane,
 });
-assert.equal(partial.context.runtime.apiServiceKey, null);
-assert.equal(partial.diagnostics.runtimeMapping.status, 'PARTIAL');
+assert.equal(partial.context.runtime.apiServiceKey, 'checkout');
+assert.equal(partial.diagnostics.runtimeMapping.status, 'MATCHED');
+assert.equal(partial.diagnostics.runtimeMapping.environmentCoverageStatus, 'PARTIAL');
+
+// 07.7.2-A: logical service identity must not depend on Catalog Environment IDs
+// matching the Control Plane Environment IDs. Exact observed origin is enough
+// to resolve a unique configured API Service; the Run validates the selected
+// Environment later.
+const environmentIndependentEndpoint = structuredClone(endpointDetail);
+environmentIndependentEndpoint.environments = [
+  { environmentId: 'env_observed_external', observationCount: 12, successRatePct: 100, lastSeenAt: '2026-08-17T10:00:00.000Z' },
+];
+environmentIndependentEndpoint.bindings = [
+  { environmentId: 'env_observed_external', scheme: 'https', host: 'api-stg.example.com', hostname: 'api-stg.example.com', port: null },
+];
+const environmentIndependentControlPlane = structuredClone(controlPlane);
+environmentIndependentControlPlane.apiBindings = environmentIndependentControlPlane.apiBindings.filter((binding) => (
+  binding.apiServiceId !== 'svc_checkout' || binding.environmentId === 'env_stg'
+));
+environmentIndependentControlPlane.authBindings = environmentIndependentControlPlane.authBindings.filter((binding) => (
+  binding.authProfileId !== 'authp_customer' || binding.environmentId === 'env_stg'
+));
+environmentIndependentControlPlane.authProfiles = environmentIndependentControlPlane.authProfiles.filter((profile) => profile.authProfileId === 'authp_customer');
+environmentIndependentControlPlane.authBindings = environmentIndependentControlPlane.authBindings.filter((binding) => binding.authProfileId === 'authp_customer');
+const environmentIndependent = await buildCatalogTestDesignContextV1({
+  organizationId, projectId, endpointId,
+  catalogLoader: async () => ({ endpointDetail: environmentIndependentEndpoint, schemas, evidence }),
+  controlPlaneLoader: async () => environmentIndependentControlPlane,
+});
+assert.equal(environmentIndependent.context.runtime.apiServiceKey, 'checkout');
+assert.equal(environmentIndependent.diagnostics.runtimeMapping.status, 'MATCHED');
+assert.equal(environmentIndependent.diagnostics.runtimeMapping.environmentCoverageStatus, 'NONE');
+assert.equal(environmentIndependent.context.runtime.defaultAuthProfileRef, 'authp_customer');
+assert.deepEqual(environmentIndependent.context.runtime.availableAuthProfileRefs, ['authp_customer']);
+assert.equal(environmentIndependent.diagnostics.auth.defaultSelected, true);
 
 const tooWideSchema = { type: 'object', properties: Object.fromEntries(Array.from({ length: 120 }, (_, index) => [`field_${index}`, { type: 'string' }])) };
 const oversizedSchemas = structuredClone(schemas);
