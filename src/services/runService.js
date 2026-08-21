@@ -99,6 +99,12 @@ function safeRunEnvelope(bundle, { idempotentReplay = false } = {}) {
       nextRetryAt: bundle.latestAttempt.nextRetryAt || null,
       receivedAt: bundle.latestAttempt.receivedAt || null,
       terminalAt: bundle.latestAttempt.terminalAt || null,
+      runtimeReadinessStatus: bundle.latestAttempt.runtimeReadinessStatus || null,
+      runtimePlanHash: bundle.latestAttempt.runtimePlanHash || null,
+      runtimeTargetCount: bundle.latestAttempt.runtimeTargetCount == null ? null : Number(bundle.latestAttempt.runtimeTargetCount),
+      runtimeResolutionSource: bundle.latestAttempt.runtimeResolutionSource || null,
+      runtimeResolutionConfidence: bundle.latestAttempt.runtimeResolutionConfidence || null,
+      runtimeMaterializedAt: bundle.latestAttempt.runtimeMaterializedAt || null,
     } : null,
     idempotentReplay,
   };

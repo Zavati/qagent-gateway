@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.runner-rejected.v1",
+  "type": "object",
+  "required": ["contractVersion", "attemptId", "leaseToken", "errorCode", "phase"],
+  "properties": {
+    "contractVersion": { "const": "qagent.runner-rejected.v1" },
+    "attemptId": { "type": "string", "pattern": "^runatt_" },
+    "leaseToken": { "type": "string", "minLength": 32 },
+    "errorCode": { "type": "string" },
+    "phase": { "enum": ["INTAKE", "RUNTIME"] }
+  },
+  "additionalProperties": false
+}

@@ -10,6 +10,8 @@ import {
   normalizeRunnerReceivedInput,
   normalizeRunnerReceivedV2Input,
   normalizeRunnerRetryInput,
+  normalizeRunnerRuntimeReadyInput,
+  normalizeRunnerRejectedInput,
   sha256Hex,
 } from '../lib/runContracts.js';
 import {
@@ -21,6 +23,8 @@ import {
   markRunExecutionCancelled,
   markRunExecutionReceived,
   markRunExecutionRetry,
+  markRunExecutionRuntimeReady,
+  markRunExecutionRejected,
   tryClaimRunExecution,
 } from '../repositories/runExecutionClaimRepository.js';
 import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
@@ -119,6 +123,12 @@ function safeAttempt(attempt) {
     nextRetryAt: attempt.nextRetryAt || null,
     receivedAt: attempt.receivedAt || null,
     terminalAt: attempt.terminalAt || null,
+    runtimeReadinessStatus: attempt.runtimeReadinessStatus || null,
+    runtimePlanHash: attempt.runtimePlanHash || null,
+    runtimeTargetCount: attempt.runtimeTargetCount == null ? null : Number(attempt.runtimeTargetCount),
+    runtimeResolutionSource: attempt.runtimeResolutionSource || null,
+    runtimeResolutionConfidence: attempt.runtimeResolutionConfidence || null,
+    runtimeMaterializedAt: attempt.runtimeMaterializedAt || null,
   };
 }
 
@@ -493,6 +503,111 @@ export async function postInternalRunnerReceived(
       runtimeSnapshotId: input.runtimeSnapshotId,
       queueStatus: bundle.dispatch?.status || 'RECEIVED',
       runnerReceivedAt: bundle.dispatch?.runnerReceivedAt || null,
+    },
+  };
+}
+
+
+export async function postInternalRunnerRuntimeReady(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    markRuntimeReady = markRunExecutionRuntimeReady,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerRuntimeReadyInput(body);
+
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+  if (bundle.run.status === 'CANCELLED') {
+    internalError('Run cancelado antes da materialização do runtime.', 'RUNNER_CONTROL_RUN_CANCELLED', 409);
+  }
+  if (['PASSED', 'FAILED', 'ERROR'].includes(bundle.run.status)) {
+    internalError('Run já está terminal.', 'RUNNER_CONTROL_RUN_TERMINAL', 409);
+  }
+
+  const materializedAt = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const result = await markRuntimeReady(env, {
+    organizationId: bundle.run.organizationId,
+    projectId: bundle.run.projectId,
+    runId: normalizedRunId,
+    attemptId: input.attemptId,
+    leaseTokenHash,
+    runtimePlanHash: input.runtimePlanHash,
+    targetCount: input.targetCount,
+    resolutionSource: input.resolutionSource,
+    resolutionConfidence: input.resolutionConfidence,
+    materializedAt,
+  });
+  if (!result.updated) {
+    internalError('Lease não está ativa para registrar runtime readiness.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+
+  return {
+    status: 'ok',
+    data: {
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      runtimeReadinessStatus: 'READY',
+      runtimePlanHash: input.runtimePlanHash,
+      targetCount: input.targetCount,
+      resolutionSource: input.resolutionSource,
+      resolutionConfidence: input.resolutionConfidence,
+      runtimeMaterializedAt: materializedAt,
+    },
+  };
+}
+
+
+export async function postInternalRunnerRejected(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    markRejected = markRunExecutionRejected,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerRejectedInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+
+  const rejectedAt = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const result = await markRejected(env, {
+    organizationId: bundle.run.organizationId,
+    projectId: bundle.run.projectId,
+    runId: normalizedRunId,
+    attemptId: input.attemptId,
+    leaseTokenHash,
+    errorCode: input.errorCode,
+    rejectedAt,
+  });
+  if (!result.updated) {
+    internalError('Lease não está ativa para registrar rejection.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+  return {
+    status: 'ok',
+    data: {
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      status: 'REJECTED',
+      errorCode: input.errorCode,
+      phase: input.phase,
+      rejectedAt,
     },
   };
 }

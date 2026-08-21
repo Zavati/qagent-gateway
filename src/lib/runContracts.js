@@ -10,6 +10,8 @@ export const RUNNER_CLAIM_CONTRACT_VERSION = 'qagent.runner-claim.v1';
 export const RUNNER_CLAIM_RESULT_CONTRACT_VERSION = 'qagent.runner-claim-result.v1';
 export const RUNNER_HEARTBEAT_CONTRACT_VERSION = 'qagent.runner-heartbeat.v1';
 export const RUNNER_RETRY_CONTRACT_VERSION = 'qagent.runner-retry.v1';
+export const RUNNER_RUNTIME_READY_CONTRACT_VERSION = 'qagent.runner-runtime-ready.v1';
+export const RUNNER_REJECTED_CONTRACT_VERSION = 'qagent.runner-rejected.v1';
 
 export const RUN_STATUSES = Object.freeze([
   'CREATED', 'QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED',
@@ -300,5 +302,76 @@ export function normalizeRunnerReceivedV2Input(input) {
     ...normalizeExecutionReferences(input, 'RUNNER_RECEIVED_CONTRACT_INVALID'),
     attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_RECEIVED_CONTRACT_INVALID'),
     leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_RECEIVED_CONTRACT_INVALID'),
+  };
+}
+
+
+export function normalizeRunnerRuntimeReadyInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de runtime readiness inválido.', 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set([
+    'contractVersion', 'attemptId', 'leaseToken', 'runtimePlanHash', 'targetCount',
+    'resolutionSource', 'resolutionConfidence',
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no runtime readiness: ${key}.`, 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_RUNTIME_READY_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_RUNTIME_READY_CONTRACT_VERSION}'.`, 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400);
+  }
+  const runtimePlanHash = String(input.runtimePlanHash || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(runtimePlanHash)) {
+    fail('runtimePlanHash inválido.', 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400, { field: 'runtimePlanHash' });
+  }
+  const targetCount = Number(input.targetCount);
+  if (!Number.isInteger(targetCount) || targetCount < 1 || targetCount > 50) {
+    fail('targetCount inválido.', 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400, { field: 'targetCount' });
+  }
+  const resolutionSource = String(input.resolutionSource || '').trim();
+  if (!RUNTIME_RESOLUTION_SOURCES.includes(resolutionSource)) {
+    fail('resolutionSource inválido.', 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400, { field: 'resolutionSource' });
+  }
+  const resolutionConfidence = String(input.resolutionConfidence || '').trim();
+  if (!RUNTIME_RESOLUTION_CONFIDENCE.includes(resolutionConfidence)) {
+    fail('resolutionConfidence inválido.', 'RUNNER_RUNTIME_READY_CONTRACT_INVALID', 400, { field: 'resolutionConfidence' });
+  }
+  return {
+    contractVersion: RUNNER_RUNTIME_READY_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_RUNTIME_READY_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_RUNTIME_READY_CONTRACT_INVALID'),
+    runtimePlanHash,
+    targetCount,
+    resolutionSource,
+    resolutionConfidence,
+  };
+}
+
+
+export function normalizeRunnerRejectedInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de rejection inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set(['contractVersion', 'attemptId', 'leaseToken', 'errorCode', 'phase']);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no rejection: ${key}.`, 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_REJECTED_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_REJECTED_CONTRACT_VERSION}'.`, 'RUNNER_REJECTED_CONTRACT_INVALID', 400);
+  }
+  const errorCode = String(input.errorCode || '').trim();
+  if (!/^[A-Z0-9_]{3,120}$/.test(errorCode)) {
+    fail('errorCode inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'errorCode' });
+  }
+  const phase = String(input.phase || 'RUNTIME').trim().toUpperCase();
+  if (!['INTAKE', 'RUNTIME'].includes(phase)) {
+    fail('phase inválida.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'phase' });
+  }
+  return {
+    contractVersion: RUNNER_REJECTED_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_REJECTED_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_REJECTED_CONTRACT_INVALID'),
+    errorCode,
+    phase,
   };
 }

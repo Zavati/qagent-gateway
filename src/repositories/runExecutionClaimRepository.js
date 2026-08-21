@@ -20,6 +20,12 @@ const ATTEMPT_SELECT = `
     next_retry_at AS nextRetryAt,
     received_at AS receivedAt,
     terminal_at AS terminalAt,
+    runtime_readiness_status AS runtimeReadinessStatus,
+    runtime_plan_hash AS runtimePlanHash,
+    runtime_target_count AS runtimeTargetCount,
+    runtime_resolution_source AS runtimeResolutionSource,
+    runtime_resolution_confidence AS runtimeResolutionConfidence,
+    runtime_materialized_at AS runtimeMaterializedAt,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM run_execution_attempts
@@ -439,5 +445,122 @@ export async function markRunExecutionCancelled(env, {
   return {
     updated: changes(results?.[0]) === 1,
     attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+  };
+}
+
+
+export async function markRunExecutionRuntimeReady(env, {
+  organizationId,
+  projectId,
+  runId,
+  attemptId,
+  leaseTokenHash,
+  runtimePlanHash,
+  targetCount,
+  resolutionSource,
+  resolutionConfidence,
+  materializedAt,
+}) {
+  const db = requireDataDb(env);
+  const result = await db.prepare(`
+    UPDATE run_execution_attempts
+    SET runtime_readiness_status = 'READY',
+        runtime_plan_hash = ?,
+        runtime_target_count = ?,
+        runtime_resolution_source = ?,
+        runtime_resolution_confidence = ?,
+        runtime_materialized_at = ?,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND attempt_id = ? AND status = 'CLAIMED'
+      AND lease_token_hash = ?
+      AND lease_expires_at > ?
+      AND EXISTS (
+        SELECT 1
+        FROM run_execution_claims c
+        WHERE c.organization_id = ? AND c.project_id = ? AND c.run_id = ?
+          AND c.state = 'ACTIVE'
+          AND c.current_attempt_id = ?
+          AND c.lease_token_hash = ?
+          AND c.lease_expires_at > ?
+      )
+  `).bind(
+    runtimePlanHash,
+    targetCount,
+    resolutionSource,
+    resolutionConfidence,
+    materializedAt,
+    materializedAt,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    materializedAt,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    materializedAt,
+  ).run();
+
+  return {
+    updated: changes(result) === 1,
+    attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+    claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
+  };
+}
+
+export async function markRunExecutionRejected(env, {
+  organizationId,
+  projectId,
+  runId,
+  attemptId,
+  leaseTokenHash,
+  errorCode,
+  rejectedAt,
+}) {
+  const db = requireDataDb(env);
+  const attemptUpdate = db.prepare(`
+    UPDATE run_execution_attempts
+    SET status = 'REJECTED',
+        last_error_code = ?,
+        terminal_at = COALESCE(terminal_at, ?),
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND attempt_id = ? AND status = 'CLAIMED'
+      AND lease_token_hash = ?
+  `).bind(errorCode, rejectedAt, rejectedAt, organizationId, projectId, runId, attemptId, leaseTokenHash);
+
+  const claimRelease = db.prepare(`
+    UPDATE run_execution_claims
+    SET state = 'IDLE', current_attempt_id = NULL, lease_owner_id = NULL,
+        lease_token_hash = NULL, lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND state = 'ACTIVE' AND current_attempt_id = ? AND lease_token_hash = ?
+  `).bind(rejectedAt, organizationId, projectId, runId, attemptId, leaseTokenHash);
+
+  const dispatchUpdate = db.prepare(`
+    UPDATE run_queue_dispatches
+    SET status = 'RECEIVED', runner_received_at = COALESCE(runner_received_at, ?),
+        last_error_code = ?, last_error_at = ?, updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(rejectedAt, errorCode, rejectedAt, rejectedAt, organizationId, projectId, runId);
+
+  const runUpdate = db.prepare(`
+    UPDATE runs SET status = 'ERROR', updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND status IN ('CREATED', 'QUEUED')
+  `).bind(rejectedAt, organizationId, projectId, runId);
+
+  const results = typeof db.batch === 'function'
+    ? await db.batch([attemptUpdate, claimRelease, dispatchUpdate, runUpdate])
+    : [await attemptUpdate.run(), await claimRelease.run(), await dispatchUpdate.run(), await runUpdate.run()];
+
+  return {
+    updated: changes(results?.[0]) === 1 && changes(results?.[1]) === 1,
+    attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+    claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
   };
 }

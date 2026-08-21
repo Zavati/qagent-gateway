@@ -789,3 +789,23 @@ After 07.7.2-A production validation:
 ```
 
 Implement safe discovered-runtime fallback without merging Catalog discovered Services with configured Control Plane API Services.
+
+---
+
+## 07.7.5 Architecture Update — Dedicated Execution Results Plane
+
+Detailed execution evidence/results must not accumulate in Gateway `QAGENT_DB`.
+
+Frozen boundary:
+
+```text
+Gateway Run Control Plane
+-> lifecycle / attempts / queue / lease / bounded summaries
+
+qagent-test-results (future dedicated service)
+-> own D1 for scenario/assertion execution history
+-> R2 for large sanitized artifacts
+-> analytics store for aggregates when volume justifies it
+```
+
+Introduce `qagent-test-results` before 07.7.9 detailed persistence. Runner publishes sanitized results through a service/queue boundary; it never writes detailed results directly into Gateway D1.

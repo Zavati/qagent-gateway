@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.runner-runtime-plan.v1",
+  "type": "object",
+  "required": ["contractVersion", "runId", "executionPlanId", "runtimeSnapshotId", "environment", "resolution", "scenarios", "createdAt", "runtimePlanHash"],
+  "properties": {
+    "contractVersion": { "const": "qagent.runner-runtime-plan.v1" },
+    "runId": { "type": "string", "pattern": "^run_" },
+    "executionPlanId": { "type": "string", "pattern": "^xplan_" },
+    "runtimeSnapshotId": { "type": "string", "pattern": "^rts_" },
+    "scenarios": { "type": "array", "minItems": 1 },
+    "runtimePlanHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "additionalProperties": true
+}

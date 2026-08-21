@@ -303,6 +303,8 @@ import {
   postInternalRunnerHeartbeat,
   postInternalRunnerReceived,
   postInternalRunnerRetry,
+  postInternalRunnerRuntimeReady,
+  postInternalRunnerRejected,
 } from './handlers/internalRunnerControl.js';
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
@@ -2041,6 +2043,8 @@ const gatewayRouteHandlers = {
   internalRunnerRunClaimPost: async (req, env, _ctx, params) => json(await postInternalRunnerClaim(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunHeartbeatPost: async (req, env, _ctx, params) => json(await postInternalRunnerHeartbeat(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunRetryPost: async (req, env, _ctx, params) => json(await postInternalRunnerRetry(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunRuntimeReadyPost: async (req, env, _ctx, params) => json(await postInternalRunnerRuntimeReady(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunRejectedPost: async (req, env, _ctx, params) => json(await postInternalRunnerRejected(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),

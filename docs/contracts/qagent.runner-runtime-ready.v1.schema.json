@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.runner-runtime-ready.v1",
+  "type": "object",
+  "required": ["contractVersion", "attemptId", "leaseToken", "runtimePlanHash", "targetCount", "resolutionSource", "resolutionConfidence"],
+  "properties": {
+    "contractVersion": { "const": "qagent.runner-runtime-ready.v1" },
+    "attemptId": { "type": "string", "pattern": "^runatt_" },
+    "leaseToken": { "type": "string", "minLength": 32 },
+    "runtimePlanHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "targetCount": { "type": "integer", "minimum": 1 },
+    "resolutionSource": { "enum": ["EXPLICIT_CONFIG", "DISCOVERED_OBSERVATION"] },
+    "resolutionConfidence": { "enum": ["CONFIRMED", "HIGH", "MEDIUM", "LOW"] }
+  },
+  "additionalProperties": false
+}
