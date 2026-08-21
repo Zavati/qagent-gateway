@@ -297,7 +297,13 @@ import {
 } from './handlers/consoleCatalog.js';
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
-import { getInternalRunnerRunBundle, postInternalRunnerReceived } from './handlers/internalRunnerControl.js';
+import {
+  getInternalRunnerRunBundle,
+  postInternalRunnerClaim,
+  postInternalRunnerHeartbeat,
+  postInternalRunnerReceived,
+  postInternalRunnerRetry,
+} from './handlers/internalRunnerControl.js';
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
 import { dispatchGatewayRoute } from './routing/gatewayRouter.js';
@@ -2032,6 +2038,9 @@ const gatewayRouteHandlers = {
   consoleIntelligenceTestDesignGet: async (req, env, _ctx, params) => json(await getConsoleTestDesign(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignPost: async (req, env, _ctx, params) => json(await postConsoleTestDesign(req, env, params, { rateLimiter: ({ key, windowMs, max }) => rateLimitOrThrow({ key, windowMs, max }) }), { headers: corsHeaders(req, env) }),
   internalRunnerRunBundleGet: async (req, env, _ctx, params) => json(await getInternalRunnerRunBundle(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunClaimPost: async (req, env, _ctx, params) => json(await postInternalRunnerClaim(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunHeartbeatPost: async (req, env, _ctx, params) => json(await postInternalRunnerHeartbeat(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunRetryPost: async (req, env, _ctx, params) => json(await postInternalRunnerRetry(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),

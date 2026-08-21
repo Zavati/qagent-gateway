@@ -5,6 +5,11 @@ export const EXECUTION_PLAN_CONTRACT_VERSION = 'qagent.execution-plan.v1';
 export const RUN_REQUESTED_CONTRACT_VERSION = 'qagent.run-requested.v1';
 export const RUNNER_RUN_BUNDLE_CONTRACT_VERSION = 'qagent.runner-run-bundle.v1';
 export const RUNNER_RECEIVED_CONTRACT_VERSION = 'qagent.runner-received.v1';
+export const RUNNER_RECEIVED_V2_CONTRACT_VERSION = 'qagent.runner-received.v2';
+export const RUNNER_CLAIM_CONTRACT_VERSION = 'qagent.runner-claim.v1';
+export const RUNNER_CLAIM_RESULT_CONTRACT_VERSION = 'qagent.runner-claim-result.v1';
+export const RUNNER_HEARTBEAT_CONTRACT_VERSION = 'qagent.runner-heartbeat.v1';
+export const RUNNER_RETRY_CONTRACT_VERSION = 'qagent.runner-retry.v1';
 
 export const RUN_STATUSES = Object.freeze([
   'CREATED', 'QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED',
@@ -164,5 +169,136 @@ export function normalizeRunnerReceivedInput(input) {
     runtimeSnapshotId: cleanId(input.runtimeSnapshotId, {
       field: 'runtimeSnapshotId', prefix: 'rts_', max: 220, code: 'RUNNER_RECEIVED_CONTRACT_INVALID', status: 400,
     }),
+  };
+}
+
+
+function normalizeLeaseOwnerId(value, code = 'RUNNER_CLAIM_CONTRACT_INVALID') {
+  const normalized = String(value ?? '').trim();
+  if (!/^rlo_[A-Za-z0-9_-]{8,220}$/.test(normalized)) {
+    fail('leaseOwnerId inválido.', code, 400, { field: 'leaseOwnerId' });
+  }
+  return normalized;
+}
+
+function normalizeAttemptId(value, code = 'RUNNER_LEASE_CONTRACT_INVALID') {
+  return cleanId(value, {
+    field: 'attemptId', prefix: 'runatt_', max: 220, code, status: 400,
+  });
+}
+
+function normalizeLeaseToken(value, code = 'RUNNER_LEASE_CONTRACT_INVALID') {
+  const token = String(value ?? '').trim();
+  if (token.length < 32 || token.length > 180 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+    fail('leaseToken inválido.', code, 400, { field: 'leaseToken' });
+  }
+  return token;
+}
+
+function normalizeExecutionReferences(input, code) {
+  return {
+    executionPlanId: cleanId(input.executionPlanId, {
+      field: 'executionPlanId', prefix: 'xplan_', max: 220, code, status: 400,
+    }),
+    runtimeSnapshotId: cleanId(input.runtimeSnapshotId, {
+      field: 'runtimeSnapshotId', prefix: 'rts_', max: 220, code, status: 400,
+    }),
+  };
+}
+
+export function normalizeRunnerClaimInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de claim do Runner inválido.', 'RUNNER_CLAIM_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set([
+    'contractVersion', 'executionPlanId', 'runtimeSnapshotId', 'leaseOwnerId',
+    'queueMessageId', 'queueDeliveryAttempt',
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no claim: ${key}.`, 'RUNNER_CLAIM_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_CLAIM_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_CLAIM_CONTRACT_VERSION}'.`, 'RUNNER_CLAIM_CONTRACT_INVALID', 400);
+  }
+  const refs = normalizeExecutionReferences(input, 'RUNNER_CLAIM_CONTRACT_INVALID');
+  const queueMessageId = input.queueMessageId == null ? null : String(input.queueMessageId).trim();
+  if (queueMessageId != null && (!queueMessageId || queueMessageId.length > 220 || !/^[A-Za-z0-9._:-]+$/.test(queueMessageId))) {
+    fail('queueMessageId inválido.', 'RUNNER_CLAIM_CONTRACT_INVALID', 400, { field: 'queueMessageId' });
+  }
+  const queueDeliveryAttempt = input.queueDeliveryAttempt == null ? null : Number(input.queueDeliveryAttempt);
+  if (queueDeliveryAttempt != null && (!Number.isInteger(queueDeliveryAttempt) || queueDeliveryAttempt < 1 || queueDeliveryAttempt > 10_000)) {
+    fail('queueDeliveryAttempt inválido.', 'RUNNER_CLAIM_CONTRACT_INVALID', 400, { field: 'queueDeliveryAttempt' });
+  }
+  return {
+    contractVersion: RUNNER_CLAIM_CONTRACT_VERSION,
+    ...refs,
+    leaseOwnerId: normalizeLeaseOwnerId(input.leaseOwnerId),
+    queueMessageId,
+    queueDeliveryAttempt,
+  };
+}
+
+export function normalizeRunnerHeartbeatInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de heartbeat inválido.', 'RUNNER_HEARTBEAT_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set(['contractVersion', 'attemptId', 'leaseToken']);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no heartbeat: ${key}.`, 'RUNNER_HEARTBEAT_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_HEARTBEAT_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_HEARTBEAT_CONTRACT_VERSION}'.`, 'RUNNER_HEARTBEAT_CONTRACT_INVALID', 400);
+  }
+  return {
+    contractVersion: RUNNER_HEARTBEAT_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_HEARTBEAT_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_HEARTBEAT_CONTRACT_INVALID'),
+  };
+}
+
+export function normalizeRunnerRetryInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de retry inválido.', 'RUNNER_RETRY_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set(['contractVersion', 'attemptId', 'leaseToken', 'errorCode', 'retryAfterSeconds']);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no retry: ${key}.`, 'RUNNER_RETRY_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_RETRY_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_RETRY_CONTRACT_VERSION}'.`, 'RUNNER_RETRY_CONTRACT_INVALID', 400);
+  }
+  const errorCode = String(input.errorCode ?? 'RUNNER_TRANSIENT_ERROR').trim();
+  if (!/^[A-Z0-9_]{3,120}$/.test(errorCode)) {
+    fail('errorCode inválido.', 'RUNNER_RETRY_CONTRACT_INVALID', 400, { field: 'errorCode' });
+  }
+  const retryAfterSeconds = Number(input.retryAfterSeconds);
+  if (!Number.isInteger(retryAfterSeconds) || retryAfterSeconds < 0 || retryAfterSeconds > 86_400) {
+    fail('retryAfterSeconds inválido.', 'RUNNER_RETRY_CONTRACT_INVALID', 400, { field: 'retryAfterSeconds' });
+  }
+  return {
+    contractVersion: RUNNER_RETRY_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_RETRY_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_RETRY_CONTRACT_INVALID'),
+    errorCode,
+    retryAfterSeconds,
+  };
+}
+
+export function normalizeRunnerReceivedV2Input(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de confirmação do Runner inválido.', 'RUNNER_RECEIVED_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set(['contractVersion', 'executionPlanId', 'runtimeSnapshotId', 'attemptId', 'leaseToken']);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido na confirmação do Runner: ${key}.`, 'RUNNER_RECEIVED_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_RECEIVED_V2_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_RECEIVED_V2_CONTRACT_VERSION}'.`, 'RUNNER_RECEIVED_CONTRACT_INVALID', 400);
+  }
+  return {
+    contractVersion: RUNNER_RECEIVED_V2_CONTRACT_VERSION,
+    ...normalizeExecutionReferences(input, 'RUNNER_RECEIVED_CONTRACT_INVALID'),
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_RECEIVED_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_RECEIVED_CONTRACT_INVALID'),
   };
 }

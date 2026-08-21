@@ -1,3 +1,4 @@
+import { getLatestRunExecutionAttempt } from './runExecutionClaimRepository.js';
 import { requireDataDb } from './dataDb.js';
 
 const RUN_SELECT = `
@@ -174,14 +175,15 @@ export async function getRunQueueDispatch(env, organizationId, projectId, runId)
 }
 
 export async function getRunBundle(env, organizationId, projectId, runId) {
-  const [run, executionPlan, runtimeSnapshot, dispatch] = await Promise.all([
+  const [run, executionPlan, runtimeSnapshot, dispatch, latestAttempt] = await Promise.all([
     getRun(env, organizationId, projectId, runId),
     getExecutionPlanForRun(env, organizationId, projectId, runId),
     getRuntimeSnapshotForRun(env, organizationId, projectId, runId),
     getRunQueueDispatch(env, organizationId, projectId, runId),
+    getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
   ]);
   if (!run) return null;
-  return { run, executionPlan, runtimeSnapshot, dispatch };
+  return { run, executionPlan, runtimeSnapshot, dispatch, latestAttempt };
 }
 
 export async function getRunBundleByRunId(env, runId) {

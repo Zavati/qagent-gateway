@@ -48,6 +48,15 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[5] === 'received' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunReceivedPost', params: { runId } };
       }
+      if (segs[5] === 'claim' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunClaimPost', params: { runId } };
+      }
+      if (segs[5] === 'heartbeat' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunHeartbeatPost', params: { runId } };
+      }
+      if (segs[5] === 'retry' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunRetryPost', params: { runId } };
+      }
     }
   }
 

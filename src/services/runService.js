@@ -86,6 +86,20 @@ function safeRunEnvelope(bundle, { idempotentReplay = false } = {}) {
       publishedAt: bundle.dispatch.publishedAt || null,
       runnerReceivedAt: bundle.dispatch.runnerReceivedAt || null,
     } : null,
+    executionAttempt: bundle?.latestAttempt ? {
+      attemptId: bundle.latestAttempt.attemptId,
+      attemptNumber: bundle.latestAttempt.attemptNumber,
+      status: bundle.latestAttempt.status,
+      leaseAcquiredAt: bundle.latestAttempt.leaseAcquiredAt,
+      leaseExpiresAt: bundle.latestAttempt.leaseExpiresAt,
+      heartbeatAt: bundle.latestAttempt.heartbeatAt || null,
+      heartbeatCount: bundle.latestAttempt.heartbeatCount,
+      queueDeliveryAttempt: bundle.latestAttempt.queueDeliveryAttempt,
+      lastErrorCode: bundle.latestAttempt.lastErrorCode || null,
+      nextRetryAt: bundle.latestAttempt.nextRetryAt || null,
+      receivedAt: bundle.latestAttempt.receivedAt || null,
+      terminalAt: bundle.latestAttempt.terminalAt || null,
+    } : null,
     idempotentReplay,
   };
 }

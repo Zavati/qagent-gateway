@@ -468,7 +468,7 @@ Sem HTTP para a API alvo.
 
 ---
 
-## 07.7.4 — Claim / Lease / Retry
+## 07.7.4 — Claim / Lease / Retry ✅ IMPLEMENTADO LOCALMENTE
 
 - atomic claim;
 - attempt;
@@ -484,6 +484,8 @@ Gate:
 ```text
 duplicate queue delivery never causes duplicate execution
 ```
+
+Implementação 07.7.4: `run_execution_attempts` + `run_execution_claims`, lease token hash-only, heartbeat, retry com backoff, abandoned recovery e DLQ `qagent-run-dlq`. HTTP externo permanece desabilitado.
 
 ---
 
