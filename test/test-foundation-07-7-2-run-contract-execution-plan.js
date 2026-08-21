@@ -226,6 +226,7 @@ const deps = {
     out.executionPlan.createdAt = createdAt;
     return out;
   },
+  dispatchRun: async ({ bundle }) => bundle,
   createRunArtifacts: async (_env, payload) => {
     persistedBundle = {
       run: payload.run,
@@ -327,9 +328,8 @@ assert.match(migration, /DISCOVERED_OBSERVATION/);
 assert.match(migration, /CREATE TABLE IF NOT EXISTS execution_plans/);
 assert.match(migration, /qagent\.execution-plan\.v1/);
 
-// 07.7.2 performs no HTTP execution and defines no Queue binding.
-const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
-assert.doesNotMatch(wrangler, /RUN_QUEUE/);
-assert.doesNotMatch(wrangler, /qagent-runner/);
+// 07.7.2 materializer itself performs no external HTTP execution; later foundations may add queue bindings.
+const materializerSource = await readFile(new URL('../src/services/executionPlanMaterializerService.js', import.meta.url), 'utf8');
+assert.doesNotMatch(materializerSource, /fetch\s*\(/);
 
 console.log('Foundation 07.7.2 Run Contract + Execution Plan tests passed ✅');

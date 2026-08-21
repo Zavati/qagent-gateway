@@ -3,6 +3,8 @@ export const RUN_CONTRACT_VERSION = 'qagent.run.v1';
 export const RUNTIME_SNAPSHOT_CONTRACT_VERSION = 'qagent.runtime-snapshot.v1';
 export const EXECUTION_PLAN_CONTRACT_VERSION = 'qagent.execution-plan.v1';
 export const RUN_REQUESTED_CONTRACT_VERSION = 'qagent.run-requested.v1';
+export const RUNNER_RUN_BUNDLE_CONTRACT_VERSION = 'qagent.runner-run-bundle.v1';
+export const RUNNER_RECEIVED_CONTRACT_VERSION = 'qagent.runner-received.v1';
 
 export const RUN_STATUSES = Object.freeze([
   'CREATED', 'QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED',
@@ -25,10 +27,10 @@ function fail(message, code, status = 400, publicDetails = null) {
   throw error;
 }
 
-function cleanId(value, { field, prefix, max = 180 }) {
+function cleanId(value, { field, prefix, max = 180, code = 'RUN_CREATE_CONTRACT_INVALID', status = 400 }) {
   const normalized = String(value ?? '').trim();
   if (!normalized || normalized.length > max || !new RegExp(`^${prefix}[A-Za-z0-9_-]+$`).test(normalized)) {
-    fail(`${field} inválido.`, 'RUN_CREATE_CONTRACT_INVALID', 400, { field });
+    fail(`${field} inválido.`, code, status, { field });
   }
   return normalized;
 }
@@ -116,13 +118,51 @@ export async function fingerprintRunCreateInput(input) {
   });
 }
 
-export function buildRunRequestedMessage(runId) {
-  const normalized = String(runId ?? '').trim();
-  if (!/^run_[A-Za-z0-9_-]{8,200}$/.test(normalized)) {
-    fail('runId inválido para mensagem de execução.', 'RUN_REQUEST_MESSAGE_INVALID', 500);
+export function buildRunRequestedMessage(runOrRunId) {
+  const source = typeof runOrRunId === 'string' ? { runId: runOrRunId } : (runOrRunId || {});
+  const runId = cleanId(source.runId, {
+    field: 'runId', prefix: 'run_', max: 220, code: 'RUN_REQUEST_MESSAGE_INVALID', status: 500,
+  });
+  const executionPlanId = source.executionPlanId == null ? null : cleanId(source.executionPlanId, {
+    field: 'executionPlanId', prefix: 'xplan_', max: 220, code: 'RUN_REQUEST_MESSAGE_INVALID', status: 500,
+  });
+  const runtimeSnapshotId = source.runtimeSnapshotId == null ? null : cleanId(source.runtimeSnapshotId, {
+    field: 'runtimeSnapshotId', prefix: 'rts_', max: 220, code: 'RUN_REQUEST_MESSAGE_INVALID', status: 500,
+  });
+
+  // Backward-compatible helper shape for legacy unit tests that only pass runId.
+  if (!executionPlanId || !runtimeSnapshotId) {
+    return { contractVersion: RUN_REQUESTED_CONTRACT_VERSION, runId };
   }
+
   return {
     contractVersion: RUN_REQUESTED_CONTRACT_VERSION,
-    runId: normalized,
+    runId,
+    executionPlanId,
+    runtimeSnapshotId,
+  };
+}
+
+export function normalizeRunnerReceivedInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de confirmação do Runner inválido.', 'RUNNER_RECEIVED_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set(['contractVersion', 'executionPlanId', 'runtimeSnapshotId']);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) {
+      fail(`Campo não permitido na confirmação do Runner: ${key}.`, 'RUNNER_RECEIVED_CONTRACT_INVALID', 400, { field: key });
+    }
+  }
+  if (input.contractVersion !== RUNNER_RECEIVED_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_RECEIVED_CONTRACT_VERSION}'.`, 'RUNNER_RECEIVED_CONTRACT_INVALID', 400);
+  }
+  return {
+    contractVersion: RUNNER_RECEIVED_CONTRACT_VERSION,
+    executionPlanId: cleanId(input.executionPlanId, {
+      field: 'executionPlanId', prefix: 'xplan_', max: 220, code: 'RUNNER_RECEIVED_CONTRACT_INVALID', status: 400,
+    }),
+    runtimeSnapshotId: cleanId(input.runtimeSnapshotId, {
+      field: 'runtimeSnapshotId', prefix: 'rts_', max: 220, code: 'RUNNER_RECEIVED_CONTRACT_INVALID', status: 400,
+    }),
   };
 }

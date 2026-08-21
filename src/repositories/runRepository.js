@@ -59,6 +59,25 @@ const SNAPSHOT_SELECT = `
   FROM runtime_snapshots
 `;
 
+const DISPATCH_SELECT = `
+  SELECT
+    run_id AS runId,
+    organization_id AS organizationId,
+    project_id AS projectId,
+    contract_version AS contractVersion,
+    execution_plan_id AS executionPlanId,
+    runtime_snapshot_id AS runtimeSnapshotId,
+    status,
+    dispatch_attempt_count AS dispatchAttemptCount,
+    published_at AS publishedAt,
+    runner_received_at AS runnerReceivedAt,
+    last_error_code AS lastErrorCode,
+    last_error_at AS lastErrorAt,
+    created_at AS createdAt,
+    updated_at AS updatedAt
+  FROM run_queue_dispatches
+`;
+
 function parseJson(value, fallback) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
@@ -92,6 +111,14 @@ function normalizeSnapshot(row) {
   };
 }
 
+function normalizeDispatch(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    dispatchAttemptCount: Number(row.dispatchAttemptCount || 0),
+  };
+}
+
 export async function getRunByIdempotencyKey(env, organizationId, projectId, idempotencyKey) {
   const db = requireDataDb(env);
   const row = await db.prepare(`${RUN_SELECT}
@@ -107,6 +134,15 @@ export async function getRun(env, organizationId, projectId, runId) {
     WHERE organization_id = ? AND project_id = ? AND run_id = ?
     LIMIT 1
   `).bind(organizationId, projectId, runId).first();
+  return normalizeRun(row);
+}
+
+export async function getRunByRunId(env, runId) {
+  const db = requireDataDb(env);
+  const row = await db.prepare(`${RUN_SELECT}
+    WHERE run_id = ?
+    LIMIT 1
+  `).bind(runId).first();
   return normalizeRun(row);
 }
 
@@ -128,14 +164,127 @@ export async function getRuntimeSnapshotForRun(env, organizationId, projectId, r
   return normalizeSnapshot(row);
 }
 
+export async function getRunQueueDispatch(env, organizationId, projectId, runId) {
+  const db = requireDataDb(env);
+  const row = await db.prepare(`${DISPATCH_SELECT}
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+    LIMIT 1
+  `).bind(organizationId, projectId, runId).first();
+  return normalizeDispatch(row);
+}
+
 export async function getRunBundle(env, organizationId, projectId, runId) {
-  const [run, executionPlan, runtimeSnapshot] = await Promise.all([
+  const [run, executionPlan, runtimeSnapshot, dispatch] = await Promise.all([
     getRun(env, organizationId, projectId, runId),
     getExecutionPlanForRun(env, organizationId, projectId, runId),
     getRuntimeSnapshotForRun(env, organizationId, projectId, runId),
+    getRunQueueDispatch(env, organizationId, projectId, runId),
   ]);
   if (!run) return null;
-  return { run, executionPlan, runtimeSnapshot };
+  return { run, executionPlan, runtimeSnapshot, dispatch };
+}
+
+export async function getRunBundleByRunId(env, runId) {
+  const run = await getRunByRunId(env, runId);
+  if (!run) return null;
+  return getRunBundle(env, run.organizationId, run.projectId, runId);
+}
+
+export async function ensureRunQueueDispatch(env, bundle) {
+  const db = requireDataDb(env);
+  const run = bundle?.run;
+  if (!run) throw new Error('Run bundle ausente ao preparar dispatch.');
+  const now = new Date().toISOString();
+  await db.prepare(`
+    INSERT INTO run_queue_dispatches (
+      run_id, organization_id, project_id, contract_version,
+      execution_plan_id, runtime_snapshot_id,
+      status, dispatch_attempt_count,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, 'qagent.run-requested.v1', ?, ?, 'PENDING', 0, ?, ?)
+    ON CONFLICT(run_id) DO NOTHING
+  `).bind(
+    run.runId,
+    run.organizationId,
+    run.projectId,
+    run.executionPlanId,
+    run.runtimeSnapshotId,
+    now,
+    now,
+  ).run();
+  return getRunQueueDispatch(env, run.organizationId, run.projectId, run.runId);
+}
+
+export async function markRunDispatchAttempt(env, organizationId, projectId, runId) {
+  const db = requireDataDb(env);
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE run_queue_dispatches
+    SET dispatch_attempt_count = dispatch_attempt_count + 1,
+        last_error_code = NULL,
+        last_error_at = NULL,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(now, organizationId, projectId, runId).run();
+  return getRunQueueDispatch(env, organizationId, projectId, runId);
+}
+
+export async function markRunDispatchFailed(env, organizationId, projectId, runId, errorCode) {
+  const db = requireDataDb(env);
+  const now = new Date().toISOString();
+  await db.prepare(`
+    UPDATE run_queue_dispatches
+    SET last_error_code = ?, last_error_at = ?, updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(String(errorCode || 'RUN_QUEUE_DISPATCH_FAILED').slice(0, 120), now, now, organizationId, projectId, runId).run();
+  return getRunQueueDispatch(env, organizationId, projectId, runId);
+}
+
+export async function markRunQueued(env, organizationId, projectId, runId) {
+  const db = requireDataDb(env);
+  const now = new Date().toISOString();
+  const dispatchUpdate = db.prepare(`
+    UPDATE run_queue_dispatches
+    SET status = CASE WHEN status = 'RECEIVED' THEN 'RECEIVED' ELSE 'PUBLISHED' END,
+        published_at = COALESCE(published_at, ?),
+        last_error_code = NULL,
+        last_error_at = NULL,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(now, now, organizationId, projectId, runId);
+  const runUpdate = db.prepare(`
+    UPDATE runs
+    SET status = CASE WHEN status = 'CREATED' THEN 'QUEUED' ELSE status END,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(now, organizationId, projectId, runId);
+  if (typeof db.batch === 'function') await db.batch([dispatchUpdate, runUpdate]);
+  else { await dispatchUpdate.run(); await runUpdate.run(); }
+  return getRunBundle(env, organizationId, projectId, runId);
+}
+
+export async function markRunRunnerReceived(env, organizationId, projectId, runId) {
+  const db = requireDataDb(env);
+  const now = new Date().toISOString();
+  const dispatchUpdate = db.prepare(`
+    UPDATE run_queue_dispatches
+    SET status = 'RECEIVED',
+        published_at = COALESCE(published_at, ?),
+        runner_received_at = COALESCE(runner_received_at, ?),
+        last_error_code = NULL,
+        last_error_at = NULL,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(now, now, now, organizationId, projectId, runId);
+  const runUpdate = db.prepare(`
+    UPDATE runs
+    SET status = CASE WHEN status = 'CREATED' THEN 'QUEUED' ELSE status END,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(now, organizationId, projectId, runId);
+  if (typeof db.batch === 'function') await db.batch([dispatchUpdate, runUpdate]);
+  else { await dispatchUpdate.run(); await runUpdate.run(); }
+  return getRunBundle(env, organizationId, projectId, runId);
 }
 
 export async function createRunArtifacts(env, {
@@ -218,13 +367,30 @@ export async function createRunArtifacts(env, {
     executionPlan.createdAt,
   );
 
+  const dispatchInsert = db.prepare(`
+    INSERT INTO run_queue_dispatches (
+      run_id, organization_id, project_id, contract_version,
+      execution_plan_id, runtime_snapshot_id,
+      status, dispatch_attempt_count,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, 'qagent.run-requested.v1', ?, ?, 'PENDING', 0, ?, ?)
+  `).bind(
+    run.runId,
+    run.organizationId,
+    run.projectId,
+    run.executionPlanId,
+    run.runtimeSnapshotId,
+    run.createdAt,
+    run.createdAt,
+  );
+
   if (typeof db.batch === 'function') {
-    await db.batch([runInsert, snapshotInsert, planInsert]);
+    await db.batch([runInsert, snapshotInsert, planInsert, dispatchInsert]);
   } else {
-    // Test/local fallback only. Production D1 supports batch and uses it transactionally.
     await runInsert.run();
     await snapshotInsert.run();
     await planInsert.run();
+    await dispatchInsert.run();
   }
 
   return getRunBundle(env, run.organizationId, run.projectId, run.runId);

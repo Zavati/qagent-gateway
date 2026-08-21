@@ -10,6 +10,7 @@ import {
 } from '../repositories/runRepository.js';
 import { getRunnerTestArtifact } from './testRegistryClient.js';
 import { materializeExecutionPlanV1 } from './executionPlanMaterializerService.js';
+import { dispatchRunToQueueV1 } from './runQueueDispatchService.js';
 
 function logger(env) {
   if (typeof env?.log === 'function') return env.log;
@@ -79,6 +80,12 @@ function safeRunEnvelope(bundle, { idempotentReplay = false } = {}) {
       authProfileRefs: Object.keys(snapshot.snapshot?.authProfiles || {}).sort(),
       createdAt: snapshot.createdAt,
     } : null,
+    queue: bundle?.dispatch ? {
+      status: bundle.dispatch.status,
+      dispatchAttemptCount: bundle.dispatch.dispatchAttemptCount,
+      publishedAt: bundle.dispatch.publishedAt || null,
+      runnerReceivedAt: bundle.dispatch.runnerReceivedAt || null,
+    } : null,
     idempotentReplay,
   };
 }
@@ -112,13 +119,14 @@ export async function createRunV1({
   const loadArtifact = deps.getRunnerTestArtifact || getRunnerTestArtifact;
   const materializePlan = deps.materializeExecutionPlan || materializeExecutionPlanV1;
   const persistArtifacts = deps.createRunArtifacts || createRunArtifacts;
+  const dispatchRun = deps.dispatchRun || dispatchRunToQueueV1;
 
   const existing = await findByIdempotency(env, organizationId, projectId, idempotencyKey);
   if (existing) {
     if (existing.requestFingerprint !== requestFingerprint) {
       runError('Idempotency-Key já foi usado com outro payload de Run.', 'RUN_IDEMPOTENCY_CONFLICT', 409);
     }
-    const bundle = await loadBundle(env, organizationId, projectId, existing.runId);
+    let bundle = await loadBundle(env, organizationId, projectId, existing.runId);
     assertBundleComplete(bundle);
     log('run_idempotent_replay', {
       runId: existing.runId,
@@ -127,6 +135,8 @@ export async function createRunV1({
       testDesignVersionId: existing.testDesignVersionId,
       environmentId: existing.environmentId,
     });
+    bundle = await dispatchRun({ env, bundle });
+    assertBundleComplete(bundle);
     return safeRunEnvelope(bundle, { idempotentReplay: true });
   }
 
@@ -194,6 +204,8 @@ export async function createRunV1({
     }
     bundle = await loadBundle(env, organizationId, projectId, replay.runId);
     assertBundleComplete(bundle);
+    bundle = await dispatchRun({ env, bundle });
+    assertBundleComplete(bundle);
     return safeRunEnvelope(bundle, { idempotentReplay: true });
   }
 
@@ -211,6 +223,8 @@ export async function createRunV1({
     runtimeResolutionSource: materialized.runtimeSnapshot.resolution.source,
   });
 
+  bundle = await dispatchRun({ env, bundle });
+  assertBundleComplete(bundle);
   return safeRunEnvelope(bundle, { idempotentReplay: false });
 }
 

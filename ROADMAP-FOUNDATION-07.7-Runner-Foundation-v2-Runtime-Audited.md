@@ -389,7 +389,7 @@ Concluído:
 
 ---
 
-## 07.7.2 — Run Contract + Execution Plan Foundation
+## 07.7.2 — Run Contract + Execution Plan Foundation ✅
 
 Implementar no Gateway:
 
@@ -425,29 +425,46 @@ POST Run
 
 ---
 
-## 07.7.3 — Queue + qagent-runner Foundation
+## 07.7.3 — Queue + qagent-runner Foundation — IMPLEMENTADA LOCALMENTE
 
 Criar:
 
 ```text
 qagent-runner
-qagent-run-queue
-qagent-run-dlq
+qagent-run-requests
+Gateway Runner Control API
+run_queue_dispatches
 ```
 
-Mensagem:
+A DLQ/retry policy formal fica deferida para 07.7.4, junto com claim/lease/recovery.
 
-```text
-runId only
+Mensagem mínima por referências imutáveis:
+
+```json
+{
+  "contractVersion": "qagent.run-requested.v1",
+  "runId": "run_...",
+  "executionPlanId": "xplan_...",
+  "runtimeSnapshotId": "rts_..."
+}
 ```
+
+A Queue não carrega plan, runtime JSON ou secrets.
 
 Gate:
 
 ```text
-CREATED -> QUEUED -> Runner receives runId
+CREATED
+-> PENDING dispatch
+-> queue publish
+-> QUEUED
+-> qagent-runner fetches authoritative bundle
+-> validates planHash + snapshotHash + READY-only
+-> RECEIVED
+-> ACK
 ```
 
-Sem HTTP.
+Sem HTTP para a API alvo.
 
 ---
 
@@ -650,10 +667,16 @@ Console
 
 # 18. Próximo passo
 
-Implementar:
+Validar em produção:
 
 ```text
-07.7.2 — Run Contract + Execution Plan Foundation
+07.7.3 — Queue + qagent-runner Foundation
+```
+
+Depois do gate `QUEUED -> RECEIVED`, iniciar:
+
+```text
+07.7.4 — Claim / Lease / Retry
 ```
 
 Mas antes do deploy dessa subfase, validar no projeto real:

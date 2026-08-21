@@ -3,7 +3,7 @@
 	"compatibility_date": "2026-01-14",
 	"main": "src/index.js",
 	"secrets": {
-		"required": ["CATALOG_QUERY_HMAC_SECRET"]
+		"required": ["CATALOG_QUERY_HMAC_SECRET", "RUNNER_CONTROL_HMAC_SECRET"]
 	},
 	"services": [
 		{
@@ -15,6 +15,14 @@
 			"service": "qagent-test-registry"
 		}
 	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "RUN_QUEUE",
+				"queue": "qagent-run-requests"
+			}
+		]
+	},
 	"vars": {
 		// Environment
 		"ENVIRONMENT": "development",
@@ -46,7 +54,9 @@
 		"CATALOG_QUERY_TIMEOUT_MS": "10000",
 		// Foundation 07.6.5-C - internal Test Registry persistence
 		"TEST_REGISTRY_TIMEOUT_MS": "10000",
-		"TEST_REGISTRY_PERSIST_RETRIES": "1"
+		"TEST_REGISTRY_PERSIST_RETRIES": "1",
+		// Foundation 07.7.3 - internal Runner Control HMAC clock skew
+		"RUNNER_CONTROL_MAX_SKEW_SECONDS": "60"
 	},
 	"d1_databases": [
 		{

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.runner-run-bundle.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "run", "executionPlan", "runtimeSnapshot", "queue"],
+  "properties": {
+    "contractVersion": { "const": "qagent.runner-run-bundle.v1" },
+    "run": { "type": "object" },
+    "executionPlan": { "$ref": "qagent.execution-plan.v1" },
+    "runtimeSnapshot": { "$ref": "qagent.runtime-snapshot.v1" },
+    "queue": { "type": ["object", "null"] }
+  }
+}

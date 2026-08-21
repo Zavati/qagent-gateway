@@ -37,6 +37,20 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  // Foundation 07.7.3 - internal Runner Control API (HMAC protected)
+  if (normalizedPath.startsWith('/internal/v1/runner/runs/')) {
+    const segs = normalizedPath.split('/').filter(Boolean);
+    if (segs.length === 6 && segs[0] === 'internal' && segs[1] === 'v1' && segs[2] === 'runner' && segs[3] === 'runs') {
+      const runId = decodeURIComponent(segs[4]);
+      if (segs[5] === 'bundle' && normalizedMethod === 'GET') {
+        return { name: 'internalRunnerRunBundleGet', params: { runId } };
+      }
+      if (segs[5] === 'received' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunReceivedPost', params: { runId } };
+      }
+    }
+  }
+
   if (normalizedPath.startsWith('/v1/console/projects/')) {
     const segs = normalizedPath.split('/').filter(Boolean);
     const isProjectBase = segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'projects';
