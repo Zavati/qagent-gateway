@@ -13,7 +13,7 @@ import { listProjectEnvironmentApiBindings } from '../services/environmentApiBin
 import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.1';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.2';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -50,6 +50,79 @@ function safeHttpOrigin(raw) {
   } catch {
     return null;
   }
+}
+
+const AUTH_OBSERVED_SCHEMES = new Set(['BEARER', 'BASIC', 'API_KEY', 'COOKIE', 'UNKNOWN']);
+
+function normalizeObservedAuthScheme(value) {
+  const scheme = nullableString(value)?.toUpperCase().replace(/[- ]+/g, '_') || null;
+  if (!scheme) return null;
+  if (scheme === 'BEARER_TOKEN' || scheme === 'JWT') return 'BEARER';
+  if (scheme === 'BASIC_AUTH') return 'BASIC';
+  if (scheme === 'APIKEY' || scheme === 'X_API_KEY' || scheme === 'X_AUTH_TOKEN') return 'API_KEY';
+  return AUTH_OBSERVED_SCHEMES.has(scheme) ? scheme : 'UNKNOWN';
+}
+
+function aggregateAuthObservation(items) {
+  let observedTrue = 0;
+  let observedFalse = 0;
+  const schemes = new Set();
+  const evidenceRefs = [];
+
+  for (const item of items || []) {
+    if (typeof item?.authObserved !== 'boolean') continue;
+    if (item.authObserved) {
+      observedTrue += 1;
+      const scheme = normalizeObservedAuthScheme(item.authScheme) || 'UNKNOWN';
+      schemes.add(scheme);
+      const evidenceId = nullableString(item?.evidenceId);
+      if (evidenceId && evidenceRefs.length < 20 && !evidenceRefs.includes(evidenceId)) evidenceRefs.push(evidenceId);
+    } else {
+      observedFalse += 1;
+    }
+  }
+
+  let status = 'UNKNOWN';
+  if (observedTrue > 0 && observedFalse > 0) status = 'MIXED';
+  else if (observedTrue > 0) status = 'REQUIRED';
+  else if (observedFalse > 0) status = 'NONE';
+
+  const scheme = status === 'REQUIRED' ? (schemes.size === 1 ? [...schemes][0] : 'UNKNOWN') : null;
+  return {
+    status,
+    scheme,
+    evidenceRefs,
+    observedWithAuthCount: observedTrue,
+    observedWithoutAuthCount: observedFalse,
+    knownSignalCount: observedTrue + observedFalse,
+  };
+}
+
+function profileCompatibleWithObservedAuth(profile, scheme) {
+  if (!profile || profile.enabled === false || profile.status === 'archived' || profile.type === 'none') return false;
+  const normalizedScheme = normalizeObservedAuthScheme(scheme) || 'UNKNOWN';
+  const config = profile.config && typeof profile.config === 'object' ? profile.config : {};
+
+  if (normalizedScheme === 'UNKNOWN') return true;
+  if (normalizedScheme === 'BASIC') return profile.type === 'basic';
+  if (normalizedScheme === 'API_KEY') return profile.type === 'api_key';
+  if (normalizedScheme === 'COOKIE') return false;
+  if (normalizedScheme === 'BEARER') {
+    if (profile.type === 'api_key') {
+      return String(config.placement || '').toLowerCase() === 'header'
+        && String(config.name || '').toLowerCase() === 'authorization';
+    }
+    if (profile.type === 'oauth2_client_credentials') {
+      return String(config.targetHeader || 'Authorization').toLowerCase() === 'authorization';
+    }
+    if (profile.type === 'login_http_json') {
+      const targetHeader = String(config.targetHeader || 'Authorization').toLowerCase();
+      const configuredScheme = String(config.scheme ?? 'Bearer').trim().toUpperCase();
+      return targetHeader === 'authorization' && (!configuredScheme || configuredScheme === 'BEARER');
+    }
+    return false;
+  }
+  return false;
 }
 
 function catalogBindingOrigin(binding) {
@@ -177,7 +250,7 @@ function profileUsableForEnvironment(profile, binding) {
   return binding.credentialsConfigured === true;
 }
 
-function buildAuthRuntime(controlPlane, runtimeMapping) {
+function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
   // Test Design is Environment-independent. A profile is therefore considered
   // available when it is executable in at least one Environment where the
   // resolved API Service is configured. The selected Run Environment performs
@@ -202,11 +275,14 @@ function buildAuthRuntime(controlPlane, runtimeMapping) {
       return profileUsableForEnvironment(profile, binding);
     });
     if (usableEnvironmentIds.length) {
-      available.push(profile.authProfileId);
+      const compatible = authObservation?.status !== 'REQUIRED'
+        || profileCompatibleWithObservedAuth(profile, authObservation?.scheme);
       profileCoverage.push({
         authProfileId: profile.authProfileId,
         usableEnvironmentIds: [...usableEnvironmentIds].sort(),
+        observedAuthCompatible: compatible,
       });
+      if (compatible) available.push(profile.authProfileId);
     }
   }
   available.sort();
@@ -214,6 +290,7 @@ function buildAuthRuntime(controlPlane, runtimeMapping) {
     availableAuthProfileRefs: available,
     defaultAuthProfileRef: available.length === 1 ? available[0] : null,
     completeProfileCount: available.length,
+    compatibleProfileCount: available.length,
     eligibleEnvironmentCount: eligibleEnvironmentIds.length,
     profileCoverage,
   };
@@ -274,6 +351,8 @@ function selectDiverseEvidence(items, limit) {
       nullableInteger(item?.statusCode) ?? '-',
       nullableString(item?.requestSchemaVersionId) || '-',
       nullableString(item?.responseSchemaVersionId) || '-',
+      typeof item?.authObserved === 'boolean' ? String(item.authObserved) : '-',
+      normalizeObservedAuthScheme(item?.authScheme) || '-',
     ].join('|');
     if (signatures.has(signature)) continue;
     signatures.add(signature);
@@ -303,6 +382,8 @@ function mapEvidence(item) {
     sessionId: nullableString(item?.observationSessionId),
     requestSchemaVersionId: nullableString(item?.requestSchemaVersionId),
     responseSchemaVersionId: nullableString(item?.responseSchemaVersionId),
+    authObserved: typeof item?.authObserved === 'boolean' ? item.authObserved : null,
+    authScheme: item?.authObserved === true ? (normalizeObservedAuthScheme(item?.authScheme) || 'UNKNOWN') : null,
   };
 }
 
@@ -418,7 +499,9 @@ export async function buildCatalogTestDesignContextV1({
   }
 
   const runtimeMapping = buildRuntimeServiceMapping(endpointDetail, controlPlane || {});
-  const authRuntime = buildAuthRuntime(controlPlane || {}, runtimeMapping);
+  const fetchedEvidence = Array.isArray(catalog?.evidence) ? catalog.evidence : [];
+  const authObservation = aggregateAuthObservation(fetchedEvidence);
+  const authRuntime = buildAuthRuntime(controlPlane || {}, runtimeMapping, authObservation);
   const schemaTracks = Array.isArray(catalog?.schemas?.tracks) ? catalog.schemas.tracks : [];
   let structuralSchemasIncluded = 0;
   const schemas = schemaTracks.slice(0, resolvedLimits.schemaTrackLimit).map((track) => {
@@ -427,10 +510,11 @@ export async function buildCatalogTestDesignContextV1({
     return result.mapped;
   }).filter((track) => track.trackId && ['REQUEST', 'RESPONSE'].includes(track.direction));
 
-  const fetchedEvidence = Array.isArray(catalog?.evidence) ? catalog.evidence : [];
   const selectedEvidence = selectDiverseEvidence(fetchedEvidence, resolvedLimits.evidenceSelectedLimit)
     .map(mapEvidence)
     .filter((item) => item.evidenceId && item.observedAt);
+  const selectedEvidenceIds = new Set(selectedEvidence.map((item) => item.evidenceId));
+  const selectedAuthEvidenceRefs = authObservation.evidenceRefs.filter((ref) => selectedEvidenceIds.has(ref));
 
   const context = {
     contractVersion: TEST_DESIGN_CONTRACT_VERSION,
@@ -444,6 +528,11 @@ export async function buildCatalogTestDesignContextV1({
       apiServiceKey: runtimeMapping.apiServiceKey,
       defaultAuthProfileRef: authRuntime.defaultAuthProfileRef,
       availableAuthProfileRefs: authRuntime.availableAuthProfileRefs,
+      authObservation: {
+        status: authObservation.status,
+        scheme: authObservation.scheme,
+        evidenceRefs: selectedAuthEvidenceRefs,
+      },
     },
   };
 
@@ -464,8 +553,14 @@ export async function buildCatalogTestDesignContextV1({
     auth: {
       configuredProfileCount: (controlPlane?.authProfiles || []).filter((profile) => profile.enabled !== false && profile.status !== 'archived').length,
       completeProfileCount: authRuntime.completeProfileCount,
+      compatibleProfileCount: authRuntime.compatibleProfileCount,
       eligibleEnvironmentCount: authRuntime.eligibleEnvironmentCount,
       defaultSelected: Boolean(authRuntime.defaultAuthProfileRef),
+      observationStatus: authObservation.status,
+      observedScheme: authObservation.scheme,
+      observedWithAuthCount: authObservation.observedWithAuthCount,
+      observedWithoutAuthCount: authObservation.observedWithoutAuthCount,
+      knownSignalCount: authObservation.knownSignalCount,
     },
     schemas: {
       tracksFetched: schemaTracks.length,

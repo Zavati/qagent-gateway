@@ -389,6 +389,7 @@ export function validateCatalogTestDesignContextV1(context) {
     assertKnownKeys(item, new Set([
       'evidenceId', 'observedAt', 'environmentId', 'outcome', 'statusCode', 'latencyMs',
       'sourceHost', 'sessionId', 'requestSchemaVersionId', 'responseSchemaVersionId',
+      'authObserved', 'authScheme',
     ]), path);
     assertString(item.evidenceId, `${path}.evidenceId`, { max: 160 });
     assertString(item.observedAt, `${path}.observedAt`, { max: 64 });
@@ -400,6 +401,9 @@ export function validateCatalogTestDesignContextV1(context) {
     assertNullableString(item.sessionId, `${path}.sessionId`, { max: 160 });
     assertNullableString(item.requestSchemaVersionId, `${path}.requestSchemaVersionId`, { max: 160 });
     assertNullableString(item.responseSchemaVersionId, `${path}.responseSchemaVersionId`, { max: 160 });
+    if (item.authObserved != null && typeof item.authObserved !== 'boolean') fail('authObserved deve ser boolean ou null.', `${path}.authObserved`);
+    if (item.authScheme != null) assertEnum(item.authScheme, ['BEARER', 'BASIC', 'API_KEY', 'COOKIE', 'UNKNOWN'], `${path}.authScheme`);
+    if (item.authObserved !== true && item.authScheme != null) fail('authScheme só pode existir quando authObserved=true.', `${path}.authScheme`, 'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT');
   });
 
   const environments = assertArray(context.environments ?? [], 'context.environments', { max: 30 });
@@ -416,13 +420,28 @@ export function validateCatalogTestDesignContextV1(context) {
 
   const runtime = context.runtime ?? {};
   assertPlainObject(runtime, 'context.runtime');
-  assertKnownKeys(runtime, new Set(['apiServiceKey', 'defaultAuthProfileRef', 'availableAuthProfileRefs']), 'context.runtime');
+  assertKnownKeys(runtime, new Set(['apiServiceKey', 'defaultAuthProfileRef', 'availableAuthProfileRefs', 'authObservation']), 'context.runtime');
   assertNullableString(runtime.apiServiceKey, 'context.runtime.apiServiceKey', { max: 120 });
   assertNullableString(runtime.defaultAuthProfileRef, 'context.runtime.defaultAuthProfileRef', { max: 160 });
   const authRefs = assertStringArray(runtime.availableAuthProfileRefs ?? [], 'context.runtime.availableAuthProfileRefs', { maxItems: 30, maxLength: 160 });
   assertUniqueStrings(authRefs, 'context.runtime.availableAuthProfileRefs');
   if (runtime.defaultAuthProfileRef && !authRefs.includes(runtime.defaultAuthProfileRef)) {
     fail('defaultAuthProfileRef precisa existir em availableAuthProfileRefs.', 'context.runtime.defaultAuthProfileRef', 'TEST_DESIGN_AUTH_PROFILE_UNKNOWN');
+  }
+  if (runtime.authObservation != null) {
+    assertPlainObject(runtime.authObservation, 'context.runtime.authObservation');
+    assertKnownKeys(runtime.authObservation, new Set(['status', 'scheme', 'evidenceRefs']), 'context.runtime.authObservation');
+    assertEnum(runtime.authObservation.status, ['REQUIRED', 'NONE', 'MIXED', 'UNKNOWN'], 'context.runtime.authObservation.status');
+    if (runtime.authObservation.scheme != null) assertEnum(runtime.authObservation.scheme, ['BEARER', 'BASIC', 'API_KEY', 'COOKIE', 'UNKNOWN'], 'context.runtime.authObservation.scheme');
+    const observedEvidenceRefs = assertStringArray(runtime.authObservation.evidenceRefs ?? [], 'context.runtime.authObservation.evidenceRefs', { maxItems: 20, maxLength: 160 });
+    assertUniqueStrings(observedEvidenceRefs, 'context.runtime.authObservation.evidenceRefs');
+    const allowedEvidenceRefs = new Set((context.evidence || []).map((item) => item?.evidenceId).filter(Boolean));
+    for (const ref of observedEvidenceRefs) {
+      if (!allowedEvidenceRefs.has(ref)) fail('authObservation.evidenceRefs precisa apontar para Evidence presente no contexto.', 'context.runtime.authObservation.evidenceRefs', 'TEST_DESIGN_EVIDENCE_REF_UNKNOWN');
+    }
+    if (runtime.authObservation.status !== 'REQUIRED' && runtime.authObservation.scheme != null) {
+      fail('authObservation.scheme só pode ser materializado quando status=REQUIRED.', 'context.runtime.authObservation.scheme', 'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT');
+    }
   }
 
   const refs = collectContextReferences(context);

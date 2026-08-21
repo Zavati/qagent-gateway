@@ -16,6 +16,7 @@ import {
   TEST_DESIGN_REPAIR_PROMPT_VERSION,
 } from './testDesignPrompt.js';
 import { applySemanticGroundingGuardV1 } from './semanticGroundingGuard.js';
+import { applyObservedAuthSignalBridgeV1 } from './observedAuthSignalBridge.js';
 
 export const AI_TEST_DESIGN_ENGINE_VERSION = 'qagent.ai-test-design-engine.v1';
 
@@ -302,6 +303,22 @@ export async function generateCatalogTestDesignV1({
     });
   }
 
+  const observedAuthBridge = applyObservedAuthSignalBridgeV1(modelOutput, context);
+  modelOutput = observedAuthBridge.output;
+  validateTestDesignModelOutputV1(modelOutput, context);
+  if (observedAuthBridge.diagnostics.changedScenarioCount > 0 || observedAuthBridge.diagnostics.observationStatus !== 'UNKNOWN') {
+    log('testDesign_observed_auth_bridge_applied', {
+      bridgeVersion: observedAuthBridge.diagnostics.bridgeVersion,
+      endpointId: context.endpoint.endpointId,
+      contextFingerprint,
+      observationStatus: observedAuthBridge.diagnostics.observationStatus,
+      observedScheme: observedAuthBridge.diagnostics.observedScheme,
+      compatibleProfileCount: observedAuthBridge.diagnostics.compatibleProfileCount,
+      defaultProfileSelected: observedAuthBridge.diagnostics.defaultProfileSelected,
+      changedScenarioCount: observedAuthBridge.diagnostics.changedScenarioCount,
+    });
+  }
+
   const generatedAt = now().toISOString();
   const provider = String(out?.provider || aiConfig.provider || '').trim();
   const model = String(out?.model || aiConfig.model || '').trim();
@@ -342,6 +359,7 @@ export async function generateCatalogTestDesignV1({
       normalizationCount: normalizationPaths.length,
       normalizationPaths: normalizationPaths.slice(0, 20),
       semanticGuard: semanticGuard.diagnostics,
+      observedAuthBridge: observedAuthBridge.diagnostics,
       timeoutMs,
       repairTimeoutMs,
       durationMs,

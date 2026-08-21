@@ -269,7 +269,7 @@ assert.ok(executableSpec.scenarios[0].automation.blockers.some((reason) => /targ
 assert.ok(executableSpec.scenarios[2].automation.blockers.some((reason) => /fault injection/i.test(reason)));
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 8 });
-assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v5');
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6');
 assert.match(prompt.systemPrompt, /target mutation/i);
 assert.match(prompt.systemPrompt, /fault injection/i);
 assert.match(prompt.systemPrompt, /JSON_PATH_EXISTS prova SOMENTE/i);

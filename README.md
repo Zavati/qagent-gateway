@@ -409,3 +409,15 @@ npm run test:all
 ```
 
 Consulte `FOUNDATION-07.7.2-A.md` e `APPLY-FOUNDATION-07.7.2-A.md`.
+
+## Foundation 07.7.2-A FIX-2 — Observed Auth Signal Bridge
+
+Gateway support is implemented for safe optional Catalog Evidence fields `authObserved` and `authScheme`.
+
+The deterministic bridge converts observed authentication into system-owned Test Specification auth requirements and fails closed to `NEEDS_AUTH` when a compatible Auth Profile is unavailable.
+
+Production activation also requires upstream propagation through Plugin → Observation → Normalizer → Catalog. See:
+
+- `FOUNDATION-07.7.2-A-FIX-2.md`
+- `UPSTREAM-AUTH-SIGNAL-CONTRACT-07.7.2-A-FIX-2.md`
+- `APPLY-FOUNDATION-07.7.2-A-FIX-2.md`

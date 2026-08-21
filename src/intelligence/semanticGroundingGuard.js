@@ -1,4 +1,4 @@
-export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.2';
+export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.3';
 
 const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
 const CONFIDENCE_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2 });
@@ -117,6 +117,8 @@ function buildKnowledge(context) {
     responseTracks,
     requestTracks,
     availableAuthRefs: new Set(context?.runtime?.availableAuthProfileRefs || []),
+    observedAuthRequired: context?.runtime?.authObservation?.status === 'REQUIRED',
+    observedAuthScheme: context?.runtime?.authObservation?.scheme || null,
   };
 }
 
@@ -497,7 +499,8 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     markReview(scenario, reason);
     addIssue({ code: 'SEMANTIC_AUTH_CONTRADICTION', path: `modelOutput.scenarios[${index}].authRequirement`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
   } else if (scenario.authRequirement === 'REQUIRED' || scenario.authRequirement === 'UNAUTHENTICATED') {
-    const hasObservedAuthSignal = [...knowledge.observedStatuses].some((status) => HTTP_AUTH_STATUSES.has(status));
+    const hasObservedAuthSignal = knowledge.observedAuthRequired
+      || [...knowledge.observedStatuses].some((status) => HTTP_AUTH_STATUSES.has(status));
     if (!hasObservedAuthSignal && knowledge.availableAuthRefs.size === 0) {
       const reason = 'A necessidade de autenticação não é comprovada por 401/403 observado nem por Auth Profile configurado.';
       markAssumption(scenario, reason);
