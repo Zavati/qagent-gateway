@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.execution-plan.v1",
+  "type": "object",
+  "required": ["contractVersion", "executionPlanId", "runId", "organizationId", "projectId", "testDesign", "environmentId", "runtimeSnapshotId", "scenarios", "schemaSnapshots", "createdAt", "planHash"],
+  "properties": {
+    "contractVersion": { "const": "qagent.execution-plan.v1" },
+    "executionPlanId": { "type": "string" },
+    "runId": { "type": "string" },
+    "organizationId": { "type": "string" },
+    "projectId": { "type": "string" },
+    "testDesign": {
+      "type": "object",
+      "required": ["testDesignId", "testDesignVersionId", "version", "endpointId", "contextFingerprint", "specificationVersion"]
+    },
+    "environmentId": { "type": "string" },
+    "runtimeSnapshotId": { "type": "string" },
+    "scenarios": { "type": "array", "minItems": 1 },
+    "schemaSnapshots": { "type": "array" },
+    "createdAt": { "type": "string" },
+    "planHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

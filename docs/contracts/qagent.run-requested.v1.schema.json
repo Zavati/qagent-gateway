@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.run-requested.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "runId"],
+  "properties": {
+    "contractVersion": { "const": "qagent.run-requested.v1" },
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]{8,200}$" }
+  }
+}

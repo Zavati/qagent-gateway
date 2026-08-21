@@ -147,6 +147,7 @@ assert.ok(hdrs['Access-Control-Allow-Methods'].includes('PUT'));
 assert.ok(hdrs['Access-Control-Allow-Methods'].includes('DELETE'));
 assert.ok(hdrs['Access-Control-Allow-Methods'].includes('PATCH'));
 assert.ok(hdrs['Access-Control-Allow-Headers'].includes('Authorization'));
+assert.ok(hdrs['Access-Control-Allow-Headers'].includes('Idempotency-Key'));
 assert.strictEqual(hdrs['Vary'], 'Origin');
 
 // client key utils

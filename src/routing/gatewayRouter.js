@@ -98,6 +98,23 @@ export function resolveGatewayRoute(method, pathname) {
       }
     }
 
+    // Foundation 07.7.2 - Run Contract + immutable Execution Plan foundation
+    // /v1/console/projects/:projectId/runs
+    if (segs.length === 5 && segs[4] === 'runs') {
+      const projectId = decodeURIComponent(segs[3]);
+      if (normalizedMethod === 'POST') {
+        return { name: 'consoleRunsCreate', params: { projectId } };
+      }
+    }
+
+    // /v1/console/projects/:projectId/runs/:runId
+    if (segs.length === 6 && segs[4] === 'runs' && normalizedMethod === 'GET') {
+      return {
+        name: 'consoleRunGet',
+        params: { projectId: decodeURIComponent(segs[3]), runId: decodeURIComponent(segs[5]) },
+      };
+    }
+
     // /v1/console/projects/:projectId/api-services
     if (segs.length === 5 && segs[4] === 'api-services') {
       const projectId = decodeURIComponent(segs[3]);

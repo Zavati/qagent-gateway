@@ -12,7 +12,7 @@ export function corsHeaders(req = null, env = {}, extra = {}) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Vary": "Origin",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-QAgent-Signature, X-QAgent-Tenant, X-QAgent-Cohort, X-QAgent-Plugin-Version",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key, X-QAgent-Signature, X-QAgent-Tenant, X-QAgent-Cohort, X-QAgent-Plugin-Version",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     ...extra,
   };

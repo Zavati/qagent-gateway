@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.runtime-snapshot.v1",
+  "type": "object",
+  "required": [
+    "contractVersion",
+    "runtimeSnapshotId",
+    "runId",
+    "organizationId",
+    "projectId",
+    "environment",
+    "resolution",
+    "apiServices",
+    "variables",
+    "authProfiles",
+    "createdAt",
+    "snapshotHash"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "qagent.runtime-snapshot.v1"
+    },
+    "runtimeSnapshotId": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "organizationId": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "object"
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "confidence",
+        "requiresExecutionConfirmation"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "EXPLICIT_CONFIG",
+            "DISCOVERED_OBSERVATION"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "CONFIRMED",
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ]
+        },
+        "requiresExecutionConfirmation": {
+          "type": "boolean"
+        }
+      }
+    },
+    "apiServices": {
+      "type": "object"
+    },
+    "variables": {
+      "type": "object"
+    },
+    "authProfiles": {
+      "type": "object"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "snapshotHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "availableVariableKeys": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

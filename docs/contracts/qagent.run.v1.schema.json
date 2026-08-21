@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.run.v1",
+  "type": "object",
+  "required": ["contractVersion", "run", "executionPlan", "runtime", "idempotentReplay"],
+  "properties": {
+    "contractVersion": { "const": "qagent.run.v1" },
+    "run": {
+      "type": "object",
+      "required": ["runId", "status", "projectId", "testDesignVersionId", "environmentId", "executionPlanId", "runtimeSnapshotId", "scenarioIds", "scenarioCount", "createdAt", "updatedAt"]
+    },
+    "executionPlan": { "type": ["object", "null"] },
+    "runtime": { "type": ["object", "null"] },
+    "idempotentReplay": { "type": "boolean" }
+  }
+}

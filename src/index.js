@@ -296,6 +296,7 @@ import {
   listConsoleCatalogEndpointLifecycleHistory,
 } from './handlers/consoleCatalog.js';
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
+import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { validateAutofillBody, validateSignupTrialBody, validateEmailDispatchedBody, validatePaymentWebhookBody } from './lib/validators.js';
 import { API_CONTRACT_VERSION } from './lib/contracts.js';
 import { dispatchGatewayRoute } from './routing/gatewayRouter.js';
@@ -2029,6 +2030,8 @@ const gatewayRouteHandlers = {
   consoleIntelligenceTestDesignContextGet: async (req, env, _ctx, params) => json(await getConsoleTestDesignContext(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignGet: async (req, env, _ctx, params) => json(await getConsoleTestDesign(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignPost: async (req, env, _ctx, params) => json(await postConsoleTestDesign(req, env, params, { rateLimiter: ({ key, windowMs, max }) => rateLimitOrThrow({ key, windowMs, max }) }), { headers: corsHeaders(req, env) }),
+  consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesList: async (req, env, _ctx, params) => json(await listConsoleApiServices(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesCreate: async (req, env, _ctx, params) => json(await createConsoleApiService(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleApiServiceGet: async (req, env, _ctx, params) => json(await getConsoleApiService(req, env, params), { headers: corsHeaders(req, env) }),

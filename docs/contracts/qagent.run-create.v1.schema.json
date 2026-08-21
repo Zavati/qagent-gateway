@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.run-create.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "testDesignVersionId", "environmentId"],
+  "properties": {
+    "contractVersion": { "const": "qagent.run-create.v1" },
+    "testDesignVersionId": { "type": "string", "pattern": "^tdv_[A-Za-z0-9_-]+$", "maxLength": 200 },
+    "environmentId": { "type": "string", "pattern": "^env_[A-Za-z0-9_-]+$", "maxLength": 200 },
+    "scenarioIds": {
+      "type": "array",
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$" }
+    }
+  }
+}
