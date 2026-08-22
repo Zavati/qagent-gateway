@@ -187,6 +187,7 @@ export async function createRunV1({
     artifact,
     environmentId: input.environmentId,
     requestedScenarioIds: input.scenarioIds,
+    confirmDiscoveredRuntime: input.confirmDiscoveredRuntime === true,
     runId,
     executionPlanId,
     runtimeSnapshotId,

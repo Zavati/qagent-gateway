@@ -1,3 +1,11 @@
+# Current Runner Integration
+
+Gateway foundation: **07.7.6-A — Zero-Config Runtime Bootstrap v1**.
+
+When no explicit API Service exists, a unique safe observed public HTTPS origin can become a `DISCOVERED_OBSERVATION` runtime target. Explicit configuration always wins. A discovered target requires explicit Run confirmation before it is frozen into the immutable Runtime Snapshot.
+
+---
+
 # qagent-gateway
 
 ## Blueprint técnico

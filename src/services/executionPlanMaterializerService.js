@@ -1,4 +1,5 @@
-import { getCatalogSchemasForTestDesign } from '../intelligence/catalogKnowledgeClient.js';
+import { getCatalogEndpointForTestDesign, getCatalogEvidenceForTestDesign, getCatalogSchemasForTestDesign } from '../intelligence/catalogKnowledgeClient.js';
+import { deriveDiscoveredRuntimeCandidate, isDiscoveredRuntimeServiceKey } from '../intelligence/discoveredRuntime.js';
 import { resolveEnvironmentRuntimeConfig } from './environmentRuntimeConfigService.js';
 import {
   EXECUTION_PLAN_CONTRACT_VERSION,
@@ -90,13 +91,35 @@ function selectScenarios(specification, requestedScenarioIds) {
   return selected;
 }
 
-function resolveRuntimeReferences(runtimeConfig, selectedScenarios) {
+async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
+  env,
+  organizationId,
+  projectId,
+  artifact,
+  environmentId,
+  confirmDiscoveredRuntime = false,
+  loadEndpoint = getCatalogEndpointForTestDesign,
+  loadEvidence = getCatalogEvidenceForTestDesign,
+} = {}) {
   const referencedServiceKeys = uniqueStrings(selectedScenarios.map((scenario) => scenario?.spec?.target?.apiServiceKey));
   const apiServices = {};
+  let resolutionSource = 'EXPLICIT_CONFIG';
+  let resolutionConfidence = 'CONFIRMED';
+  let discoveredCandidate = null;
 
   for (const serviceKey of referencedServiceKeys) {
     const runtimeService = runtimeConfig?.apiServices?.[serviceKey];
-    if (!runtimeService?.baseUrl) {
+    if (runtimeService?.baseUrl) {
+      apiServices[serviceKey] = {
+        apiServiceId: runtimeService.apiServiceId,
+        name: runtimeService.name,
+        serviceKey,
+        baseUrl: runtimeService.baseUrl,
+      };
+      continue;
+    }
+
+    if (!isDiscoveredRuntimeServiceKey(serviceKey)) {
       runError(
         `API Service '${serviceKey}' não possui Base URL no Environment selecionado.`,
         'RUN_API_SERVICE_ENVIRONMENT_BINDING_MISSING',
@@ -104,12 +127,57 @@ function resolveRuntimeReferences(runtimeConfig, selectedScenarios) {
         { serviceKey },
       );
     }
+
+    if (resolutionSource === 'DISCOVERED_OBSERVATION' && discoveredCandidate?.serviceKey !== serviceKey) {
+      runError('Run contém múltiplos runtime targets descobertos, ainda não suportados no bootstrap v1.', 'RUN_DISCOVERED_RUNTIME_MULTIPLE_TARGETS_UNSUPPORTED', 409);
+    }
+
+    if (!discoveredCandidate) {
+      const [endpointDetail, evidenceResponse] = await Promise.all([
+        loadEndpoint({ env, organizationId, projectId, endpointId: artifact.endpointId }),
+        loadEvidence({ env, organizationId, projectId, endpointId: artifact.endpointId, limit: 50 }),
+      ]);
+      const evidence = Array.isArray(evidenceResponse?.data)
+        ? evidenceResponse.data
+        : Array.isArray(evidenceResponse)
+          ? evidenceResponse
+          : [];
+      discoveredCandidate = deriveDiscoveredRuntimeCandidate(endpointDetail, evidence);
+    }
+
+    if (discoveredCandidate.status !== 'DISCOVERED' || discoveredCandidate.serviceKey !== serviceKey || !discoveredCandidate.origin) {
+      runError('Runtime descoberto mudou ou não pode mais ser resolvido de forma inequívoca.', 'RUN_DISCOVERED_RUNTIME_STALE', 409, {
+        serviceKey,
+        observedOrigins: discoveredCandidate.observedOrigins || [],
+      });
+    }
+
+    if (discoveredCandidate.environmentIds.length > 0 && !discoveredCandidate.environmentIds.includes(environmentId)) {
+      runError('Runtime descoberto não foi observado no Environment selecionado.', 'RUN_DISCOVERED_RUNTIME_ENVIRONMENT_MISMATCH', 409, {
+        serviceKey,
+        environmentId,
+        observedEnvironmentIds: discoveredCandidate.environmentIds,
+      });
+    }
+
+    if (confirmDiscoveredRuntime !== true) {
+      runError('Runtime descoberto exige confirmação explícita antes da criação do Run.', 'RUN_DISCOVERED_RUNTIME_CONFIRMATION_REQUIRED', 409, {
+        serviceKey,
+        baseUrl: discoveredCandidate.origin,
+        confidence: discoveredCandidate.confidence,
+        environmentId,
+      });
+    }
+
+    const host = new URL(discoveredCandidate.origin).hostname;
     apiServices[serviceKey] = {
-      apiServiceId: runtimeService.apiServiceId,
-      name: runtimeService.name,
+      apiServiceId: null,
+      name: `Discovered ${host}`,
       serviceKey,
-      baseUrl: runtimeService.baseUrl,
+      baseUrl: discoveredCandidate.origin,
     };
+    resolutionSource = 'DISCOVERED_OBSERVATION';
+    resolutionConfidence = discoveredCandidate.confidence || 'HIGH';
   }
 
   const authProfiles = {};
@@ -144,7 +212,15 @@ function resolveRuntimeReferences(runtimeConfig, selectedScenarios) {
     };
   }
 
-  return { apiServices, authProfiles };
+  return {
+    apiServices,
+    authProfiles,
+    resolution: {
+      source: resolutionSource,
+      confidence: resolutionConfidence,
+      requiresExecutionConfirmation: false,
+    },
+  };
 }
 
 function schemaVersionForTrack(track) {
@@ -258,12 +334,15 @@ export async function materializeExecutionPlanV1({
   artifact,
   environmentId,
   requestedScenarioIds = null,
+  confirmDiscoveredRuntime = false,
   runId,
   executionPlanId,
   runtimeSnapshotId,
   createdAt,
   resolveRuntime = resolveEnvironmentRuntimeConfig,
   loadSchemas = getCatalogSchemasForTestDesign,
+  loadEndpoint = getCatalogEndpointForTestDesign,
+  loadEvidence = getCatalogEvidenceForTestDesign,
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
   const selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds);
@@ -273,7 +352,16 @@ export async function materializeExecutionPlanV1({
     runError('Runtime Config retornou um Environment divergente.', 'RUN_RUNTIME_SCOPE_MISMATCH', 502);
   }
 
-  const runtimeRefs = resolveRuntimeReferences(runtimeConfig, selectedScenarios);
+  const runtimeRefs = await resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
+    env,
+    organizationId,
+    projectId,
+    artifact,
+    environmentId,
+    confirmDiscoveredRuntime,
+    loadEndpoint,
+    loadEvidence,
+  });
   const schemaRefs = collectSchemaRefs(selectedScenarios);
   let schemaSnapshots = [];
   if (schemaRefs.length) {
@@ -294,11 +382,7 @@ export async function materializeExecutionPlanV1({
     organizationId,
     projectId,
     environment: clone(runtimeConfig.environment),
-    resolution: {
-      source: 'EXPLICIT_CONFIG',
-      confidence: 'CONFIRMED',
-      requiresExecutionConfirmation: false,
-    },
+    resolution: clone(runtimeRefs.resolution),
     apiServices: runtimeRefs.apiServices,
     // qagent.api-test-dsl.v1 has no variable-reference contract yet.
     // Persist no unreferenced values; only expose safe keys for future planning.

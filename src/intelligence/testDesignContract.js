@@ -1,3 +1,5 @@
+import { discoveredRuntimeServiceKey, normalizeObservedOrigin } from './discoveredRuntime.js';
+
 export const TEST_DESIGN_CONTRACT_VERSION = 'qagent.test-design.v1';
 export const TEST_SPECIFICATION_VERSION = 'qagent.test-spec.v1';
 export const API_TEST_DSL_VERSION = 'qagent.api-test-dsl.v1';
@@ -420,8 +422,19 @@ export function validateCatalogTestDesignContextV1(context) {
 
   const runtime = context.runtime ?? {};
   assertPlainObject(runtime, 'context.runtime');
-  assertKnownKeys(runtime, new Set(['apiServiceKey', 'defaultAuthProfileRef', 'availableAuthProfileRefs', 'authObservation']), 'context.runtime');
+  assertKnownKeys(runtime, new Set(['apiServiceKey', 'resolutionSource', 'resolutionConfidence', 'requiresExecutionConfirmation', 'discoveredOrigin', 'defaultAuthProfileRef', 'availableAuthProfileRefs', 'authObservation']), 'context.runtime');
   assertNullableString(runtime.apiServiceKey, 'context.runtime.apiServiceKey', { max: 120 });
+  if (runtime.resolutionSource != null) assertEnum(runtime.resolutionSource, ['EXPLICIT_CONFIG', 'DISCOVERED_OBSERVATION', 'ORIGIN'], 'context.runtime.resolutionSource');
+  if (runtime.resolutionConfidence != null) assertEnum(runtime.resolutionConfidence, ['CONFIRMED', 'HIGH', 'MEDIUM', 'LOW'], 'context.runtime.resolutionConfidence');
+  if (runtime.requiresExecutionConfirmation != null && typeof runtime.requiresExecutionConfirmation !== 'boolean') fail('requiresExecutionConfirmation deve ser boolean.', 'context.runtime.requiresExecutionConfirmation');
+  assertNullableString(runtime.discoveredOrigin, 'context.runtime.discoveredOrigin', { max: 500 });
+  if (runtime.resolutionSource === 'DISCOVERED_OBSERVATION') {
+    const normalizedOrigin = normalizeObservedOrigin(runtime.discoveredOrigin);
+    if (!normalizedOrigin) fail('Runtime descoberto exige origin HTTPS público e seguro.', 'context.runtime.discoveredOrigin', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
+    if (runtime.apiServiceKey !== discoveredRuntimeServiceKey(normalizedOrigin)) fail('Runtime descoberto possui identidade divergente do origin observado.', 'context.runtime.apiServiceKey', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
+    if (runtime.resolutionConfidence !== 'HIGH') fail('Runtime descoberto v1 exige confidence HIGH.', 'context.runtime.resolutionConfidence', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
+    if (runtime.requiresExecutionConfirmation !== true) fail('Runtime descoberto precisa exigir confirmação de execução.', 'context.runtime.requiresExecutionConfirmation', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
+  }
   assertNullableString(runtime.defaultAuthProfileRef, 'context.runtime.defaultAuthProfileRef', { max: 160 });
   const authRefs = assertStringArray(runtime.availableAuthProfileRefs ?? [], 'context.runtime.availableAuthProfileRefs', { maxItems: 30, maxLength: 160 });
   assertUniqueStrings(authRefs, 'context.runtime.availableAuthProfileRefs');
@@ -635,7 +648,7 @@ function computeAutomationReadiness(scenario, context) {
   if (needsData) blockers.push(...(hintReasons.length ? hintReasons : ['O cenário requer dados de teste adicionais.']));
   if (assumed && !reviewRequired && !needsData) blockers.push('O cenário contém hipótese que precisa de revisão humana.');
   if (needsAuth) blockers.push('O cenário requer autenticação, mas não há Auth Profile selecionado.');
-  if (needsEnvironment) blockers.push('Nenhum API Service de runtime está associado ao endpoint descoberto.');
+  if (needsEnvironment) blockers.push('Nenhum API Service de runtime configurado ou runtime target seguro descoberto foi resolvido para o endpoint.');
 
   const uniqueBlockers = [...new Set(blockers)].slice(0, 10);
   if (reviewRequired) return { readiness: 'REVIEW_REQUIRED', blockers: uniqueBlockers };
@@ -810,7 +823,7 @@ export function validateTestSpecificationV1(specification, context) {
       fail('Auth Profile não pertence ao contexto permitido.', `${path}.spec.auth.authProfileRef`, 'TEST_DESIGN_AUTH_PROFILE_UNKNOWN');
     }
     if (!context.runtime?.apiServiceKey && scenario.automation.readiness === 'READY') {
-      fail('Cenário não pode ser READY sem API Service configurado.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
+      fail('Cenário não pode ser READY sem runtime target resolvido.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
     }
     if (context.runtime?.apiServiceKey && scenario.spec.auth.requirement === 'REQUIRED' && !authProfileRef && scenario.automation.readiness === 'READY') {
       fail('Cenário não pode ser READY quando autenticação é obrigatória sem Auth Profile.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');

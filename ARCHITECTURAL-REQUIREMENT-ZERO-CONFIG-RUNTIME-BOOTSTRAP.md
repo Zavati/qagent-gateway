@@ -1,7 +1,7 @@
 # QAgent — Architectural Requirement
 ## Zero-Config Runtime Bootstrap
 
-**Status:** REQUIRED / FROZEN FOR RUNNER ARCHITECTURE  
+**Status:** IMPLEMENTED v1 / FROZEN FOR RUNNER ARCHITECTURE  
 **Introduced:** Foundation 07.7.1 / carried into 07.7.2+
 
 ## Product rule
@@ -137,6 +137,4 @@ user confirmation when required
 }
 ```
 
-Foundation 07.7.2 currently materializes only `EXPLICIT_CONFIG`.
-
-`DISCOVERED_OBSERVATION` resolution is implemented in the Runtime Integration / Bootstrap subphase before HTTP execution is allowed.
+Foundation 07.7.6-A implements `DISCOVERED_OBSERVATION` for unique, safe public HTTPS origins. The discovered runtime is not auto-persisted as an API Service; it is frozen only into the confirmed Run Runtime Snapshot. Explicit configuration continues to win.

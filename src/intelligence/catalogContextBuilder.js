@@ -12,8 +12,9 @@ import { listProjectApiServices } from '../services/apiServiceService.js';
 import { listProjectEnvironmentApiBindings } from '../services/environmentApiBindingService.js';
 import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
+import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.2';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.3';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -142,7 +143,7 @@ function observedEnvironmentIds(endpointDetail) {
   return uniqueStrings([...fromSummaries, ...fromBindings]);
 }
 
-function buildRuntimeServiceMapping(endpointDetail, controlPlane) {
+function buildRuntimeServiceMapping(endpointDetail, controlPlane, evidence = []) {
   // 07.7.2-A: Test Design resolves logical service identity independently from
   // the Environment selected later by a Run. Environment coverage remains a
   // diagnostic/safety signal, but it no longer nulls a uniquely identified
@@ -151,7 +152,12 @@ function buildRuntimeServiceMapping(endpointDetail, controlPlane) {
   const catalogBindings = (endpointDetail?.bindings || [])
     .map((binding) => ({ environmentId: nullableString(binding?.environmentId), origin: catalogBindingOrigin(binding) }))
     .filter((binding) => binding.origin);
-  const observedOrigins = uniqueStrings(catalogBindings.map((binding) => binding.origin));
+  const evidenceOrigins = (evidence || []).map((item) => {
+    const scheme = nullableString(item?.scheme)?.toLowerCase() || 'https';
+    const host = nullableString(item?.host);
+    return host ? safeHttpOrigin(`${scheme}://${host}`) : null;
+  }).filter(Boolean);
+  const observedOrigins = uniqueStrings([...catalogBindings.map((binding) => binding.origin), ...evidenceOrigins]);
 
   const candidates = [];
   for (const service of controlPlane.apiServices || []) {
@@ -192,11 +198,32 @@ function buildRuntimeServiceMapping(endpointDetail, controlPlane) {
   ));
 
   if (!candidates.length) {
+    const discovered = deriveDiscoveredRuntimeCandidate(endpointDetail, evidence);
+    if (discovered.status === 'DISCOVERED' && discovered.serviceKey) {
+      return {
+        apiServiceId: null,
+        apiServiceKey: discovered.serviceKey,
+        status: 'DISCOVERED',
+        resolutionSource: 'DISCOVERED_OBSERVATION',
+        runtimeSource: 'DISCOVERED_OBSERVATION',
+        resolutionConfidence: discovered.confidence,
+        requiresExecutionConfirmation: true,
+        discoveredOrigin: discovered.origin,
+        environmentIds: uniqueStrings([...environmentIds, ...discovered.environmentIds]),
+        observedOrigins: discovered.observedOrigins,
+        environmentCoverageStatus: discovered.environmentIds.length ? 'OBSERVED' : 'NOT_APPLICABLE',
+        candidates: [],
+      };
+    }
     return {
       apiServiceId: null,
       apiServiceKey: null,
-      status: 'UNMATCHED',
+      status: discovered.status === 'AMBIGUOUS' ? 'AMBIGUOUS' : 'UNMATCHED',
       resolutionSource: null,
+      runtimeSource: null,
+      resolutionConfidence: null,
+      requiresExecutionConfirmation: false,
+      discoveredOrigin: null,
       environmentIds,
       observedOrigins,
       environmentCoverageStatus: environmentIds.length ? 'NONE' : 'NOT_APPLICABLE',
@@ -216,6 +243,10 @@ function buildRuntimeServiceMapping(endpointDetail, controlPlane) {
       apiServiceKey: null,
       status: 'AMBIGUOUS',
       resolutionSource: 'ORIGIN',
+      runtimeSource: null,
+      resolutionConfidence: null,
+      requiresExecutionConfirmation: false,
+      discoveredOrigin: null,
       environmentIds,
       observedOrigins,
       environmentCoverageStatus: environmentIds.length ? 'AMBIGUOUS' : 'NOT_APPLICABLE',
@@ -237,6 +268,10 @@ function buildRuntimeServiceMapping(endpointDetail, controlPlane) {
     apiServiceKey: selected.serviceKey,
     status: 'MATCHED',
     resolutionSource: 'ORIGIN',
+    runtimeSource: 'EXPLICIT_CONFIG',
+    resolutionConfidence: 'CONFIRMED',
+    requiresExecutionConfirmation: false,
+    discoveredOrigin: null,
     environmentIds,
     observedOrigins,
     environmentCoverageStatus,
@@ -498,8 +533,8 @@ export async function buildCatalogTestDesignContextV1({
     throw error;
   }
 
-  const runtimeMapping = buildRuntimeServiceMapping(endpointDetail, controlPlane || {});
   const fetchedEvidence = Array.isArray(catalog?.evidence) ? catalog.evidence : [];
+  const runtimeMapping = buildRuntimeServiceMapping(endpointDetail, controlPlane || {}, fetchedEvidence);
   const authObservation = aggregateAuthObservation(fetchedEvidence);
   const authRuntime = buildAuthRuntime(controlPlane || {}, runtimeMapping, authObservation);
   const schemaTracks = Array.isArray(catalog?.schemas?.tracks) ? catalog.schemas.tracks : [];
@@ -526,6 +561,10 @@ export async function buildCatalogTestDesignContextV1({
     environments: mapEnvironments(endpointDetail, controlPlane?.environments || []),
     runtime: {
       apiServiceKey: runtimeMapping.apiServiceKey,
+      resolutionSource: runtimeMapping.runtimeSource,
+      resolutionConfidence: runtimeMapping.resolutionConfidence,
+      requiresExecutionConfirmation: runtimeMapping.requiresExecutionConfirmation === true,
+      discoveredOrigin: runtimeMapping.discoveredOrigin,
       defaultAuthProfileRef: authRuntime.defaultAuthProfileRef,
       availableAuthProfileRefs: authRuntime.availableAuthProfileRefs,
       authObservation: {
@@ -543,11 +582,15 @@ export async function buildCatalogTestDesignContextV1({
     runtimeMapping: {
       status: runtimeMapping.status,
       resolutionSource: runtimeMapping.resolutionSource,
+      runtimeSource: runtimeMapping.runtimeSource,
       observedEnvironmentCount: runtimeMapping.environmentIds.length,
       observedOriginCount: runtimeMapping.observedOrigins.length,
       configuredApiServiceCount: (controlPlane?.apiServices || []).length,
       candidateCount: runtimeMapping.candidates.length,
       selectedApiServiceKey: runtimeMapping.apiServiceKey,
+      resolutionConfidence: runtimeMapping.resolutionConfidence,
+      requiresExecutionConfirmation: runtimeMapping.requiresExecutionConfirmation === true,
+      discoveredOrigin: runtimeMapping.discoveredOrigin,
       environmentCoverageStatus: runtimeMapping.environmentCoverageStatus,
     },
     auth: {

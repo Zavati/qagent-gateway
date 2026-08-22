@@ -65,7 +65,7 @@ export function normalizeRunCreateInput(input) {
     fail('Payload de Run inválido.', 'RUN_CREATE_CONTRACT_INVALID');
   }
 
-  const allowed = new Set(['contractVersion', 'testDesignVersionId', 'environmentId', 'scenarioIds']);
+  const allowed = new Set(['contractVersion', 'testDesignVersionId', 'environmentId', 'scenarioIds', 'confirmDiscoveredRuntime']);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) {
       fail(`Campo não permitido no Run: ${key}.`, 'RUN_CREATE_CONTRACT_INVALID', 400, { field: key });
@@ -90,6 +90,7 @@ export function normalizeRunCreateInput(input) {
       field: 'environmentId', prefix: 'env_', max: 200,
     }),
     scenarioIds: normalizeScenarioIds(input.scenarioIds),
+    confirmDiscoveredRuntime: input.confirmDiscoveredRuntime === true,
   };
 }
 
@@ -123,6 +124,7 @@ export async function fingerprintRunCreateInput(input) {
     testDesignVersionId: input.testDesignVersionId,
     environmentId: input.environmentId,
     scenarioIds: input.scenarioIds,
+    confirmDiscoveredRuntime: input.confirmDiscoveredRuntime === true,
   });
 }
 
