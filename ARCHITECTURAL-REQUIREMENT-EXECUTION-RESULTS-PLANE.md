@@ -125,3 +125,18 @@ idempotency strategy where the target supports it
 If a prior side-effect attempt is `INDETERMINATE`, QAgent must fail closed rather than silently replay the mutation.
 
 This journal can be introduced before 07.7.9 if mutation coverage becomes a blocker; otherwise it is part of the `qagent-test-results` foundation.
+
+## Foundation 07.7.6 FIX-1 — bounded HTTP diagnostics
+
+The Gateway Run Control Plane may retain a bounded transport summary useful for immediate operator/QA diagnosis:
+
+```text
+HTTP response counts by status class (2xx/3xx/4xx/5xx)
+one primary diagnostic per attempt
+safe network category/error code/error name/cause code
+one primary HTTP status code for a non-success response
+```
+
+This exception remains a **summary**, not detailed result storage. Per-scenario histories, response payloads, complete headers, assertion details and evidence still belong to the Execution Results Plane.
+
+Raw exception messages are not stored because they may contain target URLs or sensitive context.

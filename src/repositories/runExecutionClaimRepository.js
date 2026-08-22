@@ -34,6 +34,17 @@ const ATTEMPT_SELECT = `
     http_redirect_count AS httpRedirectCount,
     http_duration_ms AS httpDurationMs,
     http_executed_at AS httpExecutedAt,
+    http_response_2xx_count AS httpResponse2xxCount,
+    http_response_3xx_count AS httpResponse3xxCount,
+    http_response_4xx_count AS httpResponse4xxCount,
+    http_response_5xx_count AS httpResponse5xxCount,
+    http_primary_diagnostic_kind AS httpPrimaryDiagnosticKind,
+    http_primary_scenario_id AS httpPrimaryScenarioId,
+    http_primary_status_code AS httpPrimaryStatusCode,
+    http_primary_error_code AS httpPrimaryErrorCode,
+    http_primary_error_category AS httpPrimaryErrorCategory,
+    http_primary_error_name AS httpPrimaryErrorName,
+    http_primary_cause_code AS httpPrimaryCauseCode,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM run_execution_attempts
@@ -74,6 +85,11 @@ function normalizeAttempt(row) {
     httpTimeoutCount: row.httpTimeoutCount == null ? null : num(row.httpTimeoutCount, null),
     httpRedirectCount: row.httpRedirectCount == null ? null : num(row.httpRedirectCount, null),
     httpDurationMs: row.httpDurationMs == null ? null : num(row.httpDurationMs, null),
+    httpResponse2xxCount: row.httpResponse2xxCount == null ? null : num(row.httpResponse2xxCount, null),
+    httpResponse3xxCount: row.httpResponse3xxCount == null ? null : num(row.httpResponse3xxCount, null),
+    httpResponse4xxCount: row.httpResponse4xxCount == null ? null : num(row.httpResponse4xxCount, null),
+    httpResponse5xxCount: row.httpResponse5xxCount == null ? null : num(row.httpResponse5xxCount, null),
+    httpPrimaryStatusCode: row.httpPrimaryStatusCode == null ? null : num(row.httpPrimaryStatusCode, null),
   };
 }
 
@@ -593,6 +609,8 @@ export async function markRunExecutionHttpExecuted(env, {
   timeoutCount,
   redirectCount,
   durationMs,
+  responseStatusCounts = {},
+  primaryDiagnostic = null,
   executedAt,
 }) {
   const db = requireDataDb(env);
@@ -606,6 +624,17 @@ export async function markRunExecutionHttpExecuted(env, {
         http_redirect_count = ?,
         http_duration_ms = ?,
         http_executed_at = ?,
+        http_response_2xx_count = ?,
+        http_response_3xx_count = ?,
+        http_response_4xx_count = ?,
+        http_response_5xx_count = ?,
+        http_primary_diagnostic_kind = ?,
+        http_primary_scenario_id = ?,
+        http_primary_status_code = ?,
+        http_primary_error_code = ?,
+        http_primary_error_category = ?,
+        http_primary_error_name = ?,
+        http_primary_cause_code = ?,
         updated_at = ?
     WHERE organization_id = ? AND project_id = ? AND run_id = ?
       AND attempt_id = ? AND status = 'CLAIMED'
@@ -630,6 +659,17 @@ export async function markRunExecutionHttpExecuted(env, {
     redirectCount,
     durationMs,
     executedAt,
+    Number(responseStatusCounts.response2xxCount || 0),
+    Number(responseStatusCounts.response3xxCount || 0),
+    Number(responseStatusCounts.response4xxCount || 0),
+    Number(responseStatusCounts.response5xxCount || 0),
+    primaryDiagnostic?.kind || null,
+    primaryDiagnostic?.scenarioId || null,
+    primaryDiagnostic?.statusCode == null ? null : Number(primaryDiagnostic.statusCode),
+    primaryDiagnostic?.errorCode || null,
+    primaryDiagnostic?.errorCategory || null,
+    primaryDiagnostic?.errorName || null,
+    primaryDiagnostic?.causeCode || null,
     executedAt,
     organizationId,
     projectId,

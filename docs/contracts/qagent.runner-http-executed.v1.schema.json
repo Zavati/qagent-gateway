@@ -14,6 +14,35 @@
     "networkErrorCount": { "type": "integer", "minimum": 0, "maximum": 50 },
     "timeoutCount": { "type": "integer", "minimum": 0, "maximum": 50 },
     "redirectCount": { "type": "integer", "minimum": 0, "maximum": 150 },
-    "durationMs": { "type": "integer", "minimum": 0, "maximum": 3600000 }
+    "durationMs": { "type": "integer", "minimum": 0, "maximum": 3600000 },
+    "responseStatusCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "response2xxCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+        "response3xxCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+        "response4xxCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+        "response5xxCount": { "type": "integer", "minimum": 0, "maximum": 50 }
+      }
+    },
+    "primaryDiagnostic": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "scenarioId", "statusCode", "errorCode", "errorCategory", "errorName", "causeCode"],
+          "properties": {
+            "kind": { "enum": ["NETWORK_ERROR", "TIMEOUT", "HTTP_RESPONSE"] },
+            "scenarioId": { "type": ["string", "null"] },
+            "statusCode": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 },
+            "errorCode": { "type": ["string", "null"] },
+            "errorCategory": { "type": ["string", "null"], "enum": ["DNS", "CONNECT", "TLS", "RESET", "ABORT", "FETCH", "UNKNOWN", "TIMEOUT", null] },
+            "errorName": { "type": ["string", "null"] },
+            "causeCode": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    }
   }
 }

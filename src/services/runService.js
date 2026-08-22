@@ -113,6 +113,21 @@ function safeRunEnvelope(bundle, { idempotentReplay = false } = {}) {
       httpRedirectCount: bundle.latestAttempt.httpRedirectCount == null ? null : Number(bundle.latestAttempt.httpRedirectCount),
       httpDurationMs: bundle.latestAttempt.httpDurationMs == null ? null : Number(bundle.latestAttempt.httpDurationMs),
       httpExecutedAt: bundle.latestAttempt.httpExecutedAt || null,
+      httpResponseStatusCounts: bundle.latestAttempt.httpExecutionStatus ? {
+        response2xxCount: Number(bundle.latestAttempt.httpResponse2xxCount || 0),
+        response3xxCount: Number(bundle.latestAttempt.httpResponse3xxCount || 0),
+        response4xxCount: Number(bundle.latestAttempt.httpResponse4xxCount || 0),
+        response5xxCount: Number(bundle.latestAttempt.httpResponse5xxCount || 0),
+      } : null,
+      httpDiagnostic: bundle.latestAttempt.httpPrimaryDiagnosticKind ? {
+        kind: bundle.latestAttempt.httpPrimaryDiagnosticKind,
+        scenarioId: bundle.latestAttempt.httpPrimaryScenarioId || null,
+        statusCode: bundle.latestAttempt.httpPrimaryStatusCode == null ? null : Number(bundle.latestAttempt.httpPrimaryStatusCode),
+        errorCode: bundle.latestAttempt.httpPrimaryErrorCode || null,
+        errorCategory: bundle.latestAttempt.httpPrimaryErrorCategory || null,
+        errorName: bundle.latestAttempt.httpPrimaryErrorName || null,
+        causeCode: bundle.latestAttempt.httpPrimaryCauseCode || null,
+      } : null,
     } : null,
     idempotentReplay,
   };

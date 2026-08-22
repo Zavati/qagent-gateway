@@ -359,6 +359,7 @@ export function normalizeRunnerHttpExecutedInput(input) {
   const allowed = new Set([
     'contractVersion', 'attemptId', 'leaseToken', 'runtimePlanHash',
     'requestCount', 'responseCount', 'networkErrorCount', 'timeoutCount', 'redirectCount', 'durationMs',
+    'responseStatusCounts', 'primaryDiagnostic',
   ]);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) fail(`Campo não permitido no HTTP execution summary: ${key}.`, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: key });
@@ -389,6 +390,66 @@ export function normalizeRunnerHttpExecutedInput(input) {
   if (responseCount + networkErrorCount + timeoutCount > requestCount) {
     fail('HTTP execution counts inconsistentes.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400);
   }
+
+  const statusCountsInput = input.responseStatusCounts == null ? {} : input.responseStatusCounts;
+  if (!statusCountsInput || typeof statusCountsInput !== 'object' || Array.isArray(statusCountsInput)) {
+    fail('responseStatusCounts inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'responseStatusCounts' });
+  }
+  const statusCountKeys = ['response2xxCount', 'response3xxCount', 'response4xxCount', 'response5xxCount'];
+  for (const key of Object.keys(statusCountsInput)) {
+    if (!statusCountKeys.includes(key)) fail(`Campo não permitido em responseStatusCounts: ${key}.`, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: `responseStatusCounts.${key}` });
+  }
+  const responseStatusCounts = {};
+  for (const key of statusCountKeys) responseStatusCounts[key] = normalizeCount(statusCountsInput[key] ?? 0, `responseStatusCounts.${key}`, 50);
+  const classifiedResponseCount = Object.values(responseStatusCounts).reduce((sum, value) => sum + value, 0);
+  if (classifiedResponseCount > responseCount) {
+    fail('responseStatusCounts excede responseCount.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'responseStatusCounts' });
+  }
+
+  let primaryDiagnostic = null;
+  if (input.primaryDiagnostic != null) {
+    const diagnostic = input.primaryDiagnostic;
+    if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic)) {
+      fail('primaryDiagnostic inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic' });
+    }
+    const diagnosticAllowed = new Set(['kind', 'scenarioId', 'statusCode', 'errorCode', 'errorCategory', 'errorName', 'causeCode']);
+    for (const key of Object.keys(diagnostic)) {
+      if (!diagnosticAllowed.has(key)) fail(`Campo não permitido em primaryDiagnostic: ${key}.`, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: `primaryDiagnostic.${key}` });
+    }
+    const kind = String(diagnostic.kind || '').trim().toUpperCase();
+    if (!['NETWORK_ERROR', 'TIMEOUT', 'HTTP_RESPONSE'].includes(kind)) {
+      fail('primaryDiagnostic.kind inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.kind' });
+    }
+    const scenarioId = diagnostic.scenarioId == null ? null : String(diagnostic.scenarioId).trim();
+    if (scenarioId != null && !/^[A-Za-z0-9_-]{1,80}$/.test(scenarioId)) {
+      fail('primaryDiagnostic.scenarioId inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.scenarioId' });
+    }
+    const statusCode = diagnostic.statusCode == null ? null : Number(diagnostic.statusCode);
+    if (statusCode != null && (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599)) {
+      fail('primaryDiagnostic.statusCode inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.statusCode' });
+    }
+    if (kind === 'HTTP_RESPONSE' && statusCode == null) {
+      fail('primaryDiagnostic.statusCode é obrigatório para HTTP_RESPONSE.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.statusCode' });
+    }
+    const errorCode = diagnostic.errorCode == null ? null : String(diagnostic.errorCode).trim().toUpperCase();
+    if (errorCode != null && !/^[A-Z0-9_:-]{3,120}$/.test(errorCode)) {
+      fail('primaryDiagnostic.errorCode inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.errorCode' });
+    }
+    const errorCategory = diagnostic.errorCategory == null ? null : String(diagnostic.errorCategory).trim().toUpperCase();
+    if (errorCategory != null && !['DNS', 'CONNECT', 'TLS', 'RESET', 'ABORT', 'FETCH', 'UNKNOWN', 'TIMEOUT'].includes(errorCategory)) {
+      fail('primaryDiagnostic.errorCategory inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.errorCategory' });
+    }
+    const errorName = diagnostic.errorName == null ? null : String(diagnostic.errorName).trim();
+    if (errorName != null && !/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(errorName)) {
+      fail('primaryDiagnostic.errorName inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.errorName' });
+    }
+    const causeCode = diagnostic.causeCode == null ? null : String(diagnostic.causeCode).trim().toUpperCase();
+    if (causeCode != null && !/^[A-Z][A-Z0-9_:-]{1,63}$/.test(causeCode)) {
+      fail('primaryDiagnostic.causeCode inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.causeCode' });
+    }
+    primaryDiagnostic = { kind, scenarioId, statusCode, errorCode, errorCategory, errorName, causeCode };
+  }
+
   return {
     contractVersion: RUNNER_HTTP_EXECUTED_CONTRACT_VERSION,
     attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID'),
@@ -400,6 +461,8 @@ export function normalizeRunnerHttpExecutedInput(input) {
     timeoutCount,
     redirectCount,
     durationMs,
+    responseStatusCounts,
+    primaryDiagnostic,
   };
 }
 

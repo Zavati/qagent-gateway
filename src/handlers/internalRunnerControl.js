@@ -616,6 +616,8 @@ export async function postInternalRunnerHttpExecuted(
     timeoutCount: input.timeoutCount,
     redirectCount: input.redirectCount,
     durationMs: input.durationMs,
+    responseStatusCounts: input.responseStatusCounts,
+    primaryDiagnostic: input.primaryDiagnostic,
     executedAt,
   });
   if (!result.updated) {
@@ -634,6 +636,8 @@ export async function postInternalRunnerHttpExecuted(
       timeoutCount: input.timeoutCount,
       redirectCount: input.redirectCount,
       durationMs: input.durationMs,
+      responseStatusCounts: input.responseStatusCounts,
+      primaryDiagnostic: input.primaryDiagnostic,
       httpExecutedAt: executedAt,
     },
   };
