@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.runner-http-executed.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "attemptId", "leaseToken", "runtimePlanHash", "requestCount", "responseCount", "networkErrorCount", "timeoutCount", "redirectCount", "durationMs"],
+  "properties": {
+    "contractVersion": { "const": "qagent.runner-http-executed.v1" },
+    "attemptId": { "type": "string" },
+    "leaseToken": { "type": "string" },
+    "runtimePlanHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "requestCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+    "responseCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+    "networkErrorCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+    "timeoutCount": { "type": "integer", "minimum": 0, "maximum": 50 },
+    "redirectCount": { "type": "integer", "minimum": 0, "maximum": 150 },
+    "durationMs": { "type": "integer", "minimum": 0, "maximum": 3600000 }
+  }
+}

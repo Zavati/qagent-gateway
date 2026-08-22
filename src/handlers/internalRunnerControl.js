@@ -11,6 +11,7 @@ import {
   normalizeRunnerReceivedV2Input,
   normalizeRunnerRetryInput,
   normalizeRunnerRuntimeReadyInput,
+  normalizeRunnerHttpExecutedInput,
   normalizeRunnerRejectedInput,
   sha256Hex,
 } from '../lib/runContracts.js';
@@ -24,6 +25,7 @@ import {
   markRunExecutionReceived,
   markRunExecutionRetry,
   markRunExecutionRuntimeReady,
+  markRunExecutionHttpExecuted,
   markRunExecutionRejected,
   tryClaimRunExecution,
 } from '../repositories/runExecutionClaimRepository.js';
@@ -129,6 +131,14 @@ function safeAttempt(attempt) {
     runtimeResolutionSource: attempt.runtimeResolutionSource || null,
     runtimeResolutionConfidence: attempt.runtimeResolutionConfidence || null,
     runtimeMaterializedAt: attempt.runtimeMaterializedAt || null,
+    httpExecutionStatus: attempt.httpExecutionStatus || null,
+    httpRequestCount: attempt.httpRequestCount == null ? null : Number(attempt.httpRequestCount),
+    httpResponseCount: attempt.httpResponseCount == null ? null : Number(attempt.httpResponseCount),
+    httpNetworkErrorCount: attempt.httpNetworkErrorCount == null ? null : Number(attempt.httpNetworkErrorCount),
+    httpTimeoutCount: attempt.httpTimeoutCount == null ? null : Number(attempt.httpTimeoutCount),
+    httpRedirectCount: attempt.httpRedirectCount == null ? null : Number(attempt.httpRedirectCount),
+    httpDurationMs: attempt.httpDurationMs == null ? null : Number(attempt.httpDurationMs),
+    httpExecutedAt: attempt.httpExecutedAt || null,
   };
 }
 
@@ -562,6 +572,69 @@ export async function postInternalRunnerRuntimeReady(
       resolutionSource: input.resolutionSource,
       resolutionConfidence: input.resolutionConfidence,
       runtimeMaterializedAt: materializedAt,
+    },
+  };
+}
+
+
+export async function postInternalRunnerHttpExecuted(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    markHttpExecuted = markRunExecutionHttpExecuted,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerHttpExecutedInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+  if (bundle.run.status === 'CANCELLED') {
+    internalError('Run cancelado antes do HTTP execution summary.', 'RUNNER_CONTROL_RUN_CANCELLED', 409);
+  }
+  if (['PASSED', 'FAILED', 'ERROR'].includes(bundle.run.status)) {
+    internalError('Run já está terminal.', 'RUNNER_CONTROL_RUN_TERMINAL', 409);
+  }
+
+  const executedAt = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const result = await markHttpExecuted(env, {
+    organizationId: bundle.run.organizationId,
+    projectId: bundle.run.projectId,
+    runId: normalizedRunId,
+    attemptId: input.attemptId,
+    leaseTokenHash,
+    runtimePlanHash: input.runtimePlanHash,
+    requestCount: input.requestCount,
+    responseCount: input.responseCount,
+    networkErrorCount: input.networkErrorCount,
+    timeoutCount: input.timeoutCount,
+    redirectCount: input.redirectCount,
+    durationMs: input.durationMs,
+    executedAt,
+  });
+  if (!result.updated) {
+    internalError('Lease/runtime readiness inválidos para registrar HTTP execution.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+
+  return {
+    status: 'ok',
+    data: {
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      httpExecutionStatus: 'COMPLETED',
+      requestCount: input.requestCount,
+      responseCount: input.responseCount,
+      networkErrorCount: input.networkErrorCount,
+      timeoutCount: input.timeoutCount,
+      redirectCount: input.redirectCount,
+      durationMs: input.durationMs,
+      httpExecutedAt: executedAt,
     },
   };
 }

@@ -26,6 +26,14 @@ const ATTEMPT_SELECT = `
     runtime_resolution_source AS runtimeResolutionSource,
     runtime_resolution_confidence AS runtimeResolutionConfidence,
     runtime_materialized_at AS runtimeMaterializedAt,
+    http_execution_status AS httpExecutionStatus,
+    http_request_count AS httpRequestCount,
+    http_response_count AS httpResponseCount,
+    http_network_error_count AS httpNetworkErrorCount,
+    http_timeout_count AS httpTimeoutCount,
+    http_redirect_count AS httpRedirectCount,
+    http_duration_ms AS httpDurationMs,
+    http_executed_at AS httpExecutedAt,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM run_execution_attempts
@@ -60,6 +68,12 @@ function normalizeAttempt(row) {
     attemptNumber: num(row.attemptNumber),
     heartbeatCount: num(row.heartbeatCount),
     queueDeliveryAttempt: row.queueDeliveryAttempt == null ? null : num(row.queueDeliveryAttempt, null),
+    httpRequestCount: row.httpRequestCount == null ? null : num(row.httpRequestCount, null),
+    httpResponseCount: row.httpResponseCount == null ? null : num(row.httpResponseCount, null),
+    httpNetworkErrorCount: row.httpNetworkErrorCount == null ? null : num(row.httpNetworkErrorCount, null),
+    httpTimeoutCount: row.httpTimeoutCount == null ? null : num(row.httpTimeoutCount, null),
+    httpRedirectCount: row.httpRedirectCount == null ? null : num(row.httpRedirectCount, null),
+    httpDurationMs: row.httpDurationMs == null ? null : num(row.httpDurationMs, null),
   };
 }
 
@@ -560,6 +574,80 @@ export async function markRunExecutionRejected(env, {
 
   return {
     updated: changes(results?.[0]) === 1 && changes(results?.[1]) === 1,
+    attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+    claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
+  };
+}
+
+
+export async function markRunExecutionHttpExecuted(env, {
+  organizationId,
+  projectId,
+  runId,
+  attemptId,
+  leaseTokenHash,
+  runtimePlanHash,
+  requestCount,
+  responseCount,
+  networkErrorCount,
+  timeoutCount,
+  redirectCount,
+  durationMs,
+  executedAt,
+}) {
+  const db = requireDataDb(env);
+  const result = await db.prepare(`
+    UPDATE run_execution_attempts
+    SET http_execution_status = 'COMPLETED',
+        http_request_count = ?,
+        http_response_count = ?,
+        http_network_error_count = ?,
+        http_timeout_count = ?,
+        http_redirect_count = ?,
+        http_duration_ms = ?,
+        http_executed_at = ?,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND attempt_id = ? AND status = 'CLAIMED'
+      AND lease_token_hash = ?
+      AND lease_expires_at > ?
+      AND runtime_readiness_status = 'READY'
+      AND runtime_plan_hash = ?
+      AND EXISTS (
+        SELECT 1
+        FROM run_execution_claims c
+        WHERE c.organization_id = ? AND c.project_id = ? AND c.run_id = ?
+          AND c.state = 'ACTIVE'
+          AND c.current_attempt_id = ?
+          AND c.lease_token_hash = ?
+          AND c.lease_expires_at > ?
+      )
+  `).bind(
+    requestCount,
+    responseCount,
+    networkErrorCount,
+    timeoutCount,
+    redirectCount,
+    durationMs,
+    executedAt,
+    executedAt,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    executedAt,
+    runtimePlanHash,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    executedAt,
+  ).run();
+
+  return {
+    updated: changes(result) === 1,
     attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
     claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
   };

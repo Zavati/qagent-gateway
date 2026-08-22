@@ -523,8 +523,9 @@ READY scenario resolves deterministic STG target
 
 ---
 
-## 07.7.6 — HTTP Executor v1
+## 07.7.6 — HTTP Executor v1 ✅ implemented / production GET gate pending
 
+- generic TDD-friendly `HttpScenarioExecutor`;
 - safe URL builder;
 - GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS;
 - path params;
@@ -535,7 +536,10 @@ READY scenario resolves deterministic STG target
 - response limits;
 - redirects policy;
 - SSRF/egress guard;
-- sanitized capture.
+- sanitized capture;
+- HTTP execution kill switch;
+- side-effect methods disabled by default until execution journal exists;
+- control-plane stores summaries only, detailed evidence remains Results Plane.
 
 Gate:
 

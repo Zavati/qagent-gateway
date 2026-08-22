@@ -99,3 +99,29 @@ Detailed assertion/event payloads belong to Results Plane.
 Do not create this service in 07.7.5 because no external HTTP/result payload exists yet.
 
 Create the service foundation before detailed result persistence in 07.7.9, ideally as `07.7.9-A — qagent-test-results Foundation`.
+
+
+## Side-effect execution journal
+
+Foundation 07.7.6 adds the generic HTTP Executor, but production mutation methods remain disabled by default:
+
+```text
+POST / PUT / PATCH / DELETE
+```
+
+Cloudflare Queues provide at-least-once delivery, so a Worker can theoretically perform a target mutation and terminate before durable completion is recorded. A redelivery cannot safely infer whether the target side effect occurred.
+
+Before mutation execution is enabled broadly, the Results Plane must provide a durable scenario-execution journal with at least:
+
+```text
+executionId / scenario execution identity
+request fingerprint
+STARTED / COMPLETED / INDETERMINATE state
+startedAt / completedAt
+safe target metadata
+idempotency strategy where the target supports it
+```
+
+If a prior side-effect attempt is `INDETERMINATE`, QAgent must fail closed rather than silently replay the mutation.
+
+This journal can be introduced before 07.7.9 if mutation coverage becomes a blocker; otherwise it is part of the `qagent-test-results` foundation.

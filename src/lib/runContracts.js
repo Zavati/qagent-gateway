@@ -12,6 +12,7 @@ export const RUNNER_HEARTBEAT_CONTRACT_VERSION = 'qagent.runner-heartbeat.v1';
 export const RUNNER_RETRY_CONTRACT_VERSION = 'qagent.runner-retry.v1';
 export const RUNNER_RUNTIME_READY_CONTRACT_VERSION = 'qagent.runner-runtime-ready.v1';
 export const RUNNER_REJECTED_CONTRACT_VERSION = 'qagent.runner-rejected.v1';
+export const RUNNER_HTTP_EXECUTED_CONTRACT_VERSION = 'qagent.runner-http-executed.v1';
 
 export const RUN_STATUSES = Object.freeze([
   'CREATED', 'QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED',
@@ -348,6 +349,58 @@ export function normalizeRunnerRuntimeReadyInput(input) {
 }
 
 
+
+export function normalizeRunnerHttpExecutedInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de HTTP execution inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set([
+    'contractVersion', 'attemptId', 'leaseToken', 'runtimePlanHash',
+    'requestCount', 'responseCount', 'networkErrorCount', 'timeoutCount', 'redirectCount', 'durationMs',
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no HTTP execution summary: ${key}.`, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_HTTP_EXECUTED_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_HTTP_EXECUTED_CONTRACT_VERSION}'.`, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400);
+  }
+  const runtimePlanHash = String(input.runtimePlanHash || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(runtimePlanHash)) {
+    fail('runtimePlanHash inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'runtimePlanHash' });
+  }
+  const normalizeCount = (value, field, max = 10000) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > max) {
+      fail(`${field} inválido.`, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field });
+    }
+    return parsed;
+  };
+  const durationMs = Number(input.durationMs);
+  if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > 3_600_000) {
+    fail('durationMs inválido.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400, { field: 'durationMs' });
+  }
+  const requestCount = normalizeCount(input.requestCount, 'requestCount', 50);
+  const responseCount = normalizeCount(input.responseCount, 'responseCount', 50);
+  const networkErrorCount = normalizeCount(input.networkErrorCount, 'networkErrorCount', 50);
+  const timeoutCount = normalizeCount(input.timeoutCount, 'timeoutCount', 50);
+  const redirectCount = normalizeCount(input.redirectCount, 'redirectCount', 150);
+  if (responseCount + networkErrorCount + timeoutCount > requestCount) {
+    fail('HTTP execution counts inconsistentes.', 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID', 400);
+  }
+  return {
+    contractVersion: RUNNER_HTTP_EXECUTED_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_HTTP_EXECUTED_CONTRACT_INVALID'),
+    runtimePlanHash,
+    requestCount,
+    responseCount,
+    networkErrorCount,
+    timeoutCount,
+    redirectCount,
+    durationMs,
+  };
+}
+
 export function normalizeRunnerRejectedInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     fail('Payload de rejection inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400);
@@ -364,7 +417,7 @@ export function normalizeRunnerRejectedInput(input) {
     fail('errorCode inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'errorCode' });
   }
   const phase = String(input.phase || 'RUNTIME').trim().toUpperCase();
-  if (!['INTAKE', 'RUNTIME'].includes(phase)) {
+  if (!['INTAKE', 'RUNTIME', 'HTTP'].includes(phase)) {
     fail('phase inválida.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'phase' });
   }
   return {
