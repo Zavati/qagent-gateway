@@ -14,7 +14,7 @@ import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
 import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.3';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.4';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -286,10 +286,11 @@ function profileUsableForEnvironment(profile, binding) {
 }
 
 function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
-  // Test Design is Environment-independent. A profile is therefore considered
-  // available when it is executable in at least one Environment where the
-  // resolved API Service is configured. The selected Run Environment performs
-  // the strict per-Environment validation later in Execution Plan materialization.
+  // 07.7.8-B — Zero-Config Auth Resolution.
+  // Test Design remains Environment-independent for explicit API Services, but a
+  // DISCOVERED_OBSERVATION runtime is tied to the Environment(s) that produced
+  // the observation. Auth auto-selection must therefore never borrow credentials
+  // from an unrelated Environment merely because it exists in the same Project.
   const serviceEnvironmentIds = runtimeMapping?.apiServiceId
     ? uniqueStrings((controlPlane.apiBindings || [])
       .filter((binding) => binding.apiServiceId === runtimeMapping.apiServiceId && binding?.status !== 'archived' && safeHttpOrigin(binding.baseUrl))
@@ -298,9 +299,28 @@ function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
   const activeEnvironmentIds = uniqueStrings((controlPlane.environments || [])
     .filter((environment) => environment?.status !== 'archived')
     .map((environment) => environment.environmentId));
-  const eligibleEnvironmentIds = serviceEnvironmentIds.length ? serviceEnvironmentIds : activeEnvironmentIds;
+  const observedRuntimeEnvironmentIds = uniqueStrings(runtimeMapping?.environmentIds || [])
+    .filter((environmentId) => activeEnvironmentIds.includes(environmentId));
 
-  const available = [];
+  let eligibleEnvironmentIds = [];
+  let environmentScopeSource = 'PROJECT_ENVIRONMENTS';
+  if (runtimeMapping?.runtimeSource === 'DISCOVERED_OBSERVATION') {
+    if ((runtimeMapping?.environmentIds || []).length) {
+      eligibleEnvironmentIds = observedRuntimeEnvironmentIds;
+      environmentScopeSource = 'OBSERVED_ENVIRONMENTS';
+    } else {
+      eligibleEnvironmentIds = activeEnvironmentIds;
+      environmentScopeSource = 'PROJECT_ENVIRONMENTS_FALLBACK';
+    }
+  } else if (serviceEnvironmentIds.length) {
+    eligibleEnvironmentIds = serviceEnvironmentIds;
+    environmentScopeSource = 'API_SERVICE_ENVIRONMENTS';
+  } else {
+    eligibleEnvironmentIds = activeEnvironmentIds;
+  }
+
+  const usableProfiles = [];
+  const compatibleProfiles = [];
   const profileCoverage = [];
   for (const profile of controlPlane.authProfiles || []) {
     if (profile.status === 'archived' || profile.enabled === false || profile.type === 'none') continue;
@@ -309,24 +329,75 @@ function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
       const binding = bindings.find((item) => item.environmentId === environmentId);
       return profileUsableForEnvironment(profile, binding);
     });
-    if (usableEnvironmentIds.length) {
-      const compatible = authObservation?.status !== 'REQUIRED'
-        || profileCompatibleWithObservedAuth(profile, authObservation?.scheme);
-      profileCoverage.push({
-        authProfileId: profile.authProfileId,
-        usableEnvironmentIds: [...usableEnvironmentIds].sort(),
-        observedAuthCompatible: compatible,
-      });
-      if (compatible) available.push(profile.authProfileId);
-    }
+    if (!usableEnvironmentIds.length) continue;
+
+    const compatible = authObservation?.status !== 'REQUIRED'
+      || profileCompatibleWithObservedAuth(profile, authObservation?.scheme);
+    const candidate = {
+      authProfileId: profile.authProfileId,
+      profileKey: profile.profileKey || null,
+      name: profile.name || null,
+      type: profile.type || null,
+      usableEnvironmentIds: [...usableEnvironmentIds].sort(),
+      observedAuthCompatible: compatible,
+    };
+    profileCoverage.push(candidate);
+    usableProfiles.push(candidate);
+    if (compatible) compatibleProfiles.push(candidate);
   }
-  available.sort();
+
+  const observationStatus = String(authObservation?.status || 'UNKNOWN').toUpperCase();
+  const availableProfiles = observationStatus === 'REQUIRED' ? compatibleProfiles : usableProfiles;
+  availableProfiles.sort((a, b) => String(a.authProfileId).localeCompare(String(b.authProfileId)));
+  compatibleProfiles.sort((a, b) => String(a.authProfileId).localeCompare(String(b.authProfileId)));
+
+  let resolutionStatus = 'UNKNOWN';
+  let resolutionSource = null;
+  let selectedProfile = null;
+  if (observationStatus === 'REQUIRED') {
+    if (compatibleProfiles.length === 1) {
+      resolutionStatus = 'AUTO_MATCHED';
+      resolutionSource = runtimeMapping?.runtimeSource === 'DISCOVERED_OBSERVATION'
+        ? 'OBSERVED_AUTH_AND_ENVIRONMENT'
+        : 'OBSERVED_AUTH';
+      selectedProfile = compatibleProfiles[0];
+    } else if (compatibleProfiles.length > 1) {
+      resolutionStatus = 'AMBIGUOUS';
+      resolutionSource = 'OBSERVED_AUTH';
+    } else {
+      resolutionStatus = 'UNAVAILABLE';
+      resolutionSource = 'OBSERVED_AUTH';
+    }
+  } else if (observationStatus === 'MIXED') {
+    resolutionStatus = 'REVIEW_REQUIRED';
+    resolutionSource = 'OBSERVED_AUTH';
+  } else if (observationStatus === 'NONE') {
+    resolutionStatus = 'NOT_REQUIRED';
+    resolutionSource = 'OBSERVED_AUTH';
+    // Backward-compatible convenience: keep a unique usable profile available
+    // as the project default, although NONE scenarios will never consume it.
+    if (usableProfiles.length === 1) selectedProfile = usableProfiles[0];
+  } else if (usableProfiles.length === 1) {
+    // Historical behavior for endpoints without a known auth signal. This does
+    // not force REQUIRED; it only preserves the unique project profile as the
+    // default should a grounded scenario require it for another reason.
+    resolutionStatus = 'SINGLE_PROFILE_AVAILABLE';
+    resolutionSource = 'PROJECT_AUTH_CONFIG';
+    selectedProfile = usableProfiles[0];
+  }
+
   return {
-    availableAuthProfileRefs: available,
-    defaultAuthProfileRef: available.length === 1 ? available[0] : null,
-    completeProfileCount: available.length,
-    compatibleProfileCount: available.length,
+    availableAuthProfileRefs: availableProfiles.map((profile) => profile.authProfileId),
+    defaultAuthProfileRef: selectedProfile?.authProfileId || null,
+    completeProfileCount: usableProfiles.length,
+    compatibleProfileCount: compatibleProfiles.length,
     eligibleEnvironmentCount: eligibleEnvironmentIds.length,
+    eligibleEnvironmentIds: [...eligibleEnvironmentIds].sort(),
+    environmentScopeSource,
+    resolutionStatus,
+    resolutionSource,
+    selectedProfile,
+    candidateProfileCount: compatibleProfiles.length,
     profileCoverage,
   };
 }
@@ -597,8 +668,16 @@ export async function buildCatalogTestDesignContextV1({
       configuredProfileCount: (controlPlane?.authProfiles || []).filter((profile) => profile.enabled !== false && profile.status !== 'archived').length,
       completeProfileCount: authRuntime.completeProfileCount,
       compatibleProfileCount: authRuntime.compatibleProfileCount,
+      candidateProfileCount: authRuntime.candidateProfileCount,
       eligibleEnvironmentCount: authRuntime.eligibleEnvironmentCount,
+      environmentScopeSource: authRuntime.environmentScopeSource,
+      resolutionStatus: authRuntime.resolutionStatus,
+      resolutionSource: authRuntime.resolutionSource,
       defaultSelected: Boolean(authRuntime.defaultAuthProfileRef),
+      selectedAuthProfileRef: authRuntime.selectedProfile?.authProfileId || null,
+      selectedProfileKey: authRuntime.selectedProfile?.profileKey || null,
+      selectedProfileName: authRuntime.selectedProfile?.name || null,
+      selectedProfileType: authRuntime.selectedProfile?.type || null,
       observationStatus: authObservation.status,
       observedScheme: authObservation.scheme,
       observedWithAuthCount: authObservation.observedWithAuthCount,
