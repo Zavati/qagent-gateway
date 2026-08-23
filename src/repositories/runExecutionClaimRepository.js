@@ -67,6 +67,13 @@ const ATTEMPT_SELECT = `
     assertion_primary_schema_ref AS assertionPrimarySchemaRef,
     assertion_primary_actual_status_code AS assertionPrimaryActualStatusCode,
     assertion_primary_actual_content_type AS assertionPrimaryActualContentType,
+    auth_runtime_status AS authRuntimeStatus,
+    auth_required_scenario_count AS authRequiredScenarioCount,
+    auth_resolved_profile_count AS authResolvedProfileCount,
+    auth_dynamic_exchange_count AS authDynamicExchangeCount,
+    auth_cache_hit_count AS authCacheHitCount,
+    auth_duration_ms AS authDurationMs,
+    auth_resolved_at AS authResolvedAt,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM run_execution_attempts
@@ -123,6 +130,11 @@ function normalizeAttempt(row) {
     assertionDurationMs: row.assertionDurationMs == null ? null : num(row.assertionDurationMs, null),
     assertionPrimaryIndex: row.assertionPrimaryIndex == null ? null : num(row.assertionPrimaryIndex, null),
     assertionPrimaryActualStatusCode: row.assertionPrimaryActualStatusCode == null ? null : num(row.assertionPrimaryActualStatusCode, null),
+    authRequiredScenarioCount: row.authRequiredScenarioCount == null ? null : num(row.authRequiredScenarioCount, null),
+    authResolvedProfileCount: row.authResolvedProfileCount == null ? null : num(row.authResolvedProfileCount, null),
+    authDynamicExchangeCount: row.authDynamicExchangeCount == null ? null : num(row.authDynamicExchangeCount, null),
+    authCacheHitCount: row.authCacheHitCount == null ? null : num(row.authCacheHitCount, null),
+    authDurationMs: row.authDurationMs == null ? null : num(row.authDurationMs, null),
   };
 }
 
@@ -658,6 +670,77 @@ export async function markRunExecutionRejected(env, {
   };
 }
 
+
+
+export async function markRunAuthResolved(env, {
+  organizationId,
+  projectId,
+  runId,
+  attemptId,
+  leaseTokenHash,
+  runtimePlanHash,
+  requiredScenarioCount,
+  resolvedProfileCount,
+  dynamicExchangeCount,
+  cacheHitCount,
+  durationMs,
+  resolvedAt,
+}) {
+  const db = requireDataDb(env);
+  const result = await db.prepare(`
+    UPDATE run_execution_attempts
+    SET auth_runtime_status = 'COMPLETED',
+        auth_required_scenario_count = ?,
+        auth_resolved_profile_count = ?,
+        auth_dynamic_exchange_count = ?,
+        auth_cache_hit_count = ?,
+        auth_duration_ms = ?,
+        auth_resolved_at = ?,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND attempt_id = ? AND status = 'CLAIMED'
+      AND lease_token_hash = ?
+      AND lease_expires_at > ?
+      AND runtime_readiness_status = 'READY'
+      AND runtime_plan_hash = ?
+      AND EXISTS (
+        SELECT 1
+        FROM run_execution_claims c
+        WHERE c.organization_id = ? AND c.project_id = ? AND c.run_id = ?
+          AND c.state = 'ACTIVE'
+          AND c.current_attempt_id = ?
+          AND c.lease_token_hash = ?
+          AND c.lease_expires_at > ?
+      )
+  `).bind(
+    requiredScenarioCount,
+    resolvedProfileCount,
+    dynamicExchangeCount,
+    cacheHitCount,
+    durationMs,
+    resolvedAt,
+    resolvedAt,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    resolvedAt,
+    runtimePlanHash,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    resolvedAt,
+  ).run();
+
+  return {
+    updated: changes(result) === 1,
+    attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+    claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
+  };
+}
 
 export async function markRunExecutionHttpExecuted(env, {
   organizationId,

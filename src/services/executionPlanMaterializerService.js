@@ -210,6 +210,26 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
       config: clone(profile.config || {}),
       credentialsConfigured: true,
     };
+
+    if (['oauth2_client_credentials', 'login_http_json'].includes(profile.type)) {
+      const authServiceKey = String(profile?.config?.apiServiceKey || '').trim();
+      const authService = runtimeConfig?.apiServices?.[authServiceKey];
+      if (!authServiceKey || !authService?.baseUrl) {
+        runError('Auth Profile dinâmico não possui API Service configurado neste Environment.', 'RUN_AUTH_API_SERVICE_ENVIRONMENT_BINDING_MISSING', 409, {
+          scenarioId: scenario?.scenarioId || null,
+          authProfileRef,
+          apiServiceKey: authServiceKey || null,
+        });
+      }
+      if (!apiServices[authServiceKey]) {
+        apiServices[authServiceKey] = {
+          apiServiceId: authService.apiServiceId,
+          name: authService.name,
+          serviceKey: authServiceKey,
+          baseUrl: authService.baseUrl,
+        };
+      }
+    }
   }
 
   return {

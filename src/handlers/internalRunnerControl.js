@@ -13,7 +13,11 @@ import {
   normalizeRunnerRuntimeReadyInput,
   normalizeRunnerHttpExecutedInput,
   normalizeRunnerAssertionsEvaluatedInput,
+  normalizeRunnerAuthMaterialRequestInput,
+  normalizeRunnerAuthResolvedInput,
   normalizeRunnerRejectedInput,
+  RUNNER_AUTH_MATERIAL_CONTRACT_VERSION,
+  RUNNER_AUTH_RESOLVED_CONTRACT_VERSION,
   sha256Hex,
 } from '../lib/runContracts.js';
 import {
@@ -28,10 +32,13 @@ import {
   markRunExecutionRuntimeReady,
   markRunExecutionHttpExecuted,
   markRunAssertionsEvaluated,
+  markRunAuthResolved,
   markRunExecutionRejected,
+  getRunExecutionClaim,
   tryClaimRunExecution,
 } from '../repositories/runExecutionClaimRepository.js';
 import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
+import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
 
 function internalError(message, code, status = 409, publicDetails = null) {
   const error = new Error(message);
@@ -153,6 +160,13 @@ function safeAttempt(attempt) {
     assertionNotEvaluatedCount: attempt.assertionNotEvaluatedCount == null ? null : Number(attempt.assertionNotEvaluatedCount),
     assertionDurationMs: attempt.assertionDurationMs == null ? null : Number(attempt.assertionDurationMs),
     assertionEvaluatedAt: attempt.assertionEvaluatedAt || null,
+    authRuntimeStatus: attempt.authRuntimeStatus || null,
+    authRequiredScenarioCount: attempt.authRequiredScenarioCount == null ? null : Number(attempt.authRequiredScenarioCount),
+    authResolvedProfileCount: attempt.authResolvedProfileCount == null ? null : Number(attempt.authResolvedProfileCount),
+    authDynamicExchangeCount: attempt.authDynamicExchangeCount == null ? null : Number(attempt.authDynamicExchangeCount),
+    authCacheHitCount: attempt.authCacheHitCount == null ? null : Number(attempt.authCacheHitCount),
+    authDurationMs: attempt.authDurationMs == null ? null : Number(attempt.authDurationMs),
+    authResolvedAt: attempt.authResolvedAt || null,
   };
 }
 
@@ -590,6 +604,184 @@ export async function postInternalRunnerRuntimeReady(
   };
 }
 
+
+
+function assertAuthMaterialLease(bundle, claim, input, nowIso) {
+  const attempt = bundle?.latestAttempt;
+  if (
+    !attempt
+    || attempt.attemptId !== input.attemptId
+    || attempt.status !== 'CLAIMED'
+    || attempt.runtimeReadinessStatus !== 'READY'
+    || attempt.runtimePlanHash !== input.runtimePlanHash
+  ) {
+    internalError('Auth Material request não corresponde ao attempt READY atual.', 'RUNNER_CONTROL_AUTH_RUNTIME_STATE_INVALID', 409);
+  }
+  if (
+    !claim
+    || claim.state !== 'ACTIVE'
+    || claim.currentAttemptId !== input.attemptId
+    || !claim.leaseTokenHash
+    || claim.leaseExpiresAt <= nowIso
+  ) {
+    internalError('Lease não está ativa para resolução de Auth Material.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+}
+
+function findSnapshotAuthProfile(bundle, authProfileRef) {
+  const profiles = bundle?.runtimeSnapshot?.snapshot?.authProfiles || {};
+  const direct = profiles[authProfileRef];
+  if (direct) return direct;
+  return Object.values(profiles).find((profile) => profile?.authProfileId === authProfileRef || profile?.profileKey === authProfileRef) || null;
+}
+
+function authProfileIsReferenced(bundle, authProfileRef) {
+  return (bundle?.executionPlan?.plan?.scenarios || []).some((scenario) => {
+    const auth = scenario?.spec?.auth || {};
+    return auth.requirement === 'REQUIRED' && String(auth.authProfileRef || '').trim() === authProfileRef;
+  });
+}
+
+export async function postInternalRunnerAuthMaterial(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    getClaim = getRunExecutionClaim,
+    resolveRuntimeAuth = resolveAuthProfileCredentialsJit,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req, 12_288);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerAuthMaterialRequestInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+
+  const nowIso = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const claim = await getClaim(env, bundle.run.organizationId, bundle.run.projectId, normalizedRunId);
+  assertAuthMaterialLease(bundle, claim, input, nowIso);
+  if (claim.leaseTokenHash !== leaseTokenHash) {
+    internalError('Lease token inválido para Auth Material.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+
+  const snapshotProfile = findSnapshotAuthProfile(bundle, input.authProfileRef);
+  if (!snapshotProfile || snapshotProfile.credentialsConfigured !== true) {
+    internalError('Auth Profile não existe no Runtime Snapshot.', 'RUNNER_CONTROL_AUTH_PROFILE_NOT_IN_SNAPSHOT', 409);
+  }
+  if (!authProfileIsReferenced(bundle, input.authProfileRef)) {
+    internalError('Auth Profile não é referenciado pelo Execution Plan.', 'RUNNER_CONTROL_AUTH_PROFILE_NOT_REFERENCED', 409);
+  }
+
+  const resolved = await resolveRuntimeAuth(
+    env,
+    bundle.run.organizationId,
+    bundle.run.projectId,
+    bundle.run.environmentId,
+    snapshotProfile.authProfileId,
+  );
+  if (!resolved || resolved.authProfileId !== snapshotProfile.authProfileId || resolved.type !== snapshotProfile.type) {
+    internalError('Auth Profile mudou de tipo desde o Runtime Snapshot.', 'RUNNER_CONTROL_AUTH_PROFILE_DRIFT', 409);
+  }
+  if (!['basic', 'api_key', 'oauth2_client_credentials', 'login_http_json'].includes(snapshotProfile.type)) {
+    internalError('Auth Profile REQUIRED possui tipo não executável.', 'RUNNER_CONTROL_AUTH_TYPE_UNSUPPORTED', 409);
+  }
+  if (!resolved.credentials || typeof resolved.credentials !== 'object' || Array.isArray(resolved.credentials)) {
+    internalError('Credenciais do Auth Profile não estão disponíveis para execução.', 'RUNNER_CONTROL_AUTH_CREDENTIALS_UNAVAILABLE', 409);
+  }
+
+  let target = null;
+  if (['oauth2_client_credentials', 'login_http_json'].includes(snapshotProfile.type)) {
+    const serviceKey = String(snapshotProfile?.config?.apiServiceKey || '').trim();
+    const service = bundle?.runtimeSnapshot?.snapshot?.apiServices?.[serviceKey];
+    if (!service?.baseUrl || !snapshotProfile?.config?.path) {
+      internalError('Auth target não está congelado no Runtime Snapshot.', 'RUNNER_CONTROL_AUTH_TARGET_NOT_IN_SNAPSHOT', 409);
+    }
+    target = {
+      apiServiceKey: serviceKey,
+      apiServiceId: service.apiServiceId || null,
+      baseUrl: service.baseUrl,
+      path: snapshotProfile.config.path,
+      method: 'POST',
+    };
+  }
+
+  return {
+    status: 'ok',
+    data: {
+      contractVersion: RUNNER_AUTH_MATERIAL_CONTRACT_VERSION,
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      runtimePlanHash: input.runtimePlanHash,
+      authProfileRef: input.authProfileRef,
+      authProfileId: snapshotProfile.authProfileId,
+      profileKey: snapshotProfile.profileKey || null,
+      type: snapshotProfile.type,
+      config: structuredClone(snapshotProfile.config || {}),
+      target,
+      credentials: resolved.credentials,
+    },
+  };
+}
+
+export async function postInternalRunnerAuthResolved(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    markAuthResolved = markRunAuthResolved,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerAuthResolvedInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+
+  const resolvedAt = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const result = await markAuthResolved(env, {
+    organizationId: bundle.run.organizationId,
+    projectId: bundle.run.projectId,
+    runId: normalizedRunId,
+    attemptId: input.attemptId,
+    leaseTokenHash,
+    runtimePlanHash: input.runtimePlanHash,
+    requiredScenarioCount: input.requiredScenarioCount,
+    resolvedProfileCount: input.resolvedProfileCount,
+    dynamicExchangeCount: input.dynamicExchangeCount,
+    cacheHitCount: input.cacheHitCount,
+    durationMs: input.durationMs,
+    resolvedAt,
+  });
+  if (!result?.updated) {
+    internalError('Auth Runtime summary não possui lease/runtime válidos.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+
+  return {
+    status: 'ok',
+    data: {
+      contractVersion: RUNNER_AUTH_RESOLVED_CONTRACT_VERSION,
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      authRuntimeStatus: 'COMPLETED',
+      requiredScenarioCount: input.requiredScenarioCount,
+      resolvedProfileCount: input.resolvedProfileCount,
+      dynamicExchangeCount: input.dynamicExchangeCount,
+      cacheHitCount: input.cacheHitCount,
+      durationMs: input.durationMs,
+      resolvedAt,
+    },
+  };
+}
 
 export async function postInternalRunnerHttpExecuted(
   req,

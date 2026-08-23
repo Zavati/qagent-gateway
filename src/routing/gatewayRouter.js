@@ -60,6 +60,12 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[5] === 'runtime-ready' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunRuntimeReadyPost', params: { runId } };
       }
+      if (segs[5] === 'auth-material' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunAuthMaterialPost', params: { runId } };
+      }
+      if (segs[5] === 'auth-resolved' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunAuthResolvedPost', params: { runId } };
+      }
       if (segs[5] === 'http-executed' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunHttpExecutedPost', params: { runId } };
       }

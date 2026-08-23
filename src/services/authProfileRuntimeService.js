@@ -25,7 +25,7 @@ export async function listEnvironmentAuthProfilesPublic(env, organizationId, pro
   return out;
 }
 
-export async function resolveAuthProfileRuntimePlan(env, organizationId, projectId, environmentId, authProfileId) {
+export async function resolveAuthProfileCredentialsJit(env, organizationId, projectId, environmentId, authProfileId) {
   await getProjectEnvironment(env, organizationId, projectId, environmentId);
   const profile = await getAuthProfile(env, organizationId, projectId, authProfileId);
   if (!profile || !profile.enabled) {
@@ -42,7 +42,6 @@ export async function resolveAuthProfileRuntimePlan(env, organizationId, project
     throw err;
   }
 
-  const config = publicAuthProfileConfig(profile.configJson);
   let credentials = null;
   if (profile.type !== 'none') {
     if (!binding.secretId) {
@@ -62,8 +61,24 @@ export async function resolveAuthProfileRuntimePlan(env, organizationId, project
     credentials = resolved.value;
   }
 
+  return {
+    organizationId,
+    projectId,
+    environmentId,
+    authProfileId: profile.authProfileId,
+    profileKey: profile.profileKey,
+    type: profile.type,
+    credentials,
+  };
+}
+
+export async function resolveAuthProfileRuntimePlan(env, organizationId, projectId, environmentId, authProfileId) {
+  const resolved = await resolveAuthProfileCredentialsJit(env, organizationId, projectId, environmentId, authProfileId);
+  const profile = await getAuthProfile(env, organizationId, projectId, authProfileId);
+  const config = publicAuthProfileConfig(profile?.configJson);
+
   let target = null;
-  if (['oauth2_client_credentials', 'login_http_json'].includes(profile.type)) {
+  if (['oauth2_client_credentials', 'login_http_json'].includes(resolved.type)) {
     const apiBindings = await listProjectEnvironmentApiBindings(env, organizationId, projectId, environmentId);
     const apiBinding = apiBindings.find((item) => item.serviceKey === config.apiServiceKey);
     if (!apiBinding) {
@@ -82,14 +97,8 @@ export async function resolveAuthProfileRuntimePlan(env, organizationId, project
   }
 
   return {
-    organizationId,
-    projectId,
-    environmentId,
-    authProfileId: profile.authProfileId,
-    profileKey: profile.profileKey,
-    type: profile.type,
+    ...resolved,
     config,
     target,
-    credentials,
   };
 }
