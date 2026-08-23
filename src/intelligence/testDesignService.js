@@ -17,6 +17,7 @@ import {
 } from './testDesignPrompt.js';
 import { applySemanticGroundingGuardV1 } from './semanticGroundingGuard.js';
 import { applyObservedAuthSignalBridgeV1 } from './observedAuthSignalBridge.js';
+import { applySecretSafeTestDesignSanitizerV1 } from './secretSafeTestDesignSanitizer.js';
 
 export const AI_TEST_DESIGN_ENGINE_VERSION = 'qagent.ai-test-design-engine.v1';
 
@@ -68,8 +69,11 @@ function contractRepairInstruction(error) {
   const code = error?.code || 'TEST_DESIGN_CONTRACT_INVALID';
   const path = error?.path || 'unknown';
   const rule = String(error?.message || 'Contrato inválido.').slice(0, 500);
+  const secretRule = code === 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN'
+    ? `\nEste é um erro de material sensível. Remova COMPLETAMENTE o campo/entry sensível indicado. NÃO substitua por valor fictício, placeholder, null, string vazia ou outro secret. Se o cenário depender desse dado para executar, use automationHints.needsData=true e adicione uma razão de que o valor deve ser resolvido por mecanismo seguro de runtime/test data. Não crie assertions/extracts sobre secrets.`
+    : '';
   return `A resposta anterior viola o TestDesignModelOutputV1 (${code} em ${path}).
-Regra violada: ${rule}
+Regra violada: ${rule}${secretRule}
 Reescreva o objeto COMPLETO, respeitando estritamente OUTPUT_JSON_SCHEMA, os formatos exatos de assertion e CATALOG_CONTEXT_JSON.
 Para confidence use EXATAMENTE uma destas strings: HIGH, MEDIUM, LOW. Nunca use número, percentual, score ou VERY_HIGH/VERY_LOW.
 Não adicione campos extras. Não invente refs. Use somente IDs existentes no contexto. Retorne somente JSON válido.`;
@@ -89,6 +93,39 @@ function normalizeModelOutput(output, log, stage = 'generate') {
     });
   }
   return normalized;
+}
+
+function emptySecretSafeDiagnostics() {
+  return {
+    sanitizerVersion: 'qagent.secret-safe-test-design-sanitizer.v1',
+    sanitizedScenarioCount: 0,
+    removedMaterialCount: 0,
+    requestSecretRemovalCount: 0,
+    authHeaderRemovalCount: 0,
+    assertionRemovalCount: 0,
+    extractRemovalCount: 0,
+    needsDataScenarioCount: 0,
+    reviewRequiredScenarioCount: 0,
+    byKind: {},
+    sanitizedPaths: [],
+    sanitizedScenarioIds: [],
+    needsDataScenarioIds: [],
+    reviewRequiredScenarioIds: [],
+  };
+}
+
+function mergeSecretSafeDiagnostics(target, current) {
+  for (const key of ['removedMaterialCount', 'requestSecretRemovalCount', 'authHeaderRemovalCount', 'assertionRemovalCount', 'extractRemovalCount']) {
+    target[key] += Number(current?.[key] || 0);
+  }
+  for (const [kind, count] of Object.entries(current?.byKind || {})) target.byKind[kind] = (target.byKind[kind] || 0) + count;
+  for (const key of ['sanitizedPaths', 'sanitizedScenarioIds', 'needsDataScenarioIds', 'reviewRequiredScenarioIds']) {
+    target[key] = [...new Set([...(target[key] || []), ...(current?.[key] || [])])].slice(0, key === 'sanitizedPaths' ? 40 : 20);
+  }
+  target.sanitizedScenarioCount = target.sanitizedScenarioIds.length;
+  target.needsDataScenarioCount = target.needsDataScenarioIds.length;
+  target.reviewRequiredScenarioCount = target.reviewRequiredScenarioIds.length;
+  return target;
 }
 
 export async function generateCatalogTestDesignV1({
@@ -125,6 +162,7 @@ export async function generateCatalogTestDesignV1({
   let modelOutput;
   let repairAttempts = 0;
   let firstValidationError = null;
+  const secretSafeSanitizer = emptySecretSafeDiagnostics();
 
   log('testDesign_ai_start', {
     engineVersion: AI_TEST_DESIGN_ENGINE_VERSION,
@@ -215,6 +253,21 @@ export async function generateCatalogTestDesignV1({
     modelOutput = normalized.output;
     normalizationPaths = normalized.changes;
   }
+  {
+    const sanitized = applySecretSafeTestDesignSanitizerV1(modelOutput);
+    modelOutput = sanitized.output;
+    mergeSecretSafeDiagnostics(secretSafeSanitizer, sanitized.diagnostics);
+    if (sanitized.diagnostics.removedMaterialCount > 0) {
+      log('testDesign_secret_safe_sanitizer_applied', {
+        stage: 'generate',
+        sanitizerVersion: sanitized.diagnostics.sanitizerVersion,
+        endpointId: context.endpoint.endpointId,
+        sanitizedScenarioCount: sanitized.diagnostics.sanitizedScenarioCount,
+        removedMaterialCount: sanitized.diagnostics.removedMaterialCount,
+        byKind: sanitized.diagnostics.byKind,
+      });
+    }
+  }
 
   try {
     validateTestDesignModelOutputV1(modelOutput, context);
@@ -269,6 +322,21 @@ export async function generateCatalogTestDesignV1({
       const normalized = normalizeModelOutput(modelOutput, log, 'repair');
       modelOutput = normalized.output;
       normalizationPaths = [...new Set([...normalizationPaths, ...normalized.changes])];
+    }
+    {
+      const sanitized = applySecretSafeTestDesignSanitizerV1(modelOutput);
+      modelOutput = sanitized.output;
+      mergeSecretSafeDiagnostics(secretSafeSanitizer, sanitized.diagnostics);
+      if (sanitized.diagnostics.removedMaterialCount > 0) {
+        log('testDesign_secret_safe_sanitizer_applied', {
+          stage: 'repair',
+          sanitizerVersion: sanitized.diagnostics.sanitizerVersion,
+          endpointId: context.endpoint.endpointId,
+          sanitizedScenarioCount: sanitized.diagnostics.sanitizedScenarioCount,
+          removedMaterialCount: sanitized.diagnostics.removedMaterialCount,
+          byKind: sanitized.diagnostics.byKind,
+        });
+      }
     }
     try {
       validateTestDesignModelOutputV1(modelOutput, context);
@@ -358,6 +426,7 @@ export async function generateCatalogTestDesignV1({
       repairAttempts,
       normalizationCount: normalizationPaths.length,
       normalizationPaths: normalizationPaths.slice(0, 20),
+      secretSafeSanitizer,
       semanticGuard: semanticGuard.diagnostics,
       observedAuthBridge: observedAuthBridge.diagnostics,
       timeoutMs,

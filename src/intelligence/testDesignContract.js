@@ -48,6 +48,16 @@ const SENSITIVE_HEADER_NAMES = new Set([
 ]);
 
 const SENSITIVE_REQUEST_KEY_RE = /(?:password|passwd|secret|token|api[_-]?key|authorization|cookie|credential|private[_-]?key|client[_-]?secret)/i;
+const SENSITIVE_SELECTOR_KEYS = new Set([
+  'password', 'passwd', 'newpassword', 'currentpassword', 'passwordconfirmation', 'newpasswordconfirmation',
+  'secret', 'clientsecret', 'apikey', 'authorization', 'cookie', 'credential', 'privatekey',
+  'accesstoken', 'refreshtoken', 'idtoken', 'bearertoken', 'sessiontoken',
+]);
+
+function isSensitiveSelector(selector) {
+  const tokens = String(selector || '').match(/[A-Za-z_][A-Za-z0-9_-]*/g) || [];
+  return tokens.some((token) => SENSITIVE_SELECTOR_KEYS.has(token.replace(/[_-]/g, '').toLowerCase()));
+}
 
 const MODEL_OUTPUT_KEYS = new Set(['title', 'objective', 'assumptions', 'scenarios']);
 const MODEL_SCENARIO_KEYS = new Set([
@@ -252,13 +262,19 @@ function validateAssertion(assertion, path, schemaRefs) {
 
   if (type === 'JSON_PATH_EXISTS') {
     assertKnownKeys(assertion, new Set(['type', 'path']), path);
-    assertString(assertion.path, `${path}.path`, { max: 500 });
+    const selector = assertString(assertion.path, `${path}.path`, { max: 500 });
+    if (isSensitiveSelector(selector)) {
+      fail('Assertion sobre material sensível não é permitida.', `${path}.path`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+    }
     return;
   }
 
   if (type === 'JSON_PATH_EQUALS') {
     assertKnownKeys(assertion, new Set(['type', 'path', 'expected']), path);
-    assertString(assertion.path, `${path}.path`, { max: 500 });
+    const selector = assertString(assertion.path, `${path}.path`, { max: 500 });
+    if (isSensitiveSelector(selector)) {
+      fail('Assertion sobre material sensível não é permitida.', `${path}.path`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+    }
     assertJsonValue(assertion.expected, `${path}.expected`);
     return;
   }
@@ -285,8 +301,11 @@ function validateExtract(extract, path) {
   assertString(extract.name, `${path}.name`, { max: 120 });
   assertEnum(extract.source, EXTRACT_SOURCES, `${path}.source`);
   const selector = assertString(extract.selector, `${path}.selector`, { max: 500 });
-  if (extract.source === 'HEADER' && SENSITIVE_HEADER_NAMES.has(selector.toLowerCase())) {
+  if (extract.source === 'HEADER' && (SENSITIVE_HEADER_NAMES.has(selector.toLowerCase()) || SENSITIVE_REQUEST_KEY_RE.test(selector))) {
     fail('Extração de headers sensíveis não é permitida.', `${path}.selector`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
+  }
+  if (extract.source === 'JSON_PATH' && isSensitiveSelector(selector)) {
+    fail('Extração de material sensível por JSON path não é permitida.', `${path}.selector`, 'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN');
   }
 }
 
