@@ -3,7 +3,7 @@ import {
   TEST_DESIGN_CONTRACT_VERSION,
 } from './testDesignContract.js';
 
-export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v6';
+export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v6.1';
 export const TEST_DESIGN_REPAIR_PROMPT_VERSION = 'qagent.test-design-repair-prompt.v1';
 
 function collectAllowedRefs(context) {
@@ -47,6 +47,7 @@ REGRAS DE SEGURANÇA E AUTORIDADE:
 - confidence deve ser EXATAMENTE a string HIGH, MEDIUM ou LOW. Nunca use número, percentual, score decimal, VERY_HIGH, VERY_LOW ou texto livre.
 - ASSUMED representa hipótese e nunca deve usar confidence HIGH.
 - Se context.runtime.authObservation.status=REQUIRED, trate autenticação como fato observado: cenários funcionais usam authRequirement REQUIRED; use UNAUTHENTICATED somente para um cenário explícito que testa ausência de autenticação. O QAgent reforçará essa regra deterministicamente após a geração.
+- Se context.runtime.authObservation.status=OPTIONAL, existe sucesso 2xx observado sem autenticação. Para cenários funcionais/contrato grounded nesse caminho público, use authRequirement NONE. Use REQUIRED apenas quando o cenário estiver explicitamente grounded em evidência autenticada ou testar comportamento autenticado; nunca transforme a mera presença de um Auth Profile em prova de que auth é obrigatória.
 - Se context.runtime.authObservation.status=MIXED, não assuma uma política única de autenticação; trate como revisão.
 - Se autenticação não puder ser provada pelo contexto, prefira authRequirement NONE ou trate a necessidade como hipótese/revisão; não invente credenciais.
 - Automation Readiness é calculada pelo QAgent. Você fornece apenas automationHints.

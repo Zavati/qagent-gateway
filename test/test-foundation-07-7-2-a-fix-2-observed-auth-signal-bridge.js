@@ -205,20 +205,22 @@ const unauthBridge = applyObservedAuthSignalBridgeV1(unauthModel, bearerContext.
 assert.equal(unauthBridge.output.scenarios[0].authRequirement, 'UNAUTHENTICATED');
 assert.equal(unauthBridge.diagnostics.preservedUnauthenticatedCount, 1);
 
-// Mixed auth observations fail closed into REVIEW_REQUIRED instead of guessing a policy.
+// Evolved policy (07.7.8-B FIX-1): auth + no-auth successful observations prove OPTIONAL/public-capable behavior.
 const mixedContext = await buildContext({ evidenceItems: [
   evidence({ id: 'cev_auth_200', authObserved: true, authScheme: 'BEARER' }),
   evidence({ id: 'cev_noauth_200', authObserved: false, authScheme: null }),
 ] });
-assert.equal(mixedContext.context.runtime.authObservation.status, 'MIXED');
-assert.equal(mixedContext.context.runtime.authObservation.scheme, null);
+assert.equal(mixedContext.context.runtime.authObservation.status, 'OPTIONAL');
+assert.equal(mixedContext.context.runtime.authObservation.scheme, 'BEARER');
 const mixedBridge = applyObservedAuthSignalBridgeV1(baseModelOutput, mixedContext.context);
 const mixedSpec = buildTestSpecificationV1({
   context: mixedContext.context,
   modelOutput: mixedBridge.output,
   generation: { provider: 'openai', model: 'gpt-4o-mini', generatedAt: '2026-08-21T14:30:00.000Z', contextFingerprint: mixedContext.contextFingerprint },
 });
-assert.equal(mixedSpec.scenarios[0].automation.readiness, 'REVIEW_REQUIRED');
+assert.equal(mixedSpec.scenarios[0].automation.readiness, 'READY');
+assert.equal(mixedSpec.scenarios[0].spec.auth.requirement, 'REQUIRED');
+assert.equal(mixedSpec.scenarios[0].spec.auth.authProfileRef, 'authp_sestsenat');
 
 // Safety: upstream credential-like fields are ignored by the Context Builder and never leak into diagnostics/spec.
 const safeSerialization = JSON.stringify({

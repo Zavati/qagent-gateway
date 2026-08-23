@@ -118,6 +118,7 @@ function buildKnowledge(context) {
     requestTracks,
     availableAuthRefs: new Set(context?.runtime?.availableAuthProfileRefs || []),
     observedAuthRequired: context?.runtime?.authObservation?.status === 'REQUIRED',
+    observedAuthOptional: context?.runtime?.authObservation?.status === 'OPTIONAL',
     observedAuthScheme: context?.runtime?.authObservation?.scheme || null,
   };
 }
@@ -500,6 +501,7 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     addIssue({ code: 'SEMANTIC_AUTH_CONTRADICTION', path: `modelOutput.scenarios[${index}].authRequirement`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
   } else if (scenario.authRequirement === 'REQUIRED' || scenario.authRequirement === 'UNAUTHENTICATED') {
     const hasObservedAuthSignal = knowledge.observedAuthRequired
+      || knowledge.observedAuthOptional
       || [...knowledge.observedStatuses].some((status) => HTTP_AUTH_STATUSES.has(status));
     if (!hasObservedAuthSignal && knowledge.availableAuthRefs.size === 0) {
       const reason = 'A necessidade de autenticação não é comprovada por 401/403 observado nem por Auth Profile configurado.';

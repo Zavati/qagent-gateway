@@ -444,7 +444,7 @@ export function validateCatalogTestDesignContextV1(context) {
   if (runtime.authObservation != null) {
     assertPlainObject(runtime.authObservation, 'context.runtime.authObservation');
     assertKnownKeys(runtime.authObservation, new Set(['status', 'scheme', 'evidenceRefs']), 'context.runtime.authObservation');
-    assertEnum(runtime.authObservation.status, ['REQUIRED', 'NONE', 'MIXED', 'UNKNOWN'], 'context.runtime.authObservation.status');
+    assertEnum(runtime.authObservation.status, ['REQUIRED', 'NONE', 'OPTIONAL', 'MIXED', 'UNKNOWN'], 'context.runtime.authObservation.status');
     if (runtime.authObservation.scheme != null) assertEnum(runtime.authObservation.scheme, ['BEARER', 'BASIC', 'API_KEY', 'COOKIE', 'UNKNOWN'], 'context.runtime.authObservation.scheme');
     const observedEvidenceRefs = assertStringArray(runtime.authObservation.evidenceRefs ?? [], 'context.runtime.authObservation.evidenceRefs', { maxItems: 20, maxLength: 160 });
     assertUniqueStrings(observedEvidenceRefs, 'context.runtime.authObservation.evidenceRefs');
@@ -452,8 +452,8 @@ export function validateCatalogTestDesignContextV1(context) {
     for (const ref of observedEvidenceRefs) {
       if (!allowedEvidenceRefs.has(ref)) fail('authObservation.evidenceRefs precisa apontar para Evidence presente no contexto.', 'context.runtime.authObservation.evidenceRefs', 'TEST_DESIGN_EVIDENCE_REF_UNKNOWN');
     }
-    if (runtime.authObservation.status !== 'REQUIRED' && runtime.authObservation.scheme != null) {
-      fail('authObservation.scheme só pode ser materializado quando status=REQUIRED.', 'context.runtime.authObservation.scheme', 'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT');
+    if (!['REQUIRED', 'OPTIONAL'].includes(runtime.authObservation.status) && runtime.authObservation.scheme != null) {
+      fail('authObservation.scheme só pode ser materializado quando status=REQUIRED ou OPTIONAL.', 'context.runtime.authObservation.scheme', 'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT');
     }
   }
 

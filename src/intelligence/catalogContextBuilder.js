@@ -14,7 +14,7 @@ import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
 import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.4';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.5';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -67,34 +67,62 @@ function normalizeObservedAuthScheme(value) {
 function aggregateAuthObservation(items) {
   let observedTrue = 0;
   let observedFalse = 0;
+  let authenticatedSuccessCount = 0;
+  let unauthenticatedSuccessCount = 0;
+  let unauthenticatedAuthErrorCount = 0;
   const schemes = new Set();
   const evidenceRefs = [];
 
   for (const item of items || []) {
     if (typeof item?.authObserved !== 'boolean') continue;
+    const statusCode = nullableInteger(item?.statusCode);
+    const isSuccess = statusCode != null && statusCode >= 200 && statusCode < 300;
+    const isAuthError = statusCode === 401 || statusCode === 403;
+
     if (item.authObserved) {
       observedTrue += 1;
+      if (isSuccess) authenticatedSuccessCount += 1;
       const scheme = normalizeObservedAuthScheme(item.authScheme) || 'UNKNOWN';
       schemes.add(scheme);
       const evidenceId = nullableString(item?.evidenceId);
       if (evidenceId && evidenceRefs.length < 20 && !evidenceRefs.includes(evidenceId)) evidenceRefs.push(evidenceId);
     } else {
       observedFalse += 1;
+      if (isSuccess) unauthenticatedSuccessCount += 1;
+      if (isAuthError) unauthenticatedAuthErrorCount += 1;
     }
   }
 
   let status = 'UNKNOWN';
-  if (observedTrue > 0 && observedFalse > 0) status = 'MIXED';
-  else if (observedTrue > 0) status = 'REQUIRED';
-  else if (observedFalse > 0) status = 'NONE';
+  if (observedTrue > 0 && observedFalse > 0) {
+    // Mixed header presence is not automatically ambiguity. A successful 2xx
+    // without auth proves that the endpoint is public-capable, even if callers
+    // sometimes send Authorization opportunistically.
+    if (unauthenticatedSuccessCount > 0) status = 'OPTIONAL';
+    // Conversely, observed 401/403 without auth plus authenticated success is
+    // strong evidence that auth is actually required.
+    else if (authenticatedSuccessCount > 0 && unauthenticatedAuthErrorCount > 0) status = 'REQUIRED';
+    else status = 'MIXED';
+  } else if (observedTrue > 0) {
+    status = 'REQUIRED';
+  } else if (observedFalse > 0) {
+    status = unauthenticatedSuccessCount > 0 ? 'NONE'
+      : unauthenticatedAuthErrorCount > 0 ? 'REQUIRED'
+        : 'NONE';
+  }
 
-  const scheme = status === 'REQUIRED' ? (schemes.size === 1 ? [...schemes][0] : 'UNKNOWN') : null;
+  const scheme = ['REQUIRED', 'OPTIONAL'].includes(status)
+    ? (schemes.size === 1 ? [...schemes][0] : 'UNKNOWN')
+    : null;
   return {
     status,
     scheme,
     evidenceRefs,
     observedWithAuthCount: observedTrue,
     observedWithoutAuthCount: observedFalse,
+    authenticatedSuccessCount,
+    unauthenticatedSuccessCount,
+    unauthenticatedAuthErrorCount,
     knownSignalCount: observedTrue + observedFalse,
   };
 }
@@ -331,7 +359,7 @@ function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
     });
     if (!usableEnvironmentIds.length) continue;
 
-    const compatible = authObservation?.status !== 'REQUIRED'
+    const compatible = !['REQUIRED', 'OPTIONAL'].includes(String(authObservation?.status || '').toUpperCase())
       || profileCompatibleWithObservedAuth(profile, authObservation?.scheme);
     const candidate = {
       authProfileId: profile.authProfileId,
@@ -347,7 +375,7 @@ function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
   }
 
   const observationStatus = String(authObservation?.status || 'UNKNOWN').toUpperCase();
-  const availableProfiles = observationStatus === 'REQUIRED' ? compatibleProfiles : usableProfiles;
+  const availableProfiles = ['REQUIRED', 'OPTIONAL'].includes(observationStatus) ? compatibleProfiles : usableProfiles;
   availableProfiles.sort((a, b) => String(a.authProfileId).localeCompare(String(b.authProfileId)));
   compatibleProfiles.sort((a, b) => String(a.authProfileId).localeCompare(String(b.authProfileId)));
 
@@ -367,6 +395,20 @@ function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
     } else {
       resolutionStatus = 'UNAVAILABLE';
       resolutionSource = 'OBSERVED_AUTH';
+    }
+  } else if (observationStatus === 'OPTIONAL') {
+    if (compatibleProfiles.length === 1) {
+      resolutionStatus = 'OPTIONAL_AUTO_MATCHED';
+      resolutionSource = runtimeMapping?.runtimeSource === 'DISCOVERED_OBSERVATION'
+        ? 'OBSERVED_OPTIONAL_AUTH_AND_ENVIRONMENT'
+        : 'OBSERVED_OPTIONAL_AUTH';
+      selectedProfile = compatibleProfiles[0];
+    } else if (compatibleProfiles.length > 1) {
+      resolutionStatus = 'OPTIONAL_AMBIGUOUS';
+      resolutionSource = 'OBSERVED_OPTIONAL_AUTH';
+    } else {
+      resolutionStatus = 'OPTIONAL_NO_PROFILE';
+      resolutionSource = 'OBSERVED_OPTIONAL_AUTH';
     }
   } else if (observationStatus === 'MIXED') {
     resolutionStatus = 'REVIEW_REQUIRED';
@@ -682,6 +724,9 @@ export async function buildCatalogTestDesignContextV1({
       observedScheme: authObservation.scheme,
       observedWithAuthCount: authObservation.observedWithAuthCount,
       observedWithoutAuthCount: authObservation.observedWithoutAuthCount,
+      authenticatedSuccessCount: authObservation.authenticatedSuccessCount,
+      unauthenticatedSuccessCount: authObservation.unauthenticatedSuccessCount,
+      unauthenticatedAuthErrorCount: authObservation.unauthenticatedAuthErrorCount,
       knownSignalCount: authObservation.knownSignalCount,
     },
     schemas: {
