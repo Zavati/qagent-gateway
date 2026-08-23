@@ -12,6 +12,7 @@ import {
   normalizeRunnerRetryInput,
   normalizeRunnerRuntimeReadyInput,
   normalizeRunnerHttpExecutedInput,
+  normalizeRunnerAssertionsEvaluatedInput,
   normalizeRunnerRejectedInput,
   sha256Hex,
 } from '../lib/runContracts.js';
@@ -26,6 +27,7 @@ import {
   markRunExecutionRetry,
   markRunExecutionRuntimeReady,
   markRunExecutionHttpExecuted,
+  markRunAssertionsEvaluated,
   markRunExecutionRejected,
   tryClaimRunExecution,
 } from '../repositories/runExecutionClaimRepository.js';
@@ -139,6 +141,18 @@ function safeAttempt(attempt) {
     httpRedirectCount: attempt.httpRedirectCount == null ? null : Number(attempt.httpRedirectCount),
     httpDurationMs: attempt.httpDurationMs == null ? null : Number(attempt.httpDurationMs),
     httpExecutedAt: attempt.httpExecutedAt || null,
+    assertionExecutionStatus: attempt.assertionExecutionStatus || null,
+    assertionOutcome: attempt.assertionOutcome || null,
+    assertionScenarioCount: attempt.assertionScenarioCount == null ? null : Number(attempt.assertionScenarioCount),
+    assertionScenarioPassedCount: attempt.assertionScenarioPassedCount == null ? null : Number(attempt.assertionScenarioPassedCount),
+    assertionScenarioFailedCount: attempt.assertionScenarioFailedCount == null ? null : Number(attempt.assertionScenarioFailedCount),
+    assertionScenarioNotEvaluatedCount: attempt.assertionScenarioNotEvaluatedCount == null ? null : Number(attempt.assertionScenarioNotEvaluatedCount),
+    assertionCount: attempt.assertionCount == null ? null : Number(attempt.assertionCount),
+    assertionPassedCount: attempt.assertionPassedCount == null ? null : Number(attempt.assertionPassedCount),
+    assertionFailedCount: attempt.assertionFailedCount == null ? null : Number(attempt.assertionFailedCount),
+    assertionNotEvaluatedCount: attempt.assertionNotEvaluatedCount == null ? null : Number(attempt.assertionNotEvaluatedCount),
+    assertionDurationMs: attempt.assertionDurationMs == null ? null : Number(attempt.assertionDurationMs),
+    assertionEvaluatedAt: attempt.assertionEvaluatedAt || null,
   };
 }
 
@@ -643,6 +657,97 @@ export async function postInternalRunnerHttpExecuted(
   };
 }
 
+
+
+export async function postInternalRunnerAssertionsEvaluated(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    markAssertionsEvaluated = markRunAssertionsEvaluated,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerAssertionsEvaluatedInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+  if (bundle.run.status === 'CANCELLED') {
+    internalError('Run cancelado antes do assertion summary.', 'RUNNER_CONTROL_RUN_CANCELLED', 409);
+  }
+  if (['PASSED', 'FAILED', 'ERROR'].includes(bundle.run.status)) {
+    if (
+      bundle.latestAttempt?.attemptId === input.attemptId
+      && bundle.latestAttempt?.assertionExecutionStatus === 'COMPLETED'
+      && bundle.latestAttempt?.assertionOutcome === input.outcome
+    ) {
+      return {
+        status: 'ok',
+        data: {
+          runId: normalizedRunId,
+          attemptId: input.attemptId,
+          assertionExecutionStatus: 'COMPLETED',
+          outcome: input.outcome,
+          assertionEvaluatedAt: bundle.latestAttempt.assertionEvaluatedAt || null,
+          idempotentReplay: true,
+        },
+      };
+    }
+    internalError('Run já está terminal.', 'RUNNER_CONTROL_RUN_TERMINAL', 409);
+  }
+
+  const evaluatedAt = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const result = await markAssertionsEvaluated(env, {
+    organizationId: bundle.run.organizationId,
+    projectId: bundle.run.projectId,
+    runId: normalizedRunId,
+    attemptId: input.attemptId,
+    leaseTokenHash,
+    runtimePlanHash: input.runtimePlanHash,
+    outcome: input.outcome,
+    scenarioCount: input.scenarioCount,
+    scenarioPassedCount: input.scenarioPassedCount,
+    scenarioFailedCount: input.scenarioFailedCount,
+    scenarioNotEvaluatedCount: input.scenarioNotEvaluatedCount,
+    assertionCount: input.assertionCount,
+    assertionPassedCount: input.assertionPassedCount,
+    assertionFailedCount: input.assertionFailedCount,
+    assertionNotEvaluatedCount: input.assertionNotEvaluatedCount,
+    durationMs: input.durationMs,
+    primaryDiagnostic: input.primaryDiagnostic,
+    evaluatedAt,
+  });
+  if (!result.updated) {
+    internalError('Lease/runtime/http inválidos para registrar assertion summary.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+
+  return {
+    status: 'ok',
+    data: {
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      assertionExecutionStatus: 'COMPLETED',
+      outcome: input.outcome,
+      scenarioCount: input.scenarioCount,
+      scenarioPassedCount: input.scenarioPassedCount,
+      scenarioFailedCount: input.scenarioFailedCount,
+      scenarioNotEvaluatedCount: input.scenarioNotEvaluatedCount,
+      assertionCount: input.assertionCount,
+      assertionPassedCount: input.assertionPassedCount,
+      assertionFailedCount: input.assertionFailedCount,
+      assertionNotEvaluatedCount: input.assertionNotEvaluatedCount,
+      durationMs: input.durationMs,
+      primaryDiagnostic: input.primaryDiagnostic,
+      assertionEvaluatedAt: evaluatedAt,
+      idempotentReplay: false,
+    },
+  };
+}
 
 export async function postInternalRunnerRejected(
   req,

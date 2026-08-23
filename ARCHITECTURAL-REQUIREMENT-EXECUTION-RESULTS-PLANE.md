@@ -140,3 +140,34 @@ one primary HTTP status code for a non-success response
 This exception remains a **summary**, not detailed result storage. Per-scenario histories, response payloads, complete headers, assertion details and evidence still belong to the Execution Results Plane.
 
 Raw exception messages are not stored because they may contain target URLs or sensitive context.
+
+## Foundation 07.7.7 — bounded assertion summaries
+
+The Assertion Engine introduces real test outcomes, but does not change the storage boundary.
+
+The Gateway Run Control Plane may retain only a bounded summary per execution attempt:
+
+```text
+assertion execution status
+PASSED / FAILED / ERROR outcome
+scenario total/passed/failed/not-evaluated counts
+assertion total/passed/failed/not-evaluated counts
+assertion evaluation duration/timestamp
+one safe primary diagnostic
+```
+
+The primary diagnostic may contain only bounded metadata needed to understand the first failure/not-evaluated condition, such as:
+
+```text
+scenarioId
+assertion index/type
+safe error code
+JSON path or header name
+schemaRef
+actual HTTP status code
+actual content type
+```
+
+It must never carry raw `JSON_PATH_EQUALS` expected/actual values, response bodies, request bodies, complete headers, cookies or secrets.
+
+Full per-assertion evidence remains a Results Plane responsibility. A future `qagent-test-results` record should be able to store the exact immutable Test Design version, scenario identity, assertion identity, sanitized expected/actual evidence, timings and artifact references without expanding Gateway D1.

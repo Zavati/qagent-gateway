@@ -63,6 +63,9 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[5] === 'http-executed' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunHttpExecutedPost', params: { runId } };
       }
+      if (segs[5] === 'assertions-evaluated' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunAssertionsEvaluatedPost', params: { runId } };
+      }
       if (segs[5] === 'rejected' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunRejectedPost', params: { runId } };
       }

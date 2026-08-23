@@ -13,6 +13,7 @@ export const RUNNER_RETRY_CONTRACT_VERSION = 'qagent.runner-retry.v1';
 export const RUNNER_RUNTIME_READY_CONTRACT_VERSION = 'qagent.runner-runtime-ready.v1';
 export const RUNNER_REJECTED_CONTRACT_VERSION = 'qagent.runner-rejected.v1';
 export const RUNNER_HTTP_EXECUTED_CONTRACT_VERSION = 'qagent.runner-http-executed.v1';
+export const RUNNER_ASSERTIONS_EVALUATED_CONTRACT_VERSION = 'qagent.runner-assertions-evaluated.v1';
 
 export const RUN_STATUSES = Object.freeze([
   'CREATED', 'QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED',
@@ -466,6 +467,143 @@ export function normalizeRunnerHttpExecutedInput(input) {
   };
 }
 
+
+export function normalizeRunnerAssertionsEvaluatedInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('Payload de assertion evaluation inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  const allowed = new Set([
+    'contractVersion', 'attemptId', 'leaseToken', 'runtimePlanHash', 'outcome',
+    'scenarioCount', 'scenarioPassedCount', 'scenarioFailedCount', 'scenarioNotEvaluatedCount',
+    'assertionCount', 'assertionPassedCount', 'assertionFailedCount', 'assertionNotEvaluatedCount',
+    'durationMs', 'primaryDiagnostic',
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) fail(`Campo não permitido no assertion summary: ${key}.`, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: key });
+  }
+  if (input.contractVersion !== RUNNER_ASSERTIONS_EVALUATED_CONTRACT_VERSION) {
+    fail(`contractVersion deve ser '${RUNNER_ASSERTIONS_EVALUATED_CONTRACT_VERSION}'.`, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  const runtimePlanHash = String(input.runtimePlanHash || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(runtimePlanHash)) {
+    fail('runtimePlanHash inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'runtimePlanHash' });
+  }
+  const outcome = String(input.outcome || '').trim().toUpperCase();
+  if (!['PASSED', 'FAILED', 'ERROR'].includes(outcome)) {
+    fail('outcome inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'outcome' });
+  }
+  const normalizeCount = (value, field, max = 10000) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > max) {
+      fail(`${field} inválido.`, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field });
+    }
+    return parsed;
+  };
+  const scenarioCount = normalizeCount(input.scenarioCount, 'scenarioCount', 50);
+  const scenarioPassedCount = normalizeCount(input.scenarioPassedCount, 'scenarioPassedCount', 50);
+  const scenarioFailedCount = normalizeCount(input.scenarioFailedCount, 'scenarioFailedCount', 50);
+  const scenarioNotEvaluatedCount = normalizeCount(input.scenarioNotEvaluatedCount, 'scenarioNotEvaluatedCount', 50);
+  if (scenarioPassedCount + scenarioFailedCount + scenarioNotEvaluatedCount !== scenarioCount) {
+    fail('Scenario assertion counts inconsistentes.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  const assertionCount = normalizeCount(input.assertionCount, 'assertionCount', 1500);
+  const assertionPassedCount = normalizeCount(input.assertionPassedCount, 'assertionPassedCount', 1500);
+  const assertionFailedCount = normalizeCount(input.assertionFailedCount, 'assertionFailedCount', 1500);
+  const assertionNotEvaluatedCount = normalizeCount(input.assertionNotEvaluatedCount, 'assertionNotEvaluatedCount', 1500);
+  if (assertionPassedCount + assertionFailedCount + assertionNotEvaluatedCount !== assertionCount) {
+    fail('Assertion counts inconsistentes.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  if (outcome === 'PASSED' && (scenarioFailedCount > 0 || scenarioNotEvaluatedCount > 0 || assertionFailedCount > 0 || assertionNotEvaluatedCount > 0)) {
+    fail('PASSED contém failures/not evaluated.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  if (outcome === 'FAILED' && scenarioFailedCount === 0 && assertionFailedCount === 0) {
+    fail('FAILED sem assertion failure.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  if (outcome === 'ERROR' && scenarioNotEvaluatedCount === 0 && assertionNotEvaluatedCount === 0) {
+    fail('ERROR sem assertion não avaliada.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400);
+  }
+  const durationMs = Number(input.durationMs);
+  if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > 3_600_000) {
+    fail('durationMs inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'durationMs' });
+  }
+
+  let primaryDiagnostic = null;
+  if (input.primaryDiagnostic != null) {
+    const diagnostic = input.primaryDiagnostic;
+    if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic)) {
+      fail('primaryDiagnostic inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic' });
+    }
+    const diagnosticAllowed = new Set([
+      'kind', 'scenarioId', 'assertionIndex', 'assertionType', 'errorCode', 'path', 'headerName',
+      'schemaRef', 'actualStatusCode', 'actualContentType',
+    ]);
+    for (const key of Object.keys(diagnostic)) {
+      if (!diagnosticAllowed.has(key)) fail(`Campo não permitido em assertion primaryDiagnostic: ${key}.`, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: `primaryDiagnostic.${key}` });
+    }
+    const kind = String(diagnostic.kind || '').trim().toUpperCase();
+    if (!['ASSERTION_FAILURE', 'ASSERTION_NOT_EVALUATED'].includes(kind)) {
+      fail('primaryDiagnostic.kind inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.kind' });
+    }
+    const scenarioId = String(diagnostic.scenarioId || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(scenarioId)) {
+      fail('primaryDiagnostic.scenarioId inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.scenarioId' });
+    }
+    const assertionIndex = Number(diagnostic.assertionIndex);
+    if (!Number.isInteger(assertionIndex) || assertionIndex < 0 || assertionIndex > 29) {
+      fail('primaryDiagnostic.assertionIndex inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.assertionIndex' });
+    }
+    const assertionType = String(diagnostic.assertionType || '').trim().toUpperCase();
+    if (!['STATUS', 'SCHEMA', 'JSON_PATH_EXISTS', 'JSON_PATH_EQUALS', 'HEADER_EXISTS', 'CONTENT_TYPE'].includes(assertionType)) {
+      fail('primaryDiagnostic.assertionType inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.assertionType' });
+    }
+    const errorCode = String(diagnostic.errorCode || '').trim().toUpperCase();
+    if (!/^[A-Z0-9_:-]{3,120}$/.test(errorCode)) {
+      fail('primaryDiagnostic.errorCode inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.errorCode' });
+    }
+    const safeText = (value, field, max) => {
+      if (value == null) return null;
+      const text = String(value).trim();
+      if (!text || text.length > max || /[\r\n]/.test(text)) {
+        fail(`${field} inválido.`, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field });
+      }
+      return text;
+    };
+    const path = safeText(diagnostic.path, 'primaryDiagnostic.path', 500);
+    const headerName = safeText(diagnostic.headerName, 'primaryDiagnostic.headerName', 160);
+    const schemaRef = safeText(diagnostic.schemaRef, 'primaryDiagnostic.schemaRef', 180);
+    const actualStatusCode = diagnostic.actualStatusCode == null ? null : Number(diagnostic.actualStatusCode);
+    if (actualStatusCode != null && (!Number.isInteger(actualStatusCode) || actualStatusCode < 100 || actualStatusCode > 599)) {
+      fail('primaryDiagnostic.actualStatusCode inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.actualStatusCode' });
+    }
+    const actualContentType = safeText(diagnostic.actualContentType, 'primaryDiagnostic.actualContentType', 160);
+    primaryDiagnostic = { kind, scenarioId, assertionIndex, assertionType, errorCode, path, headerName, schemaRef, actualStatusCode, actualContentType };
+  }
+  if (outcome !== 'PASSED' && !primaryDiagnostic) {
+    fail('primaryDiagnostic obrigatório para FAILED/ERROR.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic' });
+  }
+  if (outcome === 'PASSED' && primaryDiagnostic) {
+    fail('PASSED não pode conter primaryDiagnostic.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic' });
+  }
+
+  return {
+    contractVersion: RUNNER_ASSERTIONS_EVALUATED_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID'),
+    runtimePlanHash,
+    outcome,
+    scenarioCount,
+    scenarioPassedCount,
+    scenarioFailedCount,
+    scenarioNotEvaluatedCount,
+    assertionCount,
+    assertionPassedCount,
+    assertionFailedCount,
+    assertionNotEvaluatedCount,
+    durationMs,
+    primaryDiagnostic,
+  };
+}
+
 export function normalizeRunnerRejectedInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     fail('Payload de rejection inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400);
@@ -482,7 +620,7 @@ export function normalizeRunnerRejectedInput(input) {
     fail('errorCode inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'errorCode' });
   }
   const phase = String(input.phase || 'RUNTIME').trim().toUpperCase();
-  if (!['INTAKE', 'RUNTIME', 'HTTP'].includes(phase)) {
+  if (!['INTAKE', 'RUNTIME', 'HTTP', 'ASSERTION'].includes(phase)) {
     fail('phase inválida.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'phase' });
   }
   return {

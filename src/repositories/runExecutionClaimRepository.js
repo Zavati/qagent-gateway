@@ -45,6 +45,28 @@ const ATTEMPT_SELECT = `
     http_primary_error_category AS httpPrimaryErrorCategory,
     http_primary_error_name AS httpPrimaryErrorName,
     http_primary_cause_code AS httpPrimaryCauseCode,
+    assertion_execution_status AS assertionExecutionStatus,
+    assertion_outcome AS assertionOutcome,
+    assertion_scenario_count AS assertionScenarioCount,
+    assertion_scenario_passed_count AS assertionScenarioPassedCount,
+    assertion_scenario_failed_count AS assertionScenarioFailedCount,
+    assertion_scenario_not_evaluated_count AS assertionScenarioNotEvaluatedCount,
+    assertion_count AS assertionCount,
+    assertion_passed_count AS assertionPassedCount,
+    assertion_failed_count AS assertionFailedCount,
+    assertion_not_evaluated_count AS assertionNotEvaluatedCount,
+    assertion_duration_ms AS assertionDurationMs,
+    assertion_evaluated_at AS assertionEvaluatedAt,
+    assertion_primary_diagnostic_kind AS assertionPrimaryDiagnosticKind,
+    assertion_primary_scenario_id AS assertionPrimaryScenarioId,
+    assertion_primary_index AS assertionPrimaryIndex,
+    assertion_primary_type AS assertionPrimaryType,
+    assertion_primary_error_code AS assertionPrimaryErrorCode,
+    assertion_primary_path AS assertionPrimaryPath,
+    assertion_primary_header_name AS assertionPrimaryHeaderName,
+    assertion_primary_schema_ref AS assertionPrimarySchemaRef,
+    assertion_primary_actual_status_code AS assertionPrimaryActualStatusCode,
+    assertion_primary_actual_content_type AS assertionPrimaryActualContentType,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM run_execution_attempts
@@ -90,6 +112,17 @@ function normalizeAttempt(row) {
     httpResponse4xxCount: row.httpResponse4xxCount == null ? null : num(row.httpResponse4xxCount, null),
     httpResponse5xxCount: row.httpResponse5xxCount == null ? null : num(row.httpResponse5xxCount, null),
     httpPrimaryStatusCode: row.httpPrimaryStatusCode == null ? null : num(row.httpPrimaryStatusCode, null),
+    assertionScenarioCount: row.assertionScenarioCount == null ? null : num(row.assertionScenarioCount, null),
+    assertionScenarioPassedCount: row.assertionScenarioPassedCount == null ? null : num(row.assertionScenarioPassedCount, null),
+    assertionScenarioFailedCount: row.assertionScenarioFailedCount == null ? null : num(row.assertionScenarioFailedCount, null),
+    assertionScenarioNotEvaluatedCount: row.assertionScenarioNotEvaluatedCount == null ? null : num(row.assertionScenarioNotEvaluatedCount, null),
+    assertionCount: row.assertionCount == null ? null : num(row.assertionCount, null),
+    assertionPassedCount: row.assertionPassedCount == null ? null : num(row.assertionPassedCount, null),
+    assertionFailedCount: row.assertionFailedCount == null ? null : num(row.assertionFailedCount, null),
+    assertionNotEvaluatedCount: row.assertionNotEvaluatedCount == null ? null : num(row.assertionNotEvaluatedCount, null),
+    assertionDurationMs: row.assertionDurationMs == null ? null : num(row.assertionDurationMs, null),
+    assertionPrimaryIndex: row.assertionPrimaryIndex == null ? null : num(row.assertionPrimaryIndex, null),
+    assertionPrimaryActualStatusCode: row.assertionPrimaryActualStatusCode == null ? null : num(row.assertionPrimaryActualStatusCode, null),
   };
 }
 
@@ -431,10 +464,40 @@ export async function markRunExecutionReceived(env, {
 
   const runUpdate = db.prepare(`
     UPDATE runs
-    SET status = CASE WHEN status = 'CREATED' THEN 'QUEUED' ELSE status END,
+    SET status = CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM run_execution_attempts a
+            WHERE a.organization_id = ? AND a.project_id = ? AND a.run_id = ?
+              AND a.attempt_id = ?
+              AND a.assertion_execution_status = 'COMPLETED'
+              AND a.assertion_outcome IN ('PASSED', 'FAILED', 'ERROR')
+          ) THEN (
+            SELECT a.assertion_outcome
+            FROM run_execution_attempts a
+            WHERE a.organization_id = ? AND a.project_id = ? AND a.run_id = ?
+              AND a.attempt_id = ?
+            LIMIT 1
+          )
+          WHEN status = 'CREATED' THEN 'QUEUED'
+          ELSE status
+        END,
         updated_at = ?
     WHERE organization_id = ? AND project_id = ? AND run_id = ?
-  `).bind(receivedAt, organizationId, projectId, runId);
+  `).bind(
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    receivedAt,
+    organizationId,
+    projectId,
+    runId,
+  );
 
   const results = typeof db.batch === 'function'
     ? await db.batch([attemptUpdate, claimRelease, dispatchUpdate, runUpdate])
@@ -692,3 +755,118 @@ export async function markRunExecutionHttpExecuted(env, {
     claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
   };
 }
+
+export async function markRunAssertionsEvaluated(env, {
+  organizationId,
+  projectId,
+  runId,
+  attemptId,
+  leaseTokenHash,
+  runtimePlanHash,
+  outcome,
+  scenarioCount,
+  scenarioPassedCount,
+  scenarioFailedCount,
+  scenarioNotEvaluatedCount,
+  assertionCount,
+  assertionPassedCount,
+  assertionFailedCount,
+  assertionNotEvaluatedCount,
+  durationMs,
+  primaryDiagnostic = null,
+  evaluatedAt,
+}) {
+  const db = requireDataDb(env);
+  const attemptUpdate = db.prepare(`
+    UPDATE run_execution_attempts
+    SET assertion_execution_status = 'COMPLETED',
+        assertion_outcome = ?,
+        assertion_scenario_count = ?,
+        assertion_scenario_passed_count = ?,
+        assertion_scenario_failed_count = ?,
+        assertion_scenario_not_evaluated_count = ?,
+        assertion_count = ?,
+        assertion_passed_count = ?,
+        assertion_failed_count = ?,
+        assertion_not_evaluated_count = ?,
+        assertion_duration_ms = ?,
+        assertion_evaluated_at = ?,
+        assertion_primary_diagnostic_kind = ?,
+        assertion_primary_scenario_id = ?,
+        assertion_primary_index = ?,
+        assertion_primary_type = ?,
+        assertion_primary_error_code = ?,
+        assertion_primary_path = ?,
+        assertion_primary_header_name = ?,
+        assertion_primary_schema_ref = ?,
+        assertion_primary_actual_status_code = ?,
+        assertion_primary_actual_content_type = ?,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND attempt_id = ? AND status = 'CLAIMED'
+      AND lease_token_hash = ?
+      AND lease_expires_at > ?
+      AND runtime_readiness_status = 'READY'
+      AND runtime_plan_hash = ?
+      AND http_execution_status = 'COMPLETED'
+      AND EXISTS (
+        SELECT 1
+        FROM run_execution_claims c
+        WHERE c.organization_id = ? AND c.project_id = ? AND c.run_id = ?
+          AND c.state = 'ACTIVE'
+          AND c.current_attempt_id = ?
+          AND c.lease_token_hash = ?
+          AND c.lease_expires_at > ?
+      )
+  `).bind(
+    outcome,
+    scenarioCount,
+    scenarioPassedCount,
+    scenarioFailedCount,
+    scenarioNotEvaluatedCount,
+    assertionCount,
+    assertionPassedCount,
+    assertionFailedCount,
+    assertionNotEvaluatedCount,
+    durationMs,
+    evaluatedAt,
+    primaryDiagnostic?.kind || null,
+    primaryDiagnostic?.scenarioId || null,
+    primaryDiagnostic?.assertionIndex == null ? null : Number(primaryDiagnostic.assertionIndex),
+    primaryDiagnostic?.assertionType || null,
+    primaryDiagnostic?.errorCode || null,
+    primaryDiagnostic?.path || null,
+    primaryDiagnostic?.headerName || null,
+    primaryDiagnostic?.schemaRef || null,
+    primaryDiagnostic?.actualStatusCode == null ? null : Number(primaryDiagnostic.actualStatusCode),
+    primaryDiagnostic?.actualContentType || null,
+    evaluatedAt,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    evaluatedAt,
+    runtimePlanHash,
+    organizationId,
+    projectId,
+    runId,
+    attemptId,
+    leaseTokenHash,
+    evaluatedAt,
+  );
+
+  // Persist the semantic assertion outcome while the lease is still active, but do not
+  // make the Run terminal yet. The final Run status is committed atomically with
+  // attempt RECEIVED + claim release in markRunExecutionReceived(). This removes the
+  // crash window where a terminal Run could be ACKed on redelivery while its lease
+  // and dispatch were still unfinished.
+  const result = await attemptUpdate.run();
+
+  return {
+    updated: changes(result) === 1,
+    attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+    claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
+  };
+}
+
