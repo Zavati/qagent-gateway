@@ -202,34 +202,67 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
         authProfileRef,
       });
     }
-    authProfiles[authProfileRef] = {
-      authProfileId: profile.authProfileId,
-      profileKey: profile.profileKey,
-      name: profile.name,
-      type: profile.type,
-      config: clone(profile.config || {}),
-      credentialsConfigured: true,
-    };
+    if (!authProfiles[authProfileRef]) {
+      authProfiles[authProfileRef] = {
+        authProfileId: profile.authProfileId,
+        profileKey: profile.profileKey,
+        name: profile.name,
+        type: profile.type,
+        config: clone(profile.config || {}),
+        credentialsConfigured: true,
+      };
+    }
+  }
 
-    if (['oauth2_client_credentials', 'login_http_json'].includes(profile.type)) {
-      const authServiceKey = String(profile?.config?.apiServiceKey || '').trim();
-      const authService = runtimeConfig?.apiServices?.[authServiceKey];
-      if (!authServiceKey || !authService?.baseUrl) {
-        runError('Auth Profile dinâmico não possui API Service configurado neste Environment.', 'RUN_AUTH_API_SERVICE_ENVIRONMENT_BINDING_MISSING', 409, {
-          scenarioId: scenario?.scenarioId || null,
+  for (const [authProfileRef, snapshotProfile] of Object.entries(authProfiles)) {
+    if (!['oauth2_client_credentials', 'login_http_json'].includes(snapshotProfile.type)) continue;
+    const targetMode = String(snapshotProfile?.config?.targetMode || (snapshotProfile?.config?.apiServiceKey ? 'api_service' : 'runtime_origin')).trim();
+    let authServiceKey = null;
+    let authService = null;
+    let targetSource = 'EXPLICIT_API_SERVICE';
+
+    if (targetMode === 'runtime_origin') {
+      const scenarioServiceKeys = uniqueStrings(selectedScenarios
+        .filter((scenario) => {
+          const auth = scenario?.spec?.auth || {};
+          return auth.requirement === 'REQUIRED' && String(auth.authProfileRef || '').trim() === authProfileRef;
+        })
+        .map((scenario) => scenario?.spec?.target?.apiServiceKey));
+      if (scenarioServiceKeys.length !== 1) {
+        runError('Auth Profile com runtime_origin exige exatamente um target de cenário inequívoco.', 'RUN_AUTH_RUNTIME_ORIGIN_AMBIGUOUS', 409, {
           authProfileRef,
-          apiServiceKey: authServiceKey || null,
+          serviceKeys: scenarioServiceKeys,
         });
       }
-      if (!apiServices[authServiceKey]) {
-        apiServices[authServiceKey] = {
-          apiServiceId: authService.apiServiceId,
-          name: authService.name,
-          serviceKey: authServiceKey,
-          baseUrl: authService.baseUrl,
-        };
-      }
+      authServiceKey = scenarioServiceKeys[0];
+      authService = apiServices[authServiceKey] || runtimeConfig?.apiServices?.[authServiceKey];
+      targetSource = 'SCENARIO_RUNTIME';
+    } else {
+      authServiceKey = String(snapshotProfile?.config?.apiServiceKey || '').trim();
+      authService = runtimeConfig?.apiServices?.[authServiceKey];
     }
+
+    if (!authServiceKey || !authService?.baseUrl) {
+      runError('Auth Profile dinâmico não possui target resolvido neste Environment.', 'RUN_AUTH_API_SERVICE_ENVIRONMENT_BINDING_MISSING', 409, {
+        authProfileRef,
+        apiServiceKey: authServiceKey || null,
+        targetMode,
+      });
+    }
+    if (!apiServices[authServiceKey]) {
+      apiServices[authServiceKey] = {
+        apiServiceId: authService.apiServiceId || null,
+        name: authService.name || `Runtime ${authServiceKey}`,
+        serviceKey: authServiceKey,
+        baseUrl: authService.baseUrl,
+      };
+    }
+    snapshotProfile.target = {
+      source: targetSource,
+      apiServiceKey: authServiceKey,
+      path: snapshotProfile.config.path,
+      method: 'POST',
+    };
   }
 
   return {

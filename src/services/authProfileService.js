@@ -24,6 +24,7 @@ function publicProfile(profile) {
 
 async function validateReferencedService(env, organizationId, projectId, type, config) {
   if (!['oauth2_client_credentials', 'login_http_json'].includes(type)) return;
+  if (config?.targetMode === 'runtime_origin') return;
   const services = await listProjectApiServices(env, organizationId, projectId);
   if (!services.some((service) => service.serviceKey === config.apiServiceKey)) {
     const err = new Error(`API Service '${config.apiServiceKey}' não encontrado no Project.`);

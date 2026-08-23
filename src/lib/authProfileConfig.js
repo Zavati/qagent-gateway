@@ -142,7 +142,14 @@ export function normalizeAuthProfileConfig(typeValue, input = {}) {
     return { placement, name, prefix };
   }
 
-  const apiServiceKey = normalizeServiceKey(config.apiServiceKey);
+  const targetMode = cleanConfigText(config.targetMode || (config.apiServiceKey ? 'api_service' : 'runtime_origin'), 32).toLowerCase();
+  if (!['api_service', 'runtime_origin'].includes(targetMode)) {
+    const err = new Error('targetMode inválido. Use api_service ou runtime_origin.');
+    err.status = 400;
+    err.code = 'INVALID_AUTH_TARGET_MODE';
+    throw err;
+  }
+  const apiServiceKey = targetMode === 'api_service' ? normalizeServiceKey(config.apiServiceKey) : null;
   const path = normalizeRelativeApiPath(config.path);
   const targetHeader = normalizeHeaderName(config.targetHeader, 'Authorization');
 
@@ -155,6 +162,7 @@ export function normalizeAuthProfileConfig(typeValue, input = {}) {
       throw err;
     }
     return {
+      targetMode,
       apiServiceKey,
       path,
       method: 'POST',
@@ -175,16 +183,36 @@ export function normalizeAuthProfileConfig(typeValue, input = {}) {
     err.code = 'INVALID_LOGIN_TOKEN_SOURCE';
     throw err;
   }
+  const bodyEncoding = cleanConfigText(config.bodyEncoding || 'json', 16).toLowerCase();
+  if (!['json', 'form'].includes(bodyEncoding)) {
+    const err = new Error('bodyEncoding inválido. Use json ou form.');
+    err.status = 400;
+    err.code = 'INVALID_LOGIN_BODY_ENCODING';
+    throw err;
+  }
+  const staticBody = assertStaticBodySafe(config.staticBody);
+  if (bodyEncoding === 'form') {
+    for (const [key, value] of Object.entries(staticBody)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,119}$/.test(key) || (value !== null && typeof value === 'object')) {
+        const err = new Error('Login form aceita apenas campos estáticos escalares com nomes seguros.');
+        err.status = 400;
+        err.code = 'INVALID_AUTH_STATIC_FORM_FIELDS';
+        throw err;
+      }
+    }
+  }
 
   return {
+    targetMode,
     apiServiceKey,
     path,
     method: 'POST',
-    usernameField: cleanConfigText(config.usernameField || 'email', 120),
+    bodyEncoding,
+    usernameField: cleanConfigText(config.usernameField || (bodyEncoding === 'form' ? 'username' : 'email'), 120),
     passwordField: cleanConfigText(config.passwordField || 'password', 120),
-    staticBody: assertStaticBodySafe(config.staticBody),
+    staticBody,
     tokenSource,
-    tokenJsonPath: tokenSource === 'json' ? normalizeJsonPath(config.tokenJsonPath, 'accessToken') : null,
+    tokenJsonPath: tokenSource === 'json' ? normalizeJsonPath(config.tokenJsonPath, bodyEncoding === 'form' ? 'access_token' : 'accessToken') : null,
     tokenHeader: tokenSource === 'header' ? normalizeHeaderName(config.tokenHeader, 'Authorization') : null,
     targetHeader,
     scheme: cleanConfigText(config.scheme ?? 'Bearer', 40),

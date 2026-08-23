@@ -696,16 +696,19 @@ export async function postInternalRunnerAuthMaterial(
 
   let target = null;
   if (['oauth2_client_credentials', 'login_http_json'].includes(snapshotProfile.type)) {
-    const serviceKey = String(snapshotProfile?.config?.apiServiceKey || '').trim();
+    const frozenTarget = snapshotProfile?.target && typeof snapshotProfile.target === 'object' ? snapshotProfile.target : null;
+    const serviceKey = String(frozenTarget?.apiServiceKey || snapshotProfile?.config?.apiServiceKey || '').trim();
     const service = bundle?.runtimeSnapshot?.snapshot?.apiServices?.[serviceKey];
-    if (!service?.baseUrl || !snapshotProfile?.config?.path) {
+    const targetPath = String(frozenTarget?.path || snapshotProfile?.config?.path || '').trim();
+    if (!service?.baseUrl || !targetPath) {
       internalError('Auth target não está congelado no Runtime Snapshot.', 'RUNNER_CONTROL_AUTH_TARGET_NOT_IN_SNAPSHOT', 409);
     }
     target = {
+      ...(frozenTarget?.source ? { source: frozenTarget.source } : {}),
       apiServiceKey: serviceKey,
       apiServiceId: service.apiServiceId || null,
       baseUrl: service.baseUrl,
-      path: snapshotProfile.config.path,
+      path: targetPath,
       method: 'POST',
     };
   }
