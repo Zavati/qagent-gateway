@@ -304,6 +304,7 @@ import {
 } from './handlers/consoleCatalog.js';
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
+import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest } from './handlers/consoleAutomation.js';
 import {
   getInternalRunnerRunBundle,
   postInternalRunnerClaim,
@@ -2072,6 +2073,10 @@ const gatewayRouteHandlers = {
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAutomationSummaryGet: async (req, env, _ctx, params) => json(await getConsoleAutomationSummary(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAutomationResultsList: async (req, env, _ctx, params) => json(await listConsoleAutomationResults(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAutomationResultGet: async (req, env, _ctx, params) => json(await getConsoleAutomationResult(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEndpointAutomationLatestGet: async (req, env, _ctx, params) => json(await getConsoleEndpointAutomationLatest(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesList: async (req, env, _ctx, params) => json(await listConsoleApiServices(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesCreate: async (req, env, _ctx, params) => json(await createConsoleApiService(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleApiServiceGet: async (req, env, _ctx, params) => json(await getConsoleApiService(req, env, params), { headers: corsHeaders(req, env) }),

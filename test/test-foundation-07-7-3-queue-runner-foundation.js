@@ -228,6 +228,8 @@ assert.match(migration, /RECEIVED/);
 const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 assert.match(wrangler, /"binding": "RUN_QUEUE"/);
 assert.match(wrangler, /"queue": "qagent-run-requests"/);
-assert.match(wrangler, /RUNNER_CONTROL_HMAC_SECRET/);
+assert.doesNotMatch(wrangler, /\"secrets\"\s*:/);
+const runnerAuthSource = await readFile(new URL('../src/security/runnerControlAuth.js', import.meta.url), 'utf8');
+assert.match(runnerAuthSource, /RUNNER_CONTROL_HMAC_SECRET/);
 
 console.log('Foundation 07.7.3 Queue + qagent-runner Gateway tests passed ✅');

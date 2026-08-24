@@ -1,5 +1,4 @@
 import { discoveredRuntimeServiceKey, normalizeObservedOrigin } from './discoveredRuntime.js';
-import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
 
 export const TEST_DESIGN_CONTRACT_VERSION = 'qagent.test-design.v1';
 export const TEST_SPECIFICATION_VERSION = 'qagent.test-spec.v1';
@@ -448,16 +447,12 @@ export function validateCatalogTestDesignContextV1(context) {
   configuredBindings.forEach((binding, index) => {
     const path = `context.testData.configuredBindings[${index}]`;
     assertPlainObject(binding, path);
-    assertKnownKeys(binding, new Set(['bindingId', 'scopeType', 'environmentId', 'target', 'selector', 'sourceType', 'valueType', 'generatorKind', 'generatorConfig', 'secretConfigured']), path);
+    assertKnownKeys(binding, new Set(['bindingId', 'environmentId', 'target', 'selector', 'sourceType', 'valueType', 'generatorKind', 'generatorConfig', 'secretConfigured']), path);
     assertString(binding.bindingId, `${path}.bindingId`, { max: 160 });
-    assertEnum(binding.scopeType, ['PROJECT', 'ENVIRONMENT', 'ENDPOINT'], `${path}.scopeType`);
-    assertNullableString(binding.environmentId, `${path}.environmentId`, { max: 160 });
-    if (binding.scopeType === 'PROJECT' && binding.environmentId != null) fail('PROJECT Test Data não usa environmentId.', `${path}.environmentId`, 'TEST_DATA_SCOPE_INVALID');
-    if (binding.scopeType !== 'PROJECT' && !binding.environmentId) fail(`${binding.scopeType} Test Data exige environmentId.`, `${path}.environmentId`, 'TEST_DATA_SCOPE_INVALID');
+    assertString(binding.environmentId, `${path}.environmentId`, { max: 160 });
     assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${path}.target`);
     assertString(binding.selector, `${path}.selector`, { max: 320 });
     assertEnum(binding.sourceType, ['GENERATED', 'FIXED', 'SECRET'], `${path}.sourceType`);
-    if (isSensitiveTestDataSelector(binding.target, binding.selector) && binding.sourceType !== 'SECRET') fail('Campo sensível de Test Data deve usar SECRET.', `${path}.sourceType`, 'TEST_DATA_SECRET_SOURCE_REQUIRED');
     assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${path}.valueType`);
     assertNullableString(binding.generatorKind, `${path}.generatorKind`, { max: 64 });
     if (binding.generatorConfig != null) assertJsonValue(binding.generatorConfig, `${path}.generatorConfig`);
@@ -737,9 +732,7 @@ function validateTestDataBindingsV1(testData, path) {
     assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${bPath}.target`);
     assertString(binding.selector, `${bPath}.selector`, { max: 320 });
     assertEnum(binding.source, ['GENERATED', 'FIXED', 'SECRET'], `${bPath}.source`);
-    if (isSensitiveTestDataSelector(binding.target, binding.selector) && binding.source !== 'SECRET') fail('Campo sensível de Test Data deve usar SECRET.', `${bPath}.source`, 'TEST_DATA_SECRET_SOURCE_REQUIRED');
     assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${bPath}.valueType`);
-    if (binding.source === 'SECRET' && binding.valueType !== 'STRING') fail('SECRET Test Data v1 suporta somente STRING.', `${bPath}.valueType`, 'TEST_DATA_SECRET_VALUE_TYPE_INVALID');
     if (binding.source === 'GENERATED') {
       assertPlainObject(binding.generator, `${bPath}.generator`);
       assertKnownKeys(binding.generator, new Set(['kind', 'config']), `${bPath}.generator`);

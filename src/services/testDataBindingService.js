@@ -9,7 +9,6 @@ import { getOrganizationProject } from './projectService.js';
 import { createProjectSecret, rotateProjectSecret } from './secretVaultService.js';
 import { getSecretMetadata } from '../repositories/secretRepository.js';
 import { cleanConfigText } from '../lib/environmentConfig.js';
-import { assertTestDataSourceSecurity, sanitizeTestDataGeneratorConfig, scopeRank, TEST_DATA_SCOPES } from '../lib/testDataPolicy.js';
 
 const TARGETS = new Set(['BODY', 'PATH_PARAM', 'QUERY']);
 const SOURCES = new Set(['GENERATED', 'FIXED', 'SECRET']);
@@ -19,22 +18,12 @@ const GENERATOR_KINDS = new Set([
   'BR_CPF', 'BR_CNPJ', 'BR_CEP', 'PHONE', 'INTEGER', 'NUMBER', 'BOOLEAN', 'DATE', 'DATE_TIME',
   'STRING_LIST', 'INTEGER_LIST', 'NUMBER_LIST', 'BOOLEAN_LIST', 'JSON_SCHEMA',
 ]);
-const STRING_GENERATORS = new Set([
-  'TEXT', 'TEXT_SENTENCE', 'FIRST_NAME', 'LAST_NAME', 'FULL_NAME', 'EMAIL', 'UUID',
-  'BR_CPF', 'BR_CNPJ', 'BR_CEP', 'PHONE', 'DATE', 'DATE_TIME',
-]);
 
 function bad(message, code = 'INVALID_TEST_DATA_BINDING', status = 400) {
   const error = new Error(message);
   error.code = code;
   error.status = status;
   throw error;
-}
-
-function normalizeScope(value = 'ENDPOINT') {
-  const scopeType = cleanConfigText(value, 32).toUpperCase();
-  if (!TEST_DATA_SCOPES.includes(scopeType)) bad('Test Data scopeType inválido.', 'INVALID_TEST_DATA_SCOPE');
-  return scopeType;
 }
 
 function normalizeTarget(value) {
@@ -85,34 +74,20 @@ function normalizeFixedValue(value, valueType) {
     else if (String(value).toLowerCase() === 'true') normalized = true;
     else if (String(value).toLowerCase() === 'false') normalized = false;
     else bad('FIXED BOOLEAN inválido.');
-  } else normalized = value;
-
-  let serialized;
-  try { serialized = JSON.stringify(normalized); } catch { bad('FIXED JSON inválido.', 'TEST_DATA_FIXED_VALUE_INVALID'); }
-  if (serialized === undefined) bad('FIXED value inválido.', 'TEST_DATA_FIXED_VALUE_INVALID');
+  } else {
+    normalized = value;
+  }
+  const serialized = JSON.stringify(normalized);
   if (new TextEncoder().encode(serialized).byteLength > 16_384) bad('FIXED value excede 16 KB.', 'TEST_DATA_FIXED_VALUE_TOO_LARGE', 413);
   return serialized;
 }
 
-function assertGeneratorCompatibility(kind, valueType) {
-  if (kind === 'AUTO') return;
-  if (STRING_GENERATORS.has(kind) && valueType === 'STRING') return;
-  if (kind === 'INTEGER' && valueType === 'INTEGER') return;
-  if ((kind === 'INTEGER' || kind === 'NUMBER') && valueType === 'NUMBER') return;
-  if (kind === 'BOOLEAN' && valueType === 'BOOLEAN') return;
-  if ((kind.endsWith('_LIST') || kind === 'JSON_SCHEMA') && valueType === 'JSON') return;
-  bad('generatorKind é incompatível com valueType.', 'TEST_DATA_GENERATOR_TYPE_MISMATCH');
-}
-
-function normalizeGenerator(sourceType, generatorKind, generatorConfig, valueType, selector = '$') {
+function normalizeGenerator(sourceType, generatorKind, generatorConfig) {
   if (sourceType !== 'GENERATED') return { generatorKind: null, generatorConfigJson: null };
   const kind = cleanConfigText(generatorKind || 'AUTO', 64).toUpperCase();
   if (!GENERATOR_KINDS.has(kind)) bad('generatorKind inválido.', 'INVALID_TEST_DATA_GENERATOR');
-  assertGeneratorCompatibility(kind, valueType);
-  const rawConfig = generatorConfig && typeof generatorConfig === 'object' && !Array.isArray(generatorConfig) ? generatorConfig : {};
-  const config = sanitizeTestDataGeneratorConfig(kind, rawConfig, { valueType, selectorPath: selector });
-  let serialized;
-  try { serialized = JSON.stringify(config); } catch { bad('generatorConfig inválido.', 'INVALID_TEST_DATA_GENERATOR_CONFIG'); }
+  const config = generatorConfig && typeof generatorConfig === 'object' && !Array.isArray(generatorConfig) ? generatorConfig : {};
+  const serialized = JSON.stringify(config);
   if (new TextEncoder().encode(serialized).byteLength > 8_192) bad('generatorConfig excede 8 KB.', 'TEST_DATA_GENERATOR_CONFIG_TOO_LARGE', 413);
   return { generatorKind: kind, generatorConfigJson: serialized };
 }
@@ -127,9 +102,8 @@ function publicBinding(row) {
     bindingId: row.bindingId,
     organizationId: row.organizationId,
     projectId: row.projectId,
-    scopeType: row.scopeType,
-    environmentId: row.environmentId || null,
-    endpointId: row.endpointId || null,
+    environmentId: row.environmentId,
+    endpointId: row.endpointId,
     target: row.target,
     selector: row.selector,
     sourceType: row.sourceType,
@@ -145,19 +119,6 @@ function publicBinding(row) {
   };
 }
 
-function scopeFields(scopeType, environmentId, endpointId) {
-  if (scopeType === 'PROJECT') return { environmentId: null, endpointId: null };
-  if (!environmentId) bad(`${scopeType} requer environmentId.`, 'TEST_DATA_ENVIRONMENT_REQUIRED');
-  if (scopeType === 'ENVIRONMENT') return { environmentId, endpointId: null };
-  if (!endpointId) bad('ENDPOINT requer endpointId.', 'TEST_DATA_ENDPOINT_REQUIRED');
-  return { environmentId, endpointId };
-}
-
-async function validateScopeEnvironment(env, organizationId, projectId, scopeType, environmentId) {
-  if (scopeType === 'PROJECT') return null;
-  return getProjectEnvironment(env, organizationId, projectId, environmentId);
-}
-
 export async function listProjectEndpointTestDataBindings(env, organizationId, projectId, endpointId, options = {}) {
   await getOrganizationProject(env, organizationId, projectId);
   if (options.environmentId) await getProjectEnvironment(env, organizationId, projectId, options.environmentId);
@@ -171,7 +132,7 @@ export async function getProjectEndpointTestDataBinding(env, organizationId, pro
   return publicBinding(row);
 }
 
-async function prepareSecret(env, { organizationId, projectId, userId, scopeLabel, endpointId, selector, existingSecretId = null, secretValue }) {
+async function prepareSecret(env, { organizationId, projectId, userId, environmentName, endpointId, selector, existingSecretId = null, secretValue }) {
   if (secretValue === undefined || secretValue === null || String(secretValue).length === 0) {
     if (existingSecretId) return existingSecretId;
     bad('SECRET requer secretValue para a primeira configuração.', 'TEST_DATA_SECRET_VALUE_REQUIRED');
@@ -188,43 +149,29 @@ async function prepareSecret(env, { organizationId, projectId, userId, scopeLabe
     projectId,
     userId,
     forcedKind: 'generic',
-    forcedName: `Test Data · ${scopeLabel} · ${(endpointId || 'global').slice(0, 16)} · ${selector}`.slice(0, 160),
+    forcedName: `Test Data · ${environmentName} · ${endpointId.slice(0, 16)} · ${selector}`.slice(0, 160),
     input: { value: payload },
   });
   return created.secretId;
 }
 
 export async function createProjectEndpointTestDataBinding(env, { organizationId, projectId, endpointId, userId, input }) {
-  await getOrganizationProject(env, organizationId, projectId);
-  const scopeType = normalizeScope(input?.scopeType || 'ENDPOINT');
-  const requestedEnvironmentId = cleanConfigText(input?.environmentId, 160) || null;
-  const scope = scopeFields(scopeType, requestedEnvironmentId, endpointId);
-  const environment = await validateScopeEnvironment(env, organizationId, projectId, scopeType, scope.environmentId);
+  const environmentId = cleanConfigText(input?.environmentId, 160);
+  if (!environmentId) bad('environmentId é obrigatório.');
+  const environment = await getProjectEnvironment(env, organizationId, projectId, environmentId);
   const target = normalizeTarget(input?.target);
   const selector = normalizeSelector(target, input?.selector);
   const sourceType = normalizeSource(input?.sourceType);
-  assertTestDataSourceSecurity(target, selector, sourceType, bad);
   const valueType = normalizeValueType(input?.valueType || 'STRING');
-  if (sourceType === 'SECRET' && valueType !== 'STRING') bad('SECRET v1 suporta somente valueType STRING.', 'TEST_DATA_SECRET_VALUE_TYPE_INVALID');
-  const generator = normalizeGenerator(sourceType, input?.generatorKind, input?.generatorConfig, valueType, selector);
+  const generator = normalizeGenerator(sourceType, input?.generatorKind, input?.generatorConfig);
   const fixedValueJson = sourceType === 'FIXED' ? normalizeFixedValue(input?.value, valueType) : null;
-  const scopeLabel = scopeType === 'PROJECT' ? 'Project' : `${scopeType} ${environment?.name || scope.environmentId}`;
   const secretId = sourceType === 'SECRET'
-    ? await prepareSecret(env, { organizationId, projectId, userId, scopeLabel, endpointId: scope.endpointId, selector, secretValue: input?.secretValue })
+    ? await prepareSecret(env, { organizationId, projectId, userId, environmentName: environment.name, endpointId, selector, secretValue: input?.secretValue })
     : null;
   const description = cleanConfigText(input?.description, 1000) || null;
   try {
     return publicBinding(await insertBinding(env, {
-      organizationId,
-      projectId,
-      endpointContextId: endpointId,
-      scopeType,
-      environmentId: scope.environmentId,
-      endpointId: scope.endpointId,
-      target,
-      selector,
-      sourceType,
-      valueType,
+      organizationId, projectId, environmentId, endpointId, target, selector, sourceType, valueType,
       generatorKind: generator.generatorKind,
       generatorConfigJson: generator.generatorConfigJson,
       fixedValueJson,
@@ -233,7 +180,7 @@ export async function createProjectEndpointTestDataBinding(env, { organizationId
       createdByUserId: userId,
     }));
   } catch (error) {
-    if (String(error?.message || '').includes('UNIQUE constraint failed')) bad('Já existe binding ativo para este scope/target/selector.', 'DUPLICATE_TEST_DATA_BINDING', 409);
+    if (String(error?.message || '').includes('UNIQUE constraint failed')) bad('Já existe binding ativo para este target/selector no Environment.', 'DUPLICATE_TEST_DATA_BINDING', 409);
     throw error;
   }
 }
@@ -242,32 +189,22 @@ export async function patchProjectEndpointTestDataBinding(env, { organizationId,
   const row = await getEndpointTestDataBinding(env, organizationId, projectId, endpointId, bindingId, { includeArchived: true });
   if (!row) bad('Test Data binding não encontrado.', 'TEST_DATA_BINDING_NOT_FOUND', 404);
   if (row.status === 'archived') bad('Test Data binding arquivado não pode ser alterado.', 'TEST_DATA_BINDING_ARCHIVED', 409);
-  if (input?.scopeType && normalizeScope(input.scopeType) !== row.scopeType) bad('scopeType é imutável; crie outro binding.', 'TEST_DATA_BINDING_SCOPE_IMMUTABLE', 409);
+  // Target/selector/environment are immutable to keep references stable.
   if (input?.target && normalizeTarget(input.target) !== row.target) bad('target é imutável; crie outro binding.', 'TEST_DATA_BINDING_TARGET_IMMUTABLE', 409);
   if (input?.selector && normalizeSelector(row.target, input.selector) !== row.selector) bad('selector é imutável; crie outro binding.', 'TEST_DATA_BINDING_SELECTOR_IMMUTABLE', 409);
-  if (input?.environmentId !== undefined && (cleanConfigText(input.environmentId, 160) || null) !== (row.environmentId || null)) bad('environmentId é imutável; crie outro binding.', 'TEST_DATA_BINDING_ENVIRONMENT_IMMUTABLE', 409);
+  if (input?.environmentId && cleanConfigText(input.environmentId, 160) !== row.environmentId) bad('environmentId é imutável; crie outro binding.', 'TEST_DATA_BINDING_ENVIRONMENT_IMMUTABLE', 409);
 
   const sourceType = input?.sourceType ? normalizeSource(input.sourceType) : row.sourceType;
-  assertTestDataSourceSecurity(row.target, row.selector, sourceType, bad);
   const valueType = input?.valueType ? normalizeValueType(input.valueType) : row.valueType;
-  if (sourceType === 'SECRET' && valueType !== 'STRING') bad('SECRET v1 suporta somente valueType STRING.', 'TEST_DATA_SECRET_VALUE_TYPE_INVALID');
-  let previousGeneratorConfig = {};
-  try { previousGeneratorConfig = JSON.parse(row.generatorConfigJson || '{}'); } catch {}
-  const generator = normalizeGenerator(sourceType, input?.generatorKind ?? row.generatorKind, input?.generatorConfig ?? previousGeneratorConfig, valueType, row.selector);
+  const generator = normalizeGenerator(sourceType, input?.generatorKind ?? row.generatorKind, input?.generatorConfig ?? (() => { try { return JSON.parse(row.generatorConfigJson || '{}'); } catch { return {}; } })());
   let fixedValueJson = null;
   let secretId = null;
   if (sourceType === 'FIXED') {
     fixedValueJson = input?.value === undefined && row.sourceType === 'FIXED' ? row.fixedValueJson : normalizeFixedValue(input?.value, valueType);
   } else if (sourceType === 'SECRET') {
-    const environment = row.environmentId ? await getProjectEnvironment(env, organizationId, projectId, row.environmentId) : null;
-    const scopeLabel = row.scopeType === 'PROJECT' ? 'Project' : `${row.scopeType} ${environment?.name || row.environmentId}`;
+    const environment = await getProjectEnvironment(env, organizationId, projectId, row.environmentId);
     secretId = await prepareSecret(env, {
-      organizationId,
-      projectId,
-      userId,
-      scopeLabel,
-      endpointId: row.endpointId,
-      selector: row.selector,
+      organizationId, projectId, userId, environmentName: environment.name, endpointId, selector: row.selector,
       existingSecretId: row.sourceType === 'SECRET' ? row.secretId : null,
       secretValue: input?.secretValue,
     });
@@ -275,9 +212,9 @@ export async function patchProjectEndpointTestDataBinding(env, { organizationId,
   const description = input?.description === undefined ? row.description : (cleanConfigText(input.description, 1000) || null);
   return publicBinding(await persistBinding(env, {
     ...row,
-    endpointContextId: endpointId,
     organizationId,
     projectId,
+    endpointId,
     bindingId,
     sourceType,
     valueType,
@@ -294,29 +231,18 @@ export async function archiveProjectEndpointTestDataBinding(env, { organizationI
   const row = await getEndpointTestDataBinding(env, organizationId, projectId, endpointId, bindingId, { includeArchived: true });
   if (!row) bad('Test Data binding não encontrado.', 'TEST_DATA_BINDING_NOT_FOUND', 404);
   if (row.status === 'archived') return publicBinding(row);
-  return publicBinding(await persistBinding(env, { ...row, endpointContextId: endpointId, status: 'archived' }));
-}
-
-function effectiveBindings(rows) {
-  const byKey = new Map();
-  for (const row of rows) {
-    const key = `${row.target}:${row.selector}`;
-    const previous = byKey.get(key);
-    if (!previous || scopeRank(row.scopeType) > scopeRank(previous.scopeType)) byKey.set(key, row);
-  }
-  return [...byKey.values()];
+  return publicBinding(await persistBinding(env, { ...row, status: 'archived' }));
 }
 
 export async function resolveEndpointTestDataBindingsForRun(env, organizationId, projectId, endpointId, environmentId) {
   const rows = await listEndpointTestDataBindings(env, organizationId, projectId, endpointId, { environmentId });
-  return effectiveBindings(rows).map((row) => {
+  return rows.map((row) => {
     let generatorConfig = {};
     let fixedValue = null;
     try { generatorConfig = row.generatorConfigJson ? JSON.parse(row.generatorConfigJson) : {}; } catch {}
     try { fixedValue = row.fixedValueJson == null ? null : JSON.parse(row.fixedValueJson); } catch {}
     return {
       bindingId: row.bindingId,
-      scopeType: row.scopeType,
       target: row.target,
       selector: row.selector,
       sourceType: row.sourceType,

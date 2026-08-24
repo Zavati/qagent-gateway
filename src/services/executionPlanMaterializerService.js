@@ -453,7 +453,6 @@ export async function materializeExecutionPlanV1({
       if (binding.source === 'FIXED') {
         frozenFixed[bindingKey] = {
           bindingId: configured.bindingId,
-          scopeType: configured.scopeType || null,
           target: configured.target,
           selector: configured.selector,
           valueType: configured.valueType,
@@ -463,7 +462,6 @@ export async function materializeExecutionPlanV1({
         if (!configured.secretId) runError('Test Data SECRET não possui Secret Vault ref.', 'RUN_TEST_DATA_SECRET_NOT_CONFIGURED', 409, { bindingKey });
         frozenSecrets[bindingKey] = {
           bindingId: configured.bindingId,
-          scopeType: configured.scopeType || null,
           target: configured.target,
           selector: configured.selector,
           valueType: configured.valueType,

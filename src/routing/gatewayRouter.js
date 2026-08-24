@@ -160,6 +160,24 @@ export function resolveGatewayRoute(method, pathname) {
       }
     }
 
+    // Foundation 07.7.9-C - Results Retrieval + Automation Console BFF
+    // /v1/console/projects/:projectId/automation/summary
+    if (segs.length === 6 && segs[4] === 'automation' && segs[5] === 'summary' && normalizedMethod === 'GET') {
+      return { name: 'consoleAutomationSummaryGet', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/automation/results
+    if (segs.length === 6 && segs[4] === 'automation' && segs[5] === 'results' && normalizedMethod === 'GET') {
+      return { name: 'consoleAutomationResultsList', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/automation/results/:resultSetId
+    if (segs.length === 7 && segs[4] === 'automation' && segs[5] === 'results' && normalizedMethod === 'GET') {
+      return { name: 'consoleAutomationResultGet', params: { projectId: decodeURIComponent(segs[3]), resultSetId: decodeURIComponent(segs[6]) } };
+    }
+    // /v1/console/projects/:projectId/catalog/endpoints/:endpointId/automation/latest
+    if (segs.length === 9 && segs[4] === 'catalog' && segs[5] === 'endpoints' && segs[7] === 'automation' && segs[8] === 'latest' && normalizedMethod === 'GET') {
+      return { name: 'consoleEndpointAutomationLatestGet', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
+    }
+
     // Foundation 07.7.2 - Run Contract + immutable Execution Plan foundation
     // /v1/console/projects/:projectId/runs
     if (segs.length === 5 && segs[4] === 'runs') {

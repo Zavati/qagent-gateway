@@ -388,7 +388,7 @@ export async function generateCatalogTestDesignV1({
     });
   }
 
-  const testDataPlanner = applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnostics: secretSafeSanitizer, semanticDiagnostics: semanticGuard.diagnostics });
+  const testDataPlanner = applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnostics: secretSafeSanitizer });
   modelOutput = testDataPlanner.output;
   validateTestDesignModelOutputV1(modelOutput, context);
   if (testDataPlanner.diagnostics.bindingCount > 0 || testDataPlanner.diagnostics.unresolvedCount > 0) {
