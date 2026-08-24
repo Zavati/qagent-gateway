@@ -14,8 +14,9 @@ import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
 import { listProjectEndpointTestDataBindings } from '../services/testDataBindingService.js';
 import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
+import { sanitizeTestDataGeneratorConfig } from '../lib/testDataPolicy.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.6';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.7';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -676,17 +677,20 @@ export async function buildCatalogTestDesignContextV1({
     evidence: selectedEvidence,
     environments: mapEnvironments(endpointDetail, controlPlane?.environments || []),
     testData: {
-      configuredBindings: (controlPlane?.testDataBindings || []).map((binding) => ({
+      configuredBindings: (controlPlane?.testDataBindings || []).slice(0, 200).map((binding) => ({
         bindingId: nullableString(binding?.bindingId),
+        scopeType: nullableString(binding?.scopeType) || 'ENDPOINT',
         environmentId: nullableString(binding?.environmentId),
         target: nullableString(binding?.target),
         selector: nullableString(binding?.selector),
         sourceType: nullableString(binding?.sourceType),
         valueType: nullableString(binding?.valueType),
         generatorKind: nullableString(binding?.generatorKind),
-        generatorConfig: binding?.sourceType === 'GENERATED' && isContextSafeJson(binding?.generatorConfig || {}) ? binding.generatorConfig : {},
+        generatorConfig: binding?.sourceType === 'GENERATED' && isContextSafeJson(binding?.generatorConfig || {})
+          ? sanitizeTestDataGeneratorConfig(binding?.generatorKind || 'AUTO', binding.generatorConfig, { valueType: binding?.valueType || 'STRING', selectorPath: binding?.target === 'BODY' ? binding?.selector : '$' })
+          : {},
         secretConfigured: binding?.sourceType === 'SECRET' ? binding?.secretConfigured === true : false,
-      })).filter((binding) => binding.bindingId && binding.environmentId && binding.target && binding.selector && binding.sourceType),
+      })).filter((binding) => binding.bindingId && binding.scopeType && binding.target && binding.selector && binding.sourceType),
     },
     runtime: {
       apiServiceKey: runtimeMapping.apiServiceKey,
