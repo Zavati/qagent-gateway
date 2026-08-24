@@ -157,17 +157,27 @@ const unsafe = applyTestDataPlannerV1({ title: 'Unsafe', objective: 'Unsafe', as
 assert.equal(unsafe.diagnostics.unresolvedCount, 1);
 assert.match(unsafe.output.scenarios[0].automationHints.reasons.join(' '), /configure SECRET/);
 
-const migration = fs.readFileSync(new URL('../migrations/0013_foundation_07_7_8_c_test_data_runtime.sql', import.meta.url), 'utf8');
+const migration0013 = fs.readFileSync(new URL('../migrations/0013_foundation_07_7_8_c_test_data_runtime.sql', import.meta.url), 'utf8');
+// 0013 is immutable because it was already deployed before the scope-hierarchy review.
 for (const needle of [
-  'CREATE TABLE IF NOT EXISTS test_data_bindings',
-  "scope_type IN ('PROJECT', 'ENVIRONMENT', 'ENDPOINT')",
-  'idx_test_data_binding_project_active',
-  'idx_test_data_binding_environment_active',
-  'idx_test_data_binding_endpoint_active',
+  'CREATE TABLE IF NOT EXISTS endpoint_test_data_bindings',
   'test_data_runtime_status',
   'test_data_generated_count',
   "source_type IN ('GENERATED', 'FIXED', 'SECRET')",
-]) assert.ok(migration.includes(needle));
+]) assert.ok(migration0013.includes(needle));
+assert.ok(!migration0013.includes('CREATE TABLE IF NOT EXISTS test_data_bindings'));
+
+const migration0014 = fs.readFileSync(new URL('../migrations/0014_foundation_07_7_8_c_scope_hierarchy.sql', import.meta.url), 'utf8');
+for (const needle of [
+  'CREATE TABLE test_data_bindings',
+  "scope_type IN ('PROJECT', 'ENVIRONMENT', 'ENDPOINT')",
+  "'ENDPOINT'",
+  'FROM endpoint_test_data_bindings',
+  'DROP TABLE endpoint_test_data_bindings',
+  'idx_test_data_binding_project_active',
+  'idx_test_data_binding_environment_active',
+  'idx_test_data_binding_endpoint_active',
+]) assert.ok(migration0014.includes(needle));
 const secretVault = fs.readFileSync(new URL('../src/services/secretVaultService.js', import.meta.url), 'utf8');
 assert.ok(secretVault.includes('countActiveTestDataSecretBindings'));
 const bindingService = fs.readFileSync(new URL('../src/services/testDataBindingService.js', import.meta.url), 'utf8');

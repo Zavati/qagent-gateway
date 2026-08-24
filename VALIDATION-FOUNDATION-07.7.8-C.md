@@ -111,7 +111,7 @@ The delivered Console artifact is a patch; full `next build` must run after appl
 Fresh SQLite execution of all migrations:
 
 ```text
-0001 -> 0013                                       PASS
+0001 -> 0014                                       PASS
 PROJECT / ENVIRONMENT / ENDPOINT valid rows        PASS
 scope CHECK rejects invalid PROJECT shape          PASS
 per-scope active unique index                       PASS
@@ -139,7 +139,8 @@ safe summaries -> counts only
 Do not mark Foundation 07.7.8-C complete until production/STG confirms all applicable items:
 
 ```text
-[ ] migration 0013 applied remotely
+[ ] original migration 0013 already recorded remotely
+[ ] evolution migration 0014 applied remotely
 [ ] Gateway deployed
 [ ] Runner deployed with RUNNER_TEST_DATA_RUNTIME_ENABLED=true
 [ ] Console patch built and deployed

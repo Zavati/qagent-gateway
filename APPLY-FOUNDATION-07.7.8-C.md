@@ -31,11 +31,13 @@ Apply the new migration to the same Gateway D1 used by Run Control Plane:
 npm run db:migrations:apply
 ```
 
-Migration expected:
+For environments where the original 0013 was already applied, the new pending evolution migration is:
 
 ```text
-0013_foundation_07_7_8_c_test_data_runtime.sql
+0014_foundation_07_7_8_c_scope_hierarchy.sql
 ```
+
+Do not edit/replay 0013. See `APPLY-FOUNDATION-07.7.8-C-FIX-1.md`.
 
 After apply, confirm:
 

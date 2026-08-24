@@ -178,7 +178,8 @@ continua sendo o padrão exigido. POST/PUT/PATCH/DELETE não devem ser habilitad
 Migration:
 
 ```text
-0013_foundation_07_7_8_c_test_data_runtime.sql
+0013_foundation_07_7_8_c_test_data_runtime.sql (immutable original)
+0014_foundation_07_7_8_c_scope_hierarchy.sql (scope evolution)
 ```
 
 Nova tabela:
@@ -211,7 +212,7 @@ Gateway regression through 07.7.8-C     PASS
 Runner 07.7.8-C targeted tests           PASS
 Runner regression 07.7.3 -> 07.7.8-C    PASS
 Console source-level test                PASS
-D1 migrations 0001 -> 0013 SQLite        PASS
+D1 migrations 0001 -> 0014 SQLite        PASS
 Scope CHECK / unique-index smoke          PASS
 Production gate                          PENDING
 ```
