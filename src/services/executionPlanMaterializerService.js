@@ -1,6 +1,7 @@
 import { getCatalogEndpointForTestDesign, getCatalogEvidenceForTestDesign, getCatalogSchemasForTestDesign } from '../intelligence/catalogKnowledgeClient.js';
 import { deriveDiscoveredRuntimeCandidate, isDiscoveredRuntimeServiceKey } from '../intelligence/discoveredRuntime.js';
 import { resolveEnvironmentRuntimeConfig } from './environmentRuntimeConfigService.js';
+import { resolveEndpointTestDataBindingsForRun } from './testDataBindingService.js';
 import {
   EXECUTION_PLAN_CONTRACT_VERSION,
   RUNTIME_SNAPSHOT_CONTRACT_VERSION,
@@ -100,6 +101,7 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
   confirmDiscoveredRuntime = false,
   loadEndpoint = getCatalogEndpointForTestDesign,
   loadEvidence = getCatalogEvidenceForTestDesign,
+  resolveTestDataBindings = resolveEndpointTestDataBindingsForRun,
 } = {}) {
   const referencedServiceKeys = uniqueStrings(selectedScenarios.map((scenario) => scenario?.spec?.target?.apiServiceKey));
   const apiServices = {};
@@ -396,6 +398,7 @@ export async function materializeExecutionPlanV1({
   loadSchemas = getCatalogSchemasForTestDesign,
   loadEndpoint = getCatalogEndpointForTestDesign,
   loadEvidence = getCatalogEvidenceForTestDesign,
+  resolveTestDataBindings = resolveEndpointTestDataBindingsForRun,
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
   const selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds);
@@ -415,6 +418,59 @@ export async function materializeExecutionPlanV1({
     loadEndpoint,
     loadEvidence,
   });
+
+  const requiresConfiguredTestData = selectedScenarios.some((scenario) =>
+    (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'FIXED' || binding?.source === 'SECRET')
+  );
+  const configuredTestDataBindings = requiresConfiguredTestData
+    ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId)
+    : [];
+  const configuredByKey = new Map(configuredTestDataBindings.map((item) => [`${item.target}:${item.selector}`, item]));
+  const frozenFixed = {};
+  const frozenSecrets = {};
+  const referencedTestDataKeys = new Set();
+  for (const scenario of selectedScenarios) {
+    for (const binding of scenario?.spec?.testData?.bindings || []) {
+      if (binding?.source === 'GENERATED') continue;
+      const bindingKey = String(binding?.bindingKey || `${binding?.target}:${binding?.selector}`).trim();
+      referencedTestDataKeys.add(bindingKey);
+      const configured = configuredByKey.get(bindingKey);
+      if (!configured) {
+        runError('Test Data binding requerido não está configurado no Environment selecionado.', 'RUN_TEST_DATA_BINDING_MISSING', 409, {
+          scenarioId: scenario?.scenarioId || null,
+          bindingKey,
+          source: binding?.source || null,
+        });
+      }
+      if (configured.sourceType !== binding.source) {
+        runError('Test Data binding possui source divergente do Test Design.', 'RUN_TEST_DATA_BINDING_SOURCE_MISMATCH', 409, {
+          scenarioId: scenario?.scenarioId || null,
+          bindingKey,
+          expectedSource: binding.source,
+          actualSource: configured.sourceType,
+        });
+      }
+      if (binding.source === 'FIXED') {
+        frozenFixed[bindingKey] = {
+          bindingId: configured.bindingId,
+          target: configured.target,
+          selector: configured.selector,
+          valueType: configured.valueType,
+          value: clone(configured.fixedValue),
+        };
+      } else if (binding.source === 'SECRET') {
+        if (!configured.secretId) runError('Test Data SECRET não possui Secret Vault ref.', 'RUN_TEST_DATA_SECRET_NOT_CONFIGURED', 409, { bindingKey });
+        frozenSecrets[bindingKey] = {
+          bindingId: configured.bindingId,
+          target: configured.target,
+          selector: configured.selector,
+          valueType: configured.valueType,
+          secretId: configured.secretId,
+          configured: true,
+        };
+      }
+    }
+  }
   const schemaRefs = collectSchemaRefs(selectedScenarios);
   let schemaSnapshots = [];
   if (schemaRefs.length) {
@@ -442,6 +498,12 @@ export async function materializeExecutionPlanV1({
     variables: {},
     availableVariableKeys: Object.keys(runtimeConfig.variables || {}).sort(),
     authProfiles: runtimeRefs.authProfiles,
+    testData: {
+      contractVersion: 'qagent.runtime-test-data-snapshot.v1',
+      fixed: frozenFixed,
+      secrets: frozenSecrets,
+      referencedBindingKeys: [...referencedTestDataKeys].sort(),
+    },
     createdAt,
   };
   const runtimeSnapshot = {

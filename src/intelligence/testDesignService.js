@@ -18,6 +18,7 @@ import {
 import { applySemanticGroundingGuardV1 } from './semanticGroundingGuard.js';
 import { applyObservedAuthSignalBridgeV1 } from './observedAuthSignalBridge.js';
 import { applySecretSafeTestDesignSanitizerV1 } from './secretSafeTestDesignSanitizer.js';
+import { applyTestDataPlannerV1 } from './testDataPlanner.js';
 
 export const AI_TEST_DESIGN_ENGINE_VERSION = 'qagent.ai-test-design-engine.v1';
 
@@ -387,6 +388,23 @@ export async function generateCatalogTestDesignV1({
     });
   }
 
+  const testDataPlanner = applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnostics: secretSafeSanitizer });
+  modelOutput = testDataPlanner.output;
+  validateTestDesignModelOutputV1(modelOutput, context);
+  if (testDataPlanner.diagnostics.bindingCount > 0 || testDataPlanner.diagnostics.unresolvedCount > 0) {
+    log('testDesign_test_data_planner_applied', {
+      plannerVersion: testDataPlanner.diagnostics.plannerVersion,
+      endpointId: context.endpoint.endpointId,
+      contextFingerprint,
+      plannedScenarioCount: testDataPlanner.diagnostics.plannedScenarioCount,
+      generatedCount: testDataPlanner.diagnostics.generatedCount,
+      fixedCount: testDataPlanner.diagnostics.fixedCount,
+      secretCount: testDataPlanner.diagnostics.secretCount,
+      unresolvedCount: testDataPlanner.diagnostics.unresolvedCount,
+      byGeneratorKind: testDataPlanner.diagnostics.byGeneratorKind,
+    });
+  }
+
   const generatedAt = now().toISOString();
   const provider = String(out?.provider || aiConfig.provider || '').trim();
   const model = String(out?.model || aiConfig.model || '').trim();
@@ -394,6 +412,7 @@ export async function generateCatalogTestDesignV1({
     context,
     modelOutput,
     generation: { provider, model, generatedAt, contextFingerprint },
+    testDataPlans: testDataPlanner.plansByScenarioId,
   });
   validateTestSpecificationV1(specification, context);
 
@@ -427,6 +446,7 @@ export async function generateCatalogTestDesignV1({
       normalizationCount: normalizationPaths.length,
       normalizationPaths: normalizationPaths.slice(0, 20),
       secretSafeSanitizer,
+      testDataPlanner: testDataPlanner.diagnostics,
       semanticGuard: semanticGuard.diagnostics,
       observedAuthBridge: observedAuthBridge.diagnostics,
       timeoutMs,

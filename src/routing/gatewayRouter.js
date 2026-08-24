@@ -66,6 +66,12 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[5] === 'auth-resolved' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunAuthResolvedPost', params: { runId } };
       }
+      if (segs[5] === 'test-data-material' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunTestDataMaterialPost', params: { runId } };
+      }
+      if (segs[5] === 'test-data-resolved' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerRunTestDataResolvedPost', params: { runId } };
+      }
       if (segs[5] === 'http-executed' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunHttpExecutedPost', params: { runId } };
       }
@@ -114,6 +120,21 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[7] === 'evidence') return { name: 'consoleCatalogEndpointEvidenceList', params };
       if (segs[7] === 'schemas') return { name: 'consoleCatalogEndpointSchemasGet', params };
       if (segs[7] === 'lifecycle-history') return { name: 'consoleCatalogEndpointLifecycleHistoryList', params };
+    }
+
+    // Foundation 07.7.8-C - endpoint/environment Test Data Runtime bindings
+    // /v1/console/projects/:projectId/catalog/endpoints/:endpointId/test-data
+    if (segs.length === 8 && segs[4] === 'catalog' && segs[5] === 'endpoints' && segs[7] === 'test-data') {
+      const params = { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) };
+      if (normalizedMethod === 'GET') return { name: 'consoleEndpointTestDataBindingsList', params };
+      if (normalizedMethod === 'POST') return { name: 'consoleEndpointTestDataBindingsCreate', params };
+    }
+    // /v1/console/projects/:projectId/catalog/endpoints/:endpointId/test-data/:bindingId
+    if (segs.length === 9 && segs[4] === 'catalog' && segs[5] === 'endpoints' && segs[7] === 'test-data') {
+      const params = { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]), bindingId: decodeURIComponent(segs[8]) };
+      if (normalizedMethod === 'GET') return { name: 'consoleEndpointTestDataBindingGet', params };
+      if (normalizedMethod === 'PATCH') return { name: 'consoleEndpointTestDataBindingPatch', params };
+      if (normalizedMethod === 'DELETE') return { name: 'consoleEndpointTestDataBindingDelete', params };
     }
 
     // Foundation 07.6.2 - deterministic Catalog -> Test Design context preview

@@ -17,6 +17,9 @@ export const RUNNER_ASSERTIONS_EVALUATED_CONTRACT_VERSION = 'qagent.runner-asser
 export const RUNNER_AUTH_MATERIAL_REQUEST_CONTRACT_VERSION = 'qagent.runner-auth-material-request.v1';
 export const RUNNER_AUTH_MATERIAL_CONTRACT_VERSION = 'qagent.runner-auth-material.v1';
 export const RUNNER_AUTH_RESOLVED_CONTRACT_VERSION = 'qagent.runner-auth-resolved.v1';
+export const RUNNER_TEST_DATA_MATERIAL_REQUEST_CONTRACT_VERSION = 'qagent.runner-test-data-material-request.v1';
+export const RUNNER_TEST_DATA_MATERIAL_CONTRACT_VERSION = 'qagent.runner-test-data-material.v1';
+export const RUNNER_TEST_DATA_RESOLVED_CONTRACT_VERSION = 'qagent.runner-test-data-resolved.v1';
 
 export const RUN_STATUSES = Object.freeze([
   'CREATED', 'QUEUED', 'RUNNING', 'PASSED', 'FAILED', 'ERROR', 'CANCELLED',
@@ -429,6 +432,49 @@ export function normalizeRunnerAuthResolvedInput(input) {
     dynamicExchangeCount,
     cacheHitCount,
     durationMs,
+  };
+}
+
+
+export function normalizeRunnerTestDataMaterialRequestInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('Payload de Test Data Material inválido.', 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID', 400);
+  const allowed = new Set(['contractVersion', 'attemptId', 'leaseToken', 'runtimePlanHash', 'bindingKey']);
+  for (const key of Object.keys(input)) if (!allowed.has(key)) fail(`Campo não permitido no Test Data Material request: ${key}.`, 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID', 400, { field: key });
+  if (input.contractVersion !== RUNNER_TEST_DATA_MATERIAL_REQUEST_CONTRACT_VERSION) fail(`contractVersion deve ser '${RUNNER_TEST_DATA_MATERIAL_REQUEST_CONTRACT_VERSION}'.`, 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID', 400);
+  const runtimePlanHash = String(input.runtimePlanHash || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(runtimePlanHash)) fail('runtimePlanHash inválido.', 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID', 400, { field: 'runtimePlanHash' });
+  const bindingKey = String(input.bindingKey || '').trim();
+  if (!/^(BODY|PATH_PARAM|QUERY):.{1,340}$/.test(bindingKey) || /[\r\n]/.test(bindingKey)) fail('bindingKey inválido.', 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID', 400, { field: 'bindingKey' });
+  return {
+    contractVersion: RUNNER_TEST_DATA_MATERIAL_REQUEST_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_TEST_DATA_MATERIAL_CONTRACT_INVALID'),
+    runtimePlanHash,
+    bindingKey,
+  };
+}
+
+export function normalizeRunnerTestDataResolvedInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('Payload de Test Data Runtime summary inválido.', 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400);
+  const allowed = new Set(['contractVersion', 'attemptId', 'leaseToken', 'runtimePlanHash', 'bindingCount', 'generatedCount', 'fixedCount', 'secretCount', 'durationMs']);
+  for (const key of Object.keys(input)) if (!allowed.has(key)) fail(`Campo não permitido no Test Data Runtime summary: ${key}.`, 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400, { field: key });
+  if (input.contractVersion !== RUNNER_TEST_DATA_RESOLVED_CONTRACT_VERSION) fail(`contractVersion deve ser '${RUNNER_TEST_DATA_RESOLVED_CONTRACT_VERSION}'.`, 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400);
+  const runtimePlanHash = String(input.runtimePlanHash || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(runtimePlanHash)) fail('runtimePlanHash inválido.', 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400, { field: 'runtimePlanHash' });
+  const count = (value, field) => { const n = Number(value); if (!Number.isInteger(n) || n < 0 || n > 5000) fail(`${field} inválido.`, 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400, { field }); return n; };
+  const bindingCount = count(input.bindingCount, 'bindingCount');
+  const generatedCount = count(input.generatedCount, 'generatedCount');
+  const fixedCount = count(input.fixedCount, 'fixedCount');
+  const secretCount = count(input.secretCount, 'secretCount');
+  if (generatedCount + fixedCount + secretCount !== bindingCount) fail('Test Data counts inconsistentes.', 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400);
+  const durationMs = Number(input.durationMs);
+  if (!Number.isInteger(durationMs) || durationMs < 0 || durationMs > 3_600_000) fail('durationMs inválido.', 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID', 400, { field: 'durationMs' });
+  return {
+    contractVersion: RUNNER_TEST_DATA_RESOLVED_CONTRACT_VERSION,
+    attemptId: normalizeAttemptId(input.attemptId, 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID'),
+    leaseToken: normalizeLeaseToken(input.leaseToken, 'RUNNER_TEST_DATA_RESOLVED_CONTRACT_INVALID'),
+    runtimePlanHash,
+    bindingCount, generatedCount, fixedCount, secretCount, durationMs,
   };
 }
 

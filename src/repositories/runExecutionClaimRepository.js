@@ -74,6 +74,13 @@ const ATTEMPT_SELECT = `
     auth_cache_hit_count AS authCacheHitCount,
     auth_duration_ms AS authDurationMs,
     auth_resolved_at AS authResolvedAt,
+    test_data_runtime_status AS testDataRuntimeStatus,
+    test_data_binding_count AS testDataBindingCount,
+    test_data_generated_count AS testDataGeneratedCount,
+    test_data_fixed_count AS testDataFixedCount,
+    test_data_secret_count AS testDataSecretCount,
+    test_data_duration_ms AS testDataDurationMs,
+    test_data_resolved_at AS testDataResolvedAt,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM run_execution_attempts
@@ -135,6 +142,11 @@ function normalizeAttempt(row) {
     authDynamicExchangeCount: row.authDynamicExchangeCount == null ? null : num(row.authDynamicExchangeCount, null),
     authCacheHitCount: row.authCacheHitCount == null ? null : num(row.authCacheHitCount, null),
     authDurationMs: row.authDurationMs == null ? null : num(row.authDurationMs, null),
+    testDataBindingCount: row.testDataBindingCount == null ? null : num(row.testDataBindingCount, null),
+    testDataGeneratedCount: row.testDataGeneratedCount == null ? null : num(row.testDataGeneratedCount, null),
+    testDataFixedCount: row.testDataFixedCount == null ? null : num(row.testDataFixedCount, null),
+    testDataSecretCount: row.testDataSecretCount == null ? null : num(row.testDataSecretCount, null),
+    testDataDurationMs: row.testDataDurationMs == null ? null : num(row.testDataDurationMs, null),
   };
 }
 
@@ -671,6 +683,51 @@ export async function markRunExecutionRejected(env, {
 }
 
 
+
+export async function markRunTestDataResolved(env, {
+  organizationId,
+  projectId,
+  runId,
+  attemptId,
+  leaseTokenHash,
+  runtimePlanHash,
+  bindingCount,
+  generatedCount,
+  fixedCount,
+  secretCount,
+  durationMs,
+  resolvedAt,
+}) {
+  const db = requireDataDb(env);
+  const result = await db.prepare(`
+    UPDATE run_execution_attempts
+    SET test_data_runtime_status = 'COMPLETED',
+        test_data_binding_count = ?,
+        test_data_generated_count = ?,
+        test_data_fixed_count = ?,
+        test_data_secret_count = ?,
+        test_data_duration_ms = ?,
+        test_data_resolved_at = ?,
+        updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND attempt_id = ? AND status = 'CLAIMED'
+      AND lease_token_hash = ?
+      AND lease_expires_at > ?
+      AND runtime_readiness_status = 'READY'
+      AND runtime_plan_hash = ?
+      AND EXISTS (
+        SELECT 1 FROM run_execution_claims c
+        WHERE c.organization_id = ? AND c.project_id = ? AND c.run_id = ?
+          AND c.state = 'ACTIVE' AND c.current_attempt_id = ?
+          AND c.lease_token_hash = ? AND c.lease_expires_at > ?
+      )
+  `).bind(
+    bindingCount, generatedCount, fixedCount, secretCount, durationMs, resolvedAt, resolvedAt,
+    organizationId, projectId, runId, attemptId, leaseTokenHash, resolvedAt, runtimePlanHash,
+    organizationId, projectId, runId, attemptId, leaseTokenHash, resolvedAt,
+  ).run();
+  return { updated: changes(result) === 1, attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId) };
+}
 
 export async function markRunAuthResolved(env, {
   organizationId,

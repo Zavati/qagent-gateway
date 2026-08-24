@@ -342,6 +342,7 @@ export function validateCatalogTestDesignContextV1(context) {
     'evidence',
     'environments',
     'runtime',
+    'testData',
   ]), 'context');
 
   if (context.contractVersion !== TEST_DESIGN_CONTRACT_VERSION) {
@@ -437,6 +438,25 @@ export function validateCatalogTestDesignContextV1(context) {
     if (environment.observationCount != null) assertInteger(environment.observationCount, `${path}.observationCount`, { min: 0, max: Number.MAX_SAFE_INTEGER });
     if (environment.successRatePct != null) assertFiniteNumber(environment.successRatePct, `${path}.successRatePct`, { min: 0, max: 100 });
     if (environment.lastSeenAt != null) assertString(environment.lastSeenAt, `${path}.lastSeenAt`, { max: 64 });
+  });
+
+  const testData = context.testData ?? { configuredBindings: [] };
+  assertPlainObject(testData, 'context.testData');
+  assertKnownKeys(testData, new Set(['configuredBindings']), 'context.testData');
+  const configuredBindings = assertArray(testData.configuredBindings ?? [], 'context.testData.configuredBindings', { max: 200 });
+  configuredBindings.forEach((binding, index) => {
+    const path = `context.testData.configuredBindings[${index}]`;
+    assertPlainObject(binding, path);
+    assertKnownKeys(binding, new Set(['bindingId', 'environmentId', 'target', 'selector', 'sourceType', 'valueType', 'generatorKind', 'generatorConfig', 'secretConfigured']), path);
+    assertString(binding.bindingId, `${path}.bindingId`, { max: 160 });
+    assertString(binding.environmentId, `${path}.environmentId`, { max: 160 });
+    assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${path}.target`);
+    assertString(binding.selector, `${path}.selector`, { max: 320 });
+    assertEnum(binding.sourceType, ['GENERATED', 'FIXED', 'SECRET'], `${path}.sourceType`);
+    assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${path}.valueType`);
+    assertNullableString(binding.generatorKind, `${path}.generatorKind`, { max: 64 });
+    if (binding.generatorConfig != null) assertJsonValue(binding.generatorConfig, `${path}.generatorConfig`);
+    if (binding.secretConfigured != null && typeof binding.secretConfigured !== 'boolean') fail('secretConfigured deve ser boolean.', `${path}.secretConfigured`);
   });
 
   const runtime = context.runtime ?? {};
@@ -700,7 +720,33 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-export function buildTestSpecificationV1({ context, modelOutput, generation }) {
+function validateTestDataBindingsV1(testData, path) {
+  assertPlainObject(testData, path);
+  assertKnownKeys(testData, new Set(['contractVersion', 'bindings']), path);
+  if (testData.contractVersion !== 'qagent.test-data-bindings.v1') fail('Test Data contract inválido.', `${path}.contractVersion`, 'TEST_DATA_CONTRACT_INVALID');
+  const bindings = assertArray(testData.bindings ?? [], `${path}.bindings`, { max: 100 });
+  bindings.forEach((binding, index) => {
+    const bPath = `${path}.bindings[${index}]`;
+    assertPlainObject(binding, bPath);
+    assertKnownKeys(binding, new Set(['target', 'selector', 'source', 'valueType', 'bindingKey', 'generator']), bPath);
+    assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${bPath}.target`);
+    assertString(binding.selector, `${bPath}.selector`, { max: 320 });
+    assertEnum(binding.source, ['GENERATED', 'FIXED', 'SECRET'], `${bPath}.source`);
+    assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${bPath}.valueType`);
+    if (binding.source === 'GENERATED') {
+      assertPlainObject(binding.generator, `${bPath}.generator`);
+      assertKnownKeys(binding.generator, new Set(['kind', 'config']), `${bPath}.generator`);
+      assertString(binding.generator.kind, `${bPath}.generator.kind`, { max: 64 });
+      if (binding.generator.config != null) assertJsonValue(binding.generator.config, `${bPath}.generator.config`);
+      if (binding.bindingKey != null) fail('GENERATED não usa bindingKey.', `${bPath}.bindingKey`, 'TEST_DATA_CONTRACT_INVALID');
+    } else {
+      assertString(binding.bindingKey, `${bPath}.bindingKey`, { max: 400 });
+      if (binding.generator != null) fail('FIXED/SECRET não usam generator.', `${bPath}.generator`, 'TEST_DATA_CONTRACT_INVALID');
+    }
+  });
+}
+
+export function buildTestSpecificationV1({ context, modelOutput, generation, testDataPlans = {} }) {
   validateTestDesignModelOutputV1(modelOutput, context);
   assertPlainObject(generation, 'generation');
   assertKnownKeys(generation, new Set(['provider', 'model', 'generatedAt', 'contextFingerprint']), 'generation');
@@ -743,6 +789,7 @@ export function buildTestSpecificationV1({ context, modelOutput, generation }) {
         request: cloneJson(scenario.request || { pathParams: {}, query: {}, headers: {}, body: null }),
         assertions: cloneJson(scenario.assertions || []),
         extract: cloneJson(scenario.extract || []),
+        ...(testDataPlans?.[scenario.scenarioId]?.bindings?.length ? { testData: cloneJson(testDataPlans[scenario.scenarioId]) } : {}),
       },
     };
   });
@@ -826,7 +873,7 @@ export function validateTestSpecificationV1(specification, context) {
     assertPlainObject(scenario.spec, `${path}.spec`);
     if (scenario.spec.dslVersion !== API_TEST_DSL_VERSION) fail('DSL version inválida.', `${path}.spec.dslVersion`);
     if (scenario.spec.type !== 'api') fail('Somente API Test DSL é suportada nesta versão.', `${path}.spec.type`);
-    assertKnownKeys(scenario.spec, new Set(['dslVersion', 'type', 'target', 'auth', 'request', 'assertions', 'extract']), `${path}.spec`);
+    assertKnownKeys(scenario.spec, new Set(['dslVersion', 'type', 'target', 'auth', 'request', 'assertions', 'extract', 'testData']), `${path}.spec`);
     assertPlainObject(scenario.spec.target, `${path}.spec.target`);
     assertKnownKeys(scenario.spec.target, new Set(['catalogEndpointId', 'apiServiceKey', 'method', 'path']), `${path}.spec.target`);
     if (scenario.spec.target.catalogEndpointId !== context.endpoint.endpointId) fail('Target endpoint foi alterado.', `${path}.spec.target.catalogEndpointId`, 'TEST_DESIGN_SCOPE_MISMATCH');
@@ -852,6 +899,7 @@ export function validateTestSpecificationV1(specification, context) {
     }
 
     validateRequestObject(scenario.spec.request, `${path}.spec.request`);
+    if (scenario.spec.testData != null) validateTestDataBindingsV1(scenario.spec.testData, `${path}.spec.testData`);
     const assertions = assertArray(scenario.spec.assertions, `${path}.spec.assertions`, { max: 30 });
     if (!assertions.length) fail('Specification scenario precisa de ao menos uma assertion.', `${path}.spec.assertions`);
     assertions.forEach((assertion, assertionIndex) => validateAssertion(assertion, `${path}.spec.assertions[${assertionIndex}]`, refs.schemaRefs));

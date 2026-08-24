@@ -12,6 +12,7 @@ import {
   updateSecretMetadata,
 } from '../repositories/secretRepository.js';
 import { getOrganizationProject } from './projectService.js';
+import { countActiveTestDataSecretBindings } from '../repositories/testDataBindingRepository.js';
 
 const SECRET_KINDS = new Set(['generic', 'basic', 'api_key', 'oauth2_client_credentials', 'login_http_json']);
 
@@ -122,9 +123,12 @@ export async function rotateProjectSecret(env, { organizationId, projectId, secr
 export async function archiveProjectSecret(env, { organizationId, projectId, secretId }) {
   const current = await getProjectSecret(env, organizationId, projectId, secretId, { includeArchived: true });
   if (current.status === 'archived') return current;
-  const bindings = await countActiveSecretBindings(env, organizationId, projectId, secretId);
-  if (bindings > 0) {
-    const err = new Error('Secret está vinculado a um Auth Profile ativo. Remova o binding antes de arquivar.');
+  const [authBindings, testDataBindings] = await Promise.all([
+    countActiveSecretBindings(env, organizationId, projectId, secretId),
+    countActiveTestDataSecretBindings(env, organizationId, projectId, secretId),
+  ]);
+  if (authBindings > 0 || testDataBindings > 0) {
+    const err = new Error('Secret está vinculado a uma configuração ativa de Auth/Test Data. Remova o binding antes de arquivar.');
     err.status = 409;
     err.code = 'SECRET_IN_USE';
     throw err;

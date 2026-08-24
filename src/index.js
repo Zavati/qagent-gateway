@@ -285,6 +285,13 @@ import {
   listConsoleAuthProfiles, createConsoleAuthProfile, getConsoleAuthProfile, patchConsoleAuthProfile, deleteConsoleAuthProfile,
   listConsoleAuthProfileEnvironmentBindings, getConsoleAuthProfileEnvironmentBinding, putConsoleAuthProfileEnvironmentBinding, deleteConsoleAuthProfileEnvironmentBinding,
 } from './handlers/consoleAuthProfiles.js';
+import {
+  listConsoleEndpointTestDataBindings,
+  createConsoleEndpointTestDataBinding,
+  getConsoleEndpointTestDataBinding,
+  patchConsoleEndpointTestDataBinding,
+  deleteConsoleEndpointTestDataBinding,
+} from './handlers/consoleTestDataBindings.js';
 
 import {
   getConsoleCatalogSummary,
@@ -306,6 +313,8 @@ import {
   postInternalRunnerRuntimeReady,
   postInternalRunnerAuthMaterial,
   postInternalRunnerAuthResolved,
+  postInternalRunnerTestDataMaterial,
+  postInternalRunnerTestDataResolved,
   postInternalRunnerHttpExecuted,
   postInternalRunnerAssertionsEvaluated,
   postInternalRunnerRejected,
@@ -2040,6 +2049,11 @@ const gatewayRouteHandlers = {
   consoleCatalogEndpointEvidenceList: (req, env, _ctx, params) => listConsoleCatalogEndpointEvidence(req, env, params),
   consoleCatalogEndpointSchemasGet: (req, env, _ctx, params) => getConsoleCatalogEndpointSchemas(req, env, params),
   consoleCatalogEndpointLifecycleHistoryList: (req, env, _ctx, params) => listConsoleCatalogEndpointLifecycleHistory(req, env, params),
+  consoleEndpointTestDataBindingsList: async (req, env, _ctx, params) => json(await listConsoleEndpointTestDataBindings(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEndpointTestDataBindingsCreate: async (req, env, _ctx, params) => json(await createConsoleEndpointTestDataBinding(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleEndpointTestDataBindingGet: async (req, env, _ctx, params) => json(await getConsoleEndpointTestDataBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEndpointTestDataBindingPatch: async (req, env, _ctx, params) => json(await patchConsoleEndpointTestDataBinding(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEndpointTestDataBindingDelete: async (req, env, _ctx, params) => json(await deleteConsoleEndpointTestDataBinding(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignContextGet: async (req, env, _ctx, params) => json(await getConsoleTestDesignContext(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignGet: async (req, env, _ctx, params) => json(await getConsoleTestDesign(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignPost: async (req, env, _ctx, params) => json(await postConsoleTestDesign(req, env, params, { rateLimiter: ({ key, windowMs, max }) => rateLimitOrThrow({ key, windowMs, max }) }), { headers: corsHeaders(req, env) }),
@@ -2050,6 +2064,8 @@ const gatewayRouteHandlers = {
   internalRunnerRunRuntimeReadyPost: async (req, env, _ctx, params) => json(await postInternalRunnerRuntimeReady(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunAuthMaterialPost: async (req, env, _ctx, params) => json(await postInternalRunnerAuthMaterial(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunAuthResolvedPost: async (req, env, _ctx, params) => json(await postInternalRunnerAuthResolved(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunTestDataMaterialPost: async (req, env, _ctx, params) => json(await postInternalRunnerTestDataMaterial(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerRunTestDataResolvedPost: async (req, env, _ctx, params) => json(await postInternalRunnerTestDataResolved(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunHttpExecutedPost: async (req, env, _ctx, params) => json(await postInternalRunnerHttpExecuted(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunAssertionsEvaluatedPost: async (req, env, _ctx, params) => json(await postInternalRunnerAssertionsEvaluated(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunRejectedPost: async (req, env, _ctx, params) => json(await postInternalRunnerRejected(req, env, params), { headers: corsHeaders(req, env) }),

@@ -12,9 +12,10 @@ import { listProjectApiServices } from '../services/apiServiceService.js';
 import { listProjectEnvironmentApiBindings } from '../services/environmentApiBindingService.js';
 import { listProjectAuthProfiles } from '../services/authProfileService.js';
 import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfileBindingService.js';
+import { listProjectEndpointTestDataBindings } from '../services/testDataBindingService.js';
 import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.5';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.6';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -592,11 +593,12 @@ async function defaultCatalogLoader({ env, organizationId, projectId, endpointId
   return { endpointDetail, schemas, evidence };
 }
 
-async function defaultControlPlaneLoader({ env, organizationId, projectId }) {
-  const [environments, apiServices, authProfiles] = await Promise.all([
+async function defaultControlPlaneLoader({ env, organizationId, projectId, endpointId }) {
+  const [environments, apiServices, authProfiles, testDataBindings] = await Promise.all([
     listProjectEnvironments(env, organizationId, projectId),
     listProjectApiServices(env, organizationId, projectId),
     listProjectAuthProfiles(env, organizationId, projectId),
+    listProjectEndpointTestDataBindings(env, organizationId, projectId, endpointId),
   ]);
   const [apiBindingGroups, authBindingGroups] = await Promise.all([
     Promise.all(environments.map((environment) => listProjectEnvironmentApiBindings(env, organizationId, projectId, environment.environmentId))),
@@ -608,6 +610,7 @@ async function defaultControlPlaneLoader({ env, organizationId, projectId }) {
     apiBindings: apiBindingGroups.flat(),
     authProfiles,
     authBindings: authBindingGroups.flat(),
+    testDataBindings,
   };
 }
 
@@ -635,7 +638,7 @@ export async function buildCatalogTestDesignContextV1({
 
   const [catalog, controlPlane] = await Promise.all([
     catalogLoader({ env, ...scope, limits: resolvedLimits }),
-    controlPlaneLoader({ env, organizationId: scope.organizationId, projectId: scope.projectId }),
+    controlPlaneLoader({ env, organizationId: scope.organizationId, projectId: scope.projectId, endpointId: scope.endpointId }),
   ]);
 
   const endpointDetail = catalog?.endpointDetail || {};
@@ -672,6 +675,19 @@ export async function buildCatalogTestDesignContextV1({
     schemas,
     evidence: selectedEvidence,
     environments: mapEnvironments(endpointDetail, controlPlane?.environments || []),
+    testData: {
+      configuredBindings: (controlPlane?.testDataBindings || []).map((binding) => ({
+        bindingId: nullableString(binding?.bindingId),
+        environmentId: nullableString(binding?.environmentId),
+        target: nullableString(binding?.target),
+        selector: nullableString(binding?.selector),
+        sourceType: nullableString(binding?.sourceType),
+        valueType: nullableString(binding?.valueType),
+        generatorKind: nullableString(binding?.generatorKind),
+        generatorConfig: binding?.sourceType === 'GENERATED' && isContextSafeJson(binding?.generatorConfig || {}) ? binding.generatorConfig : {},
+        secretConfigured: binding?.sourceType === 'SECRET' ? binding?.secretConfigured === true : false,
+      })).filter((binding) => binding.bindingId && binding.environmentId && binding.target && binding.selector && binding.sourceType),
+    },
     runtime: {
       apiServiceKey: runtimeMapping.apiServiceKey,
       resolutionSource: runtimeMapping.runtimeSource,
@@ -728,6 +744,12 @@ export async function buildCatalogTestDesignContextV1({
       unauthenticatedSuccessCount: authObservation.unauthenticatedSuccessCount,
       unauthenticatedAuthErrorCount: authObservation.unauthenticatedAuthErrorCount,
       knownSignalCount: authObservation.knownSignalCount,
+    },
+    testData: {
+      configuredBindingCount: (controlPlane?.testDataBindings || []).length,
+      generatedBindingCount: (controlPlane?.testDataBindings || []).filter((item) => item?.sourceType === 'GENERATED').length,
+      fixedBindingCount: (controlPlane?.testDataBindings || []).filter((item) => item?.sourceType === 'FIXED').length,
+      secretBindingCount: (controlPlane?.testDataBindings || []).filter((item) => item?.sourceType === 'SECRET').length,
     },
     schemas: {
       tracksFetched: schemaTracks.length,

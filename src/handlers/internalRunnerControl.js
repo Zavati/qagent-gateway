@@ -15,9 +15,13 @@ import {
   normalizeRunnerAssertionsEvaluatedInput,
   normalizeRunnerAuthMaterialRequestInput,
   normalizeRunnerAuthResolvedInput,
+  normalizeRunnerTestDataMaterialRequestInput,
+  normalizeRunnerTestDataResolvedInput,
   normalizeRunnerRejectedInput,
   RUNNER_AUTH_MATERIAL_CONTRACT_VERSION,
   RUNNER_AUTH_RESOLVED_CONTRACT_VERSION,
+  RUNNER_TEST_DATA_MATERIAL_CONTRACT_VERSION,
+  RUNNER_TEST_DATA_RESOLVED_CONTRACT_VERSION,
   sha256Hex,
 } from '../lib/runContracts.js';
 import {
@@ -33,12 +37,14 @@ import {
   markRunExecutionHttpExecuted,
   markRunAssertionsEvaluated,
   markRunAuthResolved,
+  markRunTestDataResolved,
   markRunExecutionRejected,
   getRunExecutionClaim,
   tryClaimRunExecution,
 } from '../repositories/runExecutionClaimRepository.js';
 import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
 import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
+import { resolveProjectSecretValue } from '../services/secretVaultService.js';
 
 function internalError(message, code, status = 409, publicDetails = null) {
   const error = new Error(message);
@@ -167,6 +173,13 @@ function safeAttempt(attempt) {
     authCacheHitCount: attempt.authCacheHitCount == null ? null : Number(attempt.authCacheHitCount),
     authDurationMs: attempt.authDurationMs == null ? null : Number(attempt.authDurationMs),
     authResolvedAt: attempt.authResolvedAt || null,
+    testDataRuntimeStatus: attempt.testDataRuntimeStatus || null,
+    testDataBindingCount: attempt.testDataBindingCount == null ? null : Number(attempt.testDataBindingCount),
+    testDataGeneratedCount: attempt.testDataGeneratedCount == null ? null : Number(attempt.testDataGeneratedCount),
+    testDataFixedCount: attempt.testDataFixedCount == null ? null : Number(attempt.testDataFixedCount),
+    testDataSecretCount: attempt.testDataSecretCount == null ? null : Number(attempt.testDataSecretCount),
+    testDataDurationMs: attempt.testDataDurationMs == null ? null : Number(attempt.testDataDurationMs),
+    testDataResolvedAt: attempt.testDataResolvedAt || null,
   };
 }
 
@@ -727,6 +740,113 @@ export async function postInternalRunnerAuthMaterial(
       config: structuredClone(snapshotProfile.config || {}),
       target,
       credentials: resolved.credentials,
+    },
+  };
+}
+
+
+function testDataSecretIsReferenced(bundle, bindingKey) {
+  return (bundle?.executionPlan?.plan?.scenarios || []).some((scenario) => (
+    (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'SECRET' && String(binding?.bindingKey || '').trim() === bindingKey)
+  ));
+}
+
+export async function postInternalRunnerTestDataMaterial(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    getClaim = getRunExecutionClaim,
+    resolveSecret = resolveProjectSecretValue,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req, 12_288);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerTestDataMaterialRequestInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+
+  const nowIso = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const claim = await getClaim(env, bundle.run.organizationId, bundle.run.projectId, normalizedRunId);
+  assertAuthMaterialLease(bundle, claim, input, nowIso);
+  if (claim.leaseTokenHash !== leaseTokenHash) internalError('Lease token inválido para Test Data Material.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+
+  const secretEntry = bundle?.runtimeSnapshot?.snapshot?.testData?.secrets?.[input.bindingKey] || null;
+  if (!secretEntry?.secretId || secretEntry.configured !== true) internalError('Test Data SECRET não existe no Runtime Snapshot.', 'RUNNER_CONTROL_TEST_DATA_SECRET_NOT_IN_SNAPSHOT', 409);
+  if (!testDataSecretIsReferenced(bundle, input.bindingKey)) internalError('Test Data SECRET não é referenciado pelo Execution Plan.', 'RUNNER_CONTROL_TEST_DATA_SECRET_NOT_REFERENCED', 409);
+
+  const resolved = await resolveSecret(env, bundle.run.organizationId, bundle.run.projectId, secretEntry.secretId);
+  if (!resolved?.metadata || resolved.metadata.kind !== 'generic') internalError('Secret de Test Data possui tipo incompatível.', 'RUNNER_CONTROL_TEST_DATA_SECRET_KIND_MISMATCH', 409);
+  const value = resolved?.value?.value;
+  if (value == null || typeof value === 'object') internalError('Secret de Test Data não contém valor escalar executável.', 'RUNNER_CONTROL_TEST_DATA_SECRET_INVALID', 409);
+
+  return {
+    status: 'ok',
+    data: {
+      contractVersion: RUNNER_TEST_DATA_MATERIAL_CONTRACT_VERSION,
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      runtimePlanHash: input.runtimePlanHash,
+      bindingKey: input.bindingKey,
+      valueType: secretEntry.valueType || 'STRING',
+      value,
+    },
+  };
+}
+
+export async function postInternalRunnerTestDataResolved(
+  req,
+  env,
+  { runId },
+  {
+    verifyRequest = verifyRunnerControlRequest,
+    getBundle = getRunBundleByRunId,
+    markResolved = markRunTestDataResolved,
+    now = () => new Date().toISOString(),
+  } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeRunnerTestDataResolvedInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+  const resolvedAt = now();
+  const leaseTokenHash = await sha256Hex(input.leaseToken);
+  const result = await markResolved(env, {
+    organizationId: bundle.run.organizationId,
+    projectId: bundle.run.projectId,
+    runId: normalizedRunId,
+    attemptId: input.attemptId,
+    leaseTokenHash,
+    runtimePlanHash: input.runtimePlanHash,
+    bindingCount: input.bindingCount,
+    generatedCount: input.generatedCount,
+    fixedCount: input.fixedCount,
+    secretCount: input.secretCount,
+    durationMs: input.durationMs,
+    resolvedAt,
+  });
+  if (!result.updated) internalError('Lease não está ativa para registrar Test Data Runtime.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  return {
+    status: 'ok',
+    data: {
+      contractVersion: RUNNER_TEST_DATA_RESOLVED_CONTRACT_VERSION,
+      runId: normalizedRunId,
+      attemptId: input.attemptId,
+      runtimePlanHash: input.runtimePlanHash,
+      testDataRuntimeStatus: 'COMPLETED',
+      bindingCount: input.bindingCount,
+      generatedCount: input.generatedCount,
+      fixedCount: input.fixedCount,
+      secretCount: input.secretCount,
+      durationMs: input.durationMs,
+      resolvedAt,
     },
   };
 }
