@@ -443,3 +443,148 @@ export async function getRunnerTestArtifact({
 
   return validateRunnerArtifactEnvelope(body, { organizationId, projectId, testDesignVersionId });
 }
+
+function validateProjectInventoryEnvelope(body, { organizationId, projectId }) {
+  const data = body?.data;
+  const valid = Boolean(
+    body?.status === 'ok'
+    && data?.contractVersion === 'qagent.project-test-inventory.v1'
+    && data.organizationId === organizationId
+    && data.projectId === projectId
+    && typeof data.inventoryFingerprint === 'string'
+    && Array.isArray(data.items)
+    && Array.isArray(data.selection)
+    && Number.isInteger(data.testDesignCount)
+    && Number.isInteger(data.endpointWithReadyCount)
+    && Number.isInteger(data.readyScenarioCount)
+  );
+  if (!valid) {
+    throw new TestRegistryClientError('Test Registry returned an invalid Project Test Inventory.', {
+      code: 'TEST_REGISTRY_INVENTORY_RESPONSE_INVALID',
+      status: 502,
+      retryable: false,
+    });
+  }
+  for (const item of data.selection) {
+    if (
+      !item || typeof item.endpointId !== 'string' || typeof item.testDesignId !== 'string'
+      || typeof item.testDesignVersionId !== 'string' || !Number.isInteger(item.testDesignVersion)
+      || !Array.isArray(item.scenarioIds) || item.scenarioIds.some((id) => typeof id !== 'string')
+    ) {
+      throw new TestRegistryClientError('Test Registry Project Test Inventory selection is invalid.', {
+        code: 'TEST_REGISTRY_INVENTORY_RESPONSE_INVALID', status: 502, retryable: false,
+      });
+    }
+  }
+  return data;
+}
+
+function validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissing = false } = {}) {
+  const data = body?.data;
+  if (allowMissing && body?.status === 'ok' && data?.exists === false) return data;
+  const suite = data?.suite;
+  const version = data?.version;
+  const valid = Boolean(
+    body?.status === 'ok'
+    && suite && version
+    && suite.organizationId === organizationId
+    && suite.projectId === projectId
+    && suite.suiteType === 'AUTO_PROJECT_READY'
+    && typeof suite.suiteId === 'string'
+    && version.contractVersion === 'qagent.test-suite-version.v1'
+    && version.organizationId === organizationId
+    && version.projectId === projectId
+    && version.suiteId === suite.suiteId
+    && typeof version.suiteVersionId === 'string'
+    && Number.isInteger(version.version)
+    && Array.isArray(version.selection)
+  );
+  if (!valid) {
+    throw new TestRegistryClientError('Test Registry returned an invalid Auto Suite response.', {
+      code: 'TEST_REGISTRY_SUITE_RESPONSE_INVALID', status: 502, retryable: false,
+    });
+  }
+  return data;
+}
+
+async function requestTestRegistryProjectResource({
+  env, organizationId, projectId, path, method = 'GET', fetchImpl = null,
+}) {
+  const binding = env?.TEST_REGISTRY_SERVICE;
+  if (!fetchImpl && (!binding || typeof binding.fetch !== 'function')) {
+    throw new TestRegistryClientError('Test Registry service binding is not configured.', {
+      code: 'TEST_REGISTRY_NOT_CONFIGURED', status: 503, retryable: true,
+    });
+  }
+  const timeoutMs = resolveTimeoutMs(env);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const request = new Request(`${INTERNAL_BASE_URL}${path}`, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      'X-QAgent-Organization-Id': organizationId,
+      'X-QAgent-Project-Id': projectId,
+    },
+    signal: controller.signal,
+  });
+  try {
+    const response = fetchImpl ? await fetchImpl(request) : await binding.fetch(request);
+    const text = await response.text();
+    const body = safeParseJson(text);
+    if (!response.ok) {
+      throw new TestRegistryClientError('Test Registry rejected Suite/Inventory request.', {
+        code: typeof body?.code === 'string' ? body.code : 'TEST_REGISTRY_UPSTREAM_REJECTED',
+        status: response.status === 409 ? 409 : response.status >= 500 ? 503 : 502,
+        retryable: response.status >= 500 || response.status === 429 || body?.retryable === true,
+        upstreamStatus: response.status,
+        upstreamCode: typeof body?.code === 'string' ? body.code : null,
+      });
+    }
+    return body;
+  } catch (error) {
+    if (error instanceof TestRegistryClientError) throw error;
+    const isTimeout = error?.name === 'AbortError';
+    throw new TestRegistryClientError(
+      isTimeout ? 'Test Registry Suite/Inventory request timed out.' : 'Test Registry service is unavailable.',
+      {
+        code: isTimeout ? 'TEST_REGISTRY_UPSTREAM_TIMEOUT' : 'TEST_REGISTRY_UPSTREAM_UNAVAILABLE',
+        status: isTimeout ? 504 : 503,
+        retryable: true,
+        cause: error,
+      },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function getProjectTestInventory({ env, organizationId, projectId, fetchImpl = null } = {}) {
+  const body = await requestTestRegistryProjectResource({
+    env, organizationId, projectId, fetchImpl,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/test-inventory`,
+  });
+  return validateProjectInventoryEnvelope(body, { organizationId, projectId });
+}
+
+export async function materializeAutoReadySuite({ env, organizationId, projectId, fetchImpl = null } = {}) {
+  const body = await requestTestRegistryProjectResource({
+    env, organizationId, projectId, fetchImpl, method: 'POST',
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/materialize`,
+  });
+  const data = validateAutoSuiteEnvelope(body, { organizationId, projectId });
+  if (data?.contractVersion !== 'qagent.test-suite.v1') {
+    throw new TestRegistryClientError('Test Registry Auto Suite contract is invalid.', {
+      code: 'TEST_REGISTRY_SUITE_RESPONSE_INVALID', status: 502, retryable: false,
+    });
+  }
+  return data;
+}
+
+export async function getLatestAutoReadySuite({ env, organizationId, projectId, fetchImpl = null } = {}) {
+  const body = await requestTestRegistryProjectResource({
+    env, organizationId, projectId, fetchImpl,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/latest`,
+  });
+  return validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissing: true });
+}

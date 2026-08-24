@@ -304,7 +304,7 @@ import {
 } from './handlers/consoleCatalog.js';
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
-import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest } from './handlers/consoleAutomation.js';
+import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest, getConsoleProjectTestInventory, postConsoleMaterializeAutoReadySuite, getConsoleLatestAutoReadySuite } from './handlers/consoleAutomation.js';
 import {
   getInternalRunnerRunBundle,
   postInternalRunnerClaim,
@@ -2073,6 +2073,9 @@ const gatewayRouteHandlers = {
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAutomationTestInventoryGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestInventory(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAutomationAutoSuiteMaterializePost: async (req, env, _ctx, params) => json(await postConsoleMaterializeAutoReadySuite(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAutomationAutoSuiteLatestGet: async (req, env, _ctx, params) => json(await getConsoleLatestAutoReadySuite(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationSummaryGet: async (req, env, _ctx, params) => json(await getConsoleAutomationSummary(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationResultsList: async (req, env, _ctx, params) => json(await listConsoleAutomationResults(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationResultGet: async (req, env, _ctx, params) => json(await getConsoleAutomationResult(req, env, params), { headers: corsHeaders(req, env) }),

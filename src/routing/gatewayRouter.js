@@ -160,6 +160,20 @@ export function resolveGatewayRoute(method, pathname) {
       }
     }
 
+    // Foundation 07.7.10-A - Suite Definition + Zero-Config Project Test Inventory
+    // /v1/console/projects/:projectId/automation/test-inventory
+    if (segs.length === 6 && segs[4] === 'automation' && segs[5] === 'test-inventory' && normalizedMethod === 'GET') {
+      return { name: 'consoleAutomationTestInventoryGet', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/automation/suites/auto-ready/materialize
+    if (segs.length === 8 && segs[4] === 'automation' && segs[5] === 'suites' && segs[6] === 'auto-ready' && segs[7] === 'materialize' && normalizedMethod === 'POST') {
+      return { name: 'consoleAutomationAutoSuiteMaterializePost', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/automation/suites/auto-ready/latest
+    if (segs.length === 8 && segs[4] === 'automation' && segs[5] === 'suites' && segs[6] === 'auto-ready' && segs[7] === 'latest' && normalizedMethod === 'GET') {
+      return { name: 'consoleAutomationAutoSuiteLatestGet', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+
     // Foundation 07.7.9-C - Results Retrieval + Automation Console BFF
     // /v1/console/projects/:projectId/automation/summary
     if (segs.length === 6 && segs[4] === 'automation' && segs[5] === 'summary' && normalizedMethod === 'GET') {

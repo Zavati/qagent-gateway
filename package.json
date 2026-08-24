@@ -76,7 +76,9 @@
     "test:f07-7-9-c": "node test/test-foundation-07-7-9-c-results-retrieval.js",
     "check:07.7.9-c": "npm run check:07.7.8-c && npm run verify:results-read-config && npm run test:f07-7-9-c && npm run test:f07-7-9-c-fix-1 && npm run test:router",
     "verify:results-read-config": "node scripts/verify-results-read-config.mjs",
-    "test:f07-7-9-c-fix-1": "node test/test-foundation-07-7-9-c-fix-1-baseline-regression.js"
+    "test:f07-7-9-c-fix-1": "node test/test-foundation-07-7-9-c-fix-1-baseline-regression.js",
+    "test:f07-7-10-a": "node test/test-foundation-07-7-10-a-suite-inventory.js",
+    "check:07.7.10-a": "npm run check:07.7.9-c && npm run test:f07-7-10-a && npm run test:router"
   },
   "keywords": [],
   "author": "",

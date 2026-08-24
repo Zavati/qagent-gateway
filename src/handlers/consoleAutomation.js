@@ -6,6 +6,11 @@ import {
   getResultsProjectSummary,
   listResultsProjectResultSets,
 } from '../services/resultsReadClient.js';
+import {
+  getLatestAutoReadySuite,
+  getProjectTestInventory,
+  materializeAutoReadySuite,
+} from '../services/testRegistryClient.js';
 
 async function authorize(req, env, projectId, { requireTenant = requireConsoleTenant, getProject = getOrganizationProject } = {}) {
   const tenant = await requireTenant(req, env);
@@ -57,6 +62,31 @@ export async function getConsoleEndpointAutomationLatest(req, env, { projectId, 
     projectId,
     endpointId,
     environmentId: url.searchParams.get('environmentId') || null,
+  });
+  return { status: 'ok', data };
+}
+
+
+export async function getConsoleProjectTestInventory(req, env, { projectId }, deps = {}) {
+  const tenant = await authorize(req, env, projectId, deps);
+  const data = await (deps.getInventory || getProjectTestInventory)({
+    env, organizationId: tenant.organizationId, projectId,
+  });
+  return { status: 'ok', data };
+}
+
+export async function postConsoleMaterializeAutoReadySuite(req, env, { projectId }, deps = {}) {
+  const tenant = await authorize(req, env, projectId, deps);
+  const data = await (deps.materializeSuite || materializeAutoReadySuite)({
+    env, organizationId: tenant.organizationId, projectId,
+  });
+  return { status: 'ok', data };
+}
+
+export async function getConsoleLatestAutoReadySuite(req, env, { projectId }, deps = {}) {
+  const tenant = await authorize(req, env, projectId, deps);
+  const data = await (deps.getLatestSuite || getLatestAutoReadySuite)({
+    env, organizationId: tenant.organizationId, projectId,
   });
   return { status: 'ok', data };
 }
