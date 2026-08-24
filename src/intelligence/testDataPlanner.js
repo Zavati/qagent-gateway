@@ -1,8 +1,12 @@
-export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1';
+import { isSensitiveTestDataSelector, sanitizeTestDataGeneratorConfig, scopeRank } from '../lib/testDataPolicy.js';
+
+export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.1';
 export const TEST_DATA_BINDINGS_CONTRACT_VERSION = 'qagent.test-data-bindings.v1';
 
 const GENERIC_BODY_NEEDS_DATA = 'O formato do body é modelado, mas seus valores precisam ser fornecidos por massa de teste controlada.';
+const PATH_NEEDS_DATA = 'Valores de path params precisam ser fornecidos por massa de teste/runtime.';
 const SECRET_GUARD_PREFIX = 'QAgent Secret Guard:';
+const PLANNER_OWNED_SEMANTIC_CODES = new Set(['SEMANTIC_REQUEST_BODY_NEEDS_DATA', 'SEMANTIC_PATH_PARAM_NEEDS_DATA']);
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function plain(value) { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
@@ -35,12 +39,32 @@ function bodyLeaves(value, prefix = '$') {
   return out;
 }
 
-function sensitivePathsForScenario(secretSafeDiagnostics, index) {
-  const prefix = `modelOutput.scenarios[${index}].request.body.`;
-  return (secretSafeDiagnostics?.sanitizedPaths || [])
+function requiredBodySelectors(schema, prefix = '$', depth = 0) {
+  if (!plain(schema) || depth > 8) return [];
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const out = [];
+  for (const key of required) {
+    const node = schema?.properties?.[key];
+    if (!plain(node)) continue;
+    const selector = `${prefix}.${key}`;
+    const nestedRequired = Array.isArray(node.required) && node.required.length > 0 && plain(node.properties);
+    if (nestedRequired) out.push(...requiredBodySelectors(node, selector, depth + 1));
+    else out.push({ selector, node });
+  }
+  return out;
+}
+
+function sanitizerSelectors(secretSafeDiagnostics, index, target) {
+  const field = target === 'BODY' ? 'body' : target === 'QUERY' ? 'query' : 'pathParams';
+  const prefix = `modelOutput.scenarios[${index}].request.${field}.`;
+  const values = (secretSafeDiagnostics?.sanitizedPaths || [])
     .filter((path) => String(path).startsWith(prefix))
-    .map((path) => `$.${String(path).slice(prefix.length)}`)
-    .filter((selector) => /^\$\.[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/.test(selector));
+    .map((path) => String(path).slice(prefix.length))
+    .filter((value) => value && !value.includes('['));
+  if (target === 'BODY') {
+    return values.map((value) => `$.${value}`).filter((selector) => /^\$\.[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/.test(selector));
+  }
+  return values.filter((selector) => /^[A-Za-z_][A-Za-z0-9_.-]{0,119}$/.test(selector));
 }
 
 function fieldName(selector) { return String(selector || '').split('.').pop() || ''; }
@@ -91,16 +115,36 @@ function valueTypeFor(node, sampleValue) {
   return 'STRING';
 }
 
+function stableConfig(value) {
+  try { return JSON.stringify(value || {}); } catch { return '{}'; }
+}
+
+function effectiveBindingForEnvironment(matches, environmentId) {
+  const candidates = matches.filter((item) => {
+    const scopeType = String(item?.scopeType || 'ENDPOINT').toUpperCase();
+    if (scopeType === 'PROJECT') return true;
+    return item?.environmentId === environmentId;
+  });
+  if (!candidates.length) return null;
+  return candidates.reduce((best, item) => !best || scopeRank(item.scopeType || 'ENDPOINT') > scopeRank(best.scopeType || 'ENDPOINT') ? item : best, null);
+}
+
 function explicitBinding(context, target, selector) {
   const all = context?.testData?.configuredBindings || [];
   const matches = all.filter((item) => item?.target === target && item?.selector === selector);
   if (!matches.length) return null;
   const environmentIds = unique(context?.environments?.map((item) => item.environmentId));
-  const eligible = environmentIds.length ? matches.filter((item) => environmentIds.includes(item.environmentId)) : matches;
-  const source = eligible.length ? eligible : matches;
-  const signatures = unique(source.map((item) => `${item.sourceType}|${item.valueType}|${item.generatorKind || ''}`));
-  if (signatures.length !== 1) return { ambiguous: true };
-  return { ...source[0], ambiguous: false };
+  let effective;
+  if (environmentIds.length) {
+    effective = environmentIds.map((environmentId) => effectiveBindingForEnvironment(matches, environmentId));
+    if (effective.some((item) => !item)) return { ambiguous: true, incompleteCoverage: true };
+  } else {
+    const projectMatches = matches.filter((item) => String(item?.scopeType || '').toUpperCase() === 'PROJECT');
+    effective = projectMatches.length ? [projectMatches[0]] : matches;
+  }
+  const signatures = unique(effective.map((item) => `${item.sourceType}|${item.valueType}|${item.generatorKind || ''}|${stableConfig(item.generatorConfig)}|${item.sourceType === 'SECRET' ? item.secretConfigured === true : ''}`));
+  if (signatures.length !== 1) return { ambiguous: true, incompleteCoverage: false };
+  return { ...effective[0], ambiguous: false };
 }
 
 function stripReason(scenario, predicate) {
@@ -133,18 +177,56 @@ function bindingDescriptor({ target, selector, source, node, sampleValue, explic
     valueType: explicit?.valueType || valueTypeFor(node, sampleValue),
   };
   if (source === 'GENERATED') {
+    const explicitKind = String(explicit?.generatorKind || '').toUpperCase();
     return {
       ...base,
       generator: {
-        kind: explicit?.generatorKind || generatorFor(selector, node, sampleValue),
-        config: clone(explicit?.generatorConfig || (node ? { schema: clone(node) } : {})),
+        kind: explicitKind && explicitKind !== 'AUTO' ? explicitKind : generatorFor(selector, node, sampleValue),
+        config: sanitizeTestDataGeneratorConfig(
+          explicitKind || generatorFor(selector, node, sampleValue),
+          explicit?.generatorConfig || (node ? { schema: clone(node) } : {}),
+          { valueType: base.valueType, selectorPath: target === 'BODY' ? selector : '$' },
+        ),
       },
     };
   }
   return { ...base, bindingKey: `${target}:${selector}` };
 }
 
-export function applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnostics = null } = {}) {
+function pathPlaceholderNames(path) {
+  const out = [];
+  for (const match of String(path || '').matchAll(/\{([A-Za-z_][A-Za-z0-9_.-]*)\}/g)) out.push(match[1]);
+  return unique(out);
+}
+
+function semanticNeedsDataIssues(semanticDiagnostics, scenarioId) {
+  return (semanticDiagnostics?.issues || []).filter((issue) => issue?.scenarioId === scenarioId && issue?.action === 'NEEDS_DATA');
+}
+
+function canPlannerClearNeedsData({ scenario, scenarioId, semanticDiagnostics, originalReasons }) {
+  const issues = semanticNeedsDataIssues(semanticDiagnostics, scenarioId);
+  if (issues.length) return issues.every((issue) => PLANNER_OWNED_SEMANTIC_CODES.has(issue.code));
+  if (scenario?.automationHints?.needsData !== true) return true;
+  return originalReasons.every((reason) => (
+    reason === GENERIC_BODY_NEEDS_DATA
+    || reason === PATH_NEEDS_DATA
+    || String(reason).startsWith(SECRET_GUARD_PREFIX)
+  ));
+}
+
+function classifySource(target, selector, node, sampleValue, explicit, isSanitizedSensitive) {
+  const sensitive = isSanitizedSensitive || isSensitiveTestDataSelector(target, selector);
+  if (sensitive) {
+    if (explicit && explicit.sourceType !== 'SECRET') return { source: 'SECRET', securityMismatch: true };
+    return { source: 'SECRET', securityMismatch: false };
+  }
+  if (explicit) return { source: explicit.sourceType, securityMismatch: false };
+  if (looksReferential(selector)) return { source: 'FIXED', securityMismatch: false };
+  if (node || sampleValue !== undefined) return { source: 'GENERATED', securityMismatch: false };
+  return { source: 'FIXED', securityMismatch: false };
+}
+
+export function applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnostics = null, semanticDiagnostics = null } = {}) {
   const output = clone(modelOutput);
   const schema = requestSchema(context);
   const plansByScenarioId = {};
@@ -165,29 +247,34 @@ export function applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnos
   output.scenarios.forEach((scenario, index) => {
     if (!scenario.automationHints) scenario.automationHints = {};
     if (!Array.isArray(scenario.automationHints.reasons)) scenario.automationHints.reasons = [];
+    const originalReasons = [...scenario.automationHints.reasons];
     const bindings = [];
     const unresolved = [];
     const body = plain(scenario?.request?.body) ? scenario.request.body : null;
     const leaves = body ? bodyLeaves(body) : [];
-    const sensitiveSelectors = sensitivePathsForScenario(secretSafeDiagnostics, index);
-    const candidates = new Map(leaves.map((item) => [item.selector, item.value]));
-    for (const selector of sensitiveSelectors) if (!candidates.has(selector)) candidates.set(selector, undefined);
+    const sensitiveBodySelectors = sanitizerSelectors(secretSafeDiagnostics, index, 'BODY');
+    const candidates = new Map(leaves.map((item) => [item.selector, { value: item.value, node: nodeAtBodySelector(schema, item.selector) }]));
+    for (const selector of sensitiveBodySelectors) if (!candidates.has(selector)) candidates.set(selector, { value: undefined, node: nodeAtBodySelector(schema, selector) });
+    if (body && scenario.automationHints.needsData === true) {
+      for (const item of requiredBodySelectors(schema)) if (!candidates.has(item.selector)) candidates.set(item.selector, { value: undefined, node: item.node });
+    }
 
-    for (const [selector, sampleValue] of candidates) {
-      const node = nodeAtBodySelector(schema, selector);
+    for (const [selector, candidate] of candidates) {
+      const sampleValue = candidate.value;
+      const node = candidate.node;
       const explicit = explicitBinding(context, 'BODY', selector);
       if (explicit?.ambiguous) {
-        unresolved.push({ target: 'BODY', selector, source: 'FIXED', code: 'TEST_DATA_BINDING_AMBIGUOUS' });
+        unresolved.push({ target: 'BODY', selector, source: isSensitiveTestDataSelector('BODY', selector) ? 'SECRET' : 'FIXED', code: explicit.incompleteCoverage ? 'TEST_DATA_BINDING_COVERAGE_INCOMPLETE' : 'TEST_DATA_BINDING_AMBIGUOUS' });
+        deleteBodySelector(body, selector);
         continue;
       }
-      const isSensitive = sensitiveSelectors.includes(selector);
-      let source;
-      if (explicit) source = explicit.sourceType;
-      else if (isSensitive) source = 'SECRET';
-      else if (looksReferential(selector)) source = 'FIXED';
-      else if (node || sampleValue !== undefined) source = 'GENERATED';
-      else source = 'FIXED';
-
+      const classified = classifySource('BODY', selector, node, sampleValue, explicit, sensitiveBodySelectors.includes(selector));
+      const source = classified.source;
+      if (classified.securityMismatch) {
+        unresolved.push({ target: 'BODY', selector, source: 'SECRET', code: 'TEST_DATA_SECRET_SOURCE_REQUIRED' });
+        deleteBodySelector(body, selector);
+        continue;
+      }
       if ((source === 'FIXED' || source === 'SECRET') && !explicit) {
         unresolved.push({ target: 'BODY', selector, source, code: `TEST_DATA_${source}_REQUIRED` });
         deleteBodySelector(body, selector);
@@ -202,12 +289,41 @@ export function applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnos
       deleteBodySelector(body, selector);
     }
 
-    for (const [name] of Object.entries(scenario?.request?.pathParams || {})) {
+    const pathNames = unique([
+      ...Object.keys(scenario?.request?.pathParams || {}),
+      ...pathPlaceholderNames(context?.endpoint?.normalizedPath),
+      ...sanitizerSelectors(secretSafeDiagnostics, index, 'PATH_PARAM'),
+    ]);
+    for (const name of pathNames) {
       const explicit = explicitBinding(context, 'PATH_PARAM', name);
-      if (!explicit || explicit.ambiguous) unresolved.push({ target: 'PATH_PARAM', selector: name, source: 'FIXED', code: explicit?.ambiguous ? 'TEST_DATA_BINDING_AMBIGUOUS' : 'TEST_DATA_FIXED_REQUIRED' });
-      else if (explicit.sourceType === 'SECRET' && explicit.secretConfigured !== true) unresolved.push({ target: 'PATH_PARAM', selector: name, source: 'SECRET', code: 'TEST_DATA_SECRET_NOT_CONFIGURED' });
-      else bindings.push(bindingDescriptor({ target: 'PATH_PARAM', selector: name, source: explicit.sourceType, node: null, sampleValue: scenario.request.pathParams[name], explicit }));
-      delete scenario.request.pathParams[name];
+      const sampleValue = scenario?.request?.pathParams?.[name];
+      if (explicit?.ambiguous) unresolved.push({ target: 'PATH_PARAM', selector: name, source: 'FIXED', code: explicit.incompleteCoverage ? 'TEST_DATA_BINDING_COVERAGE_INCOMPLETE' : 'TEST_DATA_BINDING_AMBIGUOUS' });
+      else {
+        const classified = classifySource('PATH_PARAM', name, null, sampleValue, explicit, false);
+        if (classified.securityMismatch) unresolved.push({ target: 'PATH_PARAM', selector: name, source: 'SECRET', code: 'TEST_DATA_SECRET_SOURCE_REQUIRED' });
+        else if (!explicit && classified.source !== 'GENERATED') unresolved.push({ target: 'PATH_PARAM', selector: name, source: classified.source, code: `TEST_DATA_${classified.source}_REQUIRED` });
+        else if (classified.source === 'SECRET' && explicit?.secretConfigured !== true) unresolved.push({ target: 'PATH_PARAM', selector: name, source: 'SECRET', code: 'TEST_DATA_SECRET_NOT_CONFIGURED' });
+        else bindings.push(bindingDescriptor({ target: 'PATH_PARAM', selector: name, source: classified.source, node: null, sampleValue, explicit }));
+      }
+      if (scenario?.request?.pathParams) delete scenario.request.pathParams[name];
+    }
+
+    const queryNames = unique([
+      ...Object.keys(scenario?.request?.query || {}),
+      ...sanitizerSelectors(secretSafeDiagnostics, index, 'QUERY'),
+    ]);
+    for (const name of queryNames) {
+      const explicit = explicitBinding(context, 'QUERY', name);
+      const sampleValue = scenario?.request?.query?.[name];
+      if (explicit?.ambiguous) unresolved.push({ target: 'QUERY', selector: name, source: 'FIXED', code: explicit.incompleteCoverage ? 'TEST_DATA_BINDING_COVERAGE_INCOMPLETE' : 'TEST_DATA_BINDING_AMBIGUOUS' });
+      else {
+        const classified = classifySource('QUERY', name, null, sampleValue, explicit, sanitizerSelectors(secretSafeDiagnostics, index, 'QUERY').includes(name));
+        if (classified.securityMismatch) unresolved.push({ target: 'QUERY', selector: name, source: 'SECRET', code: 'TEST_DATA_SECRET_SOURCE_REQUIRED' });
+        else if ((classified.source === 'FIXED' || classified.source === 'SECRET') && !explicit) unresolved.push({ target: 'QUERY', selector: name, source: classified.source, code: `TEST_DATA_${classified.source}_REQUIRED` });
+        else if (classified.source === 'SECRET' && explicit?.secretConfigured !== true) unresolved.push({ target: 'QUERY', selector: name, source: 'SECRET', code: 'TEST_DATA_SECRET_NOT_CONFIGURED' });
+        else bindings.push(bindingDescriptor({ target: 'QUERY', selector: name, source: classified.source, node: null, sampleValue, explicit }));
+      }
+      if (scenario?.request?.query) delete scenario.request.query[name];
     }
 
     if (bindings.length || unresolved.length) {
@@ -226,18 +342,16 @@ export function applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnos
     for (const item of unresolved) {
       diagnostics.unresolvedCount += 1;
       diagnostics.unresolvedPaths.push(`${scenario.scenarioId}:${item.target}:${item.selector}:${item.source}`);
-      addReason(scenario, `Test Data: configure ${item.source} para ${item.target} ${item.selector} no Environment.`);
+      addReason(scenario, `Test Data: configure ${item.source} para ${item.target} ${item.selector} no escopo apropriado.`);
     }
 
     if (bindings.length && unresolved.length === 0) {
-      stripReason(scenario, (reason) => reason === GENERIC_BODY_NEEDS_DATA || reason.startsWith(SECRET_GUARD_PREFIX) || reason.includes('Valores de path params precisam ser fornecidos'));
-      const remainingReasons = scenario.automationHints.reasons || [];
-      const dataReasonLeft = remainingReasons.some((reason) => /massa de teste|Test Data: configure|Secret Guard|path params/i.test(reason));
-      if (!dataReasonLeft) scenario.automationHints.needsData = false;
-      diagnostics.readyDataScenarioCount += 1;
-    } else if (unresolved.length > 0) {
-      scenario.automationHints.needsData = true;
-    }
+      stripReason(scenario, (reason) => reason === GENERIC_BODY_NEEDS_DATA || reason === PATH_NEEDS_DATA || reason.startsWith(SECRET_GUARD_PREFIX));
+      if (canPlannerClearNeedsData({ scenario, scenarioId: scenario.scenarioId, semanticDiagnostics, originalReasons })) {
+        scenario.automationHints.needsData = false;
+        diagnostics.readyDataScenarioCount += 1;
+      }
+    } else if (unresolved.length > 0) scenario.automationHints.needsData = true;
   });
 
   diagnostics.plannedPaths = diagnostics.plannedPaths.slice(0, 80);
