@@ -304,6 +304,8 @@ import {
 } from './handlers/consoleCatalog.js';
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
+import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
+import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
 import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest, getConsoleProjectTestInventory, postConsoleMaterializeAutoReadySuite, getConsoleLatestAutoReadySuite } from './handlers/consoleAutomation.js';
 import {
   getInternalRunnerRunBundle,
@@ -2072,6 +2074,8 @@ const gatewayRouteHandlers = {
   internalRunnerRunRejectedPost: async (req, env, _ctx, params) => json(await postInternalRunnerRejected(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleSuiteRunsCreate: async (req, env, _ctx, params) => json(await postConsoleSuiteRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleSuiteRunGet: async (req, env, _ctx, params) => json(await getConsoleSuiteRun(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationTestInventoryGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestInventory(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationAutoSuiteMaterializePost: async (req, env, _ctx, params) => json(await postConsoleMaterializeAutoReadySuite(req, env, params), { headers: corsHeaders(req, env) }),
@@ -2241,5 +2245,8 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       if (e?.publicDetails && typeof e.publicDetails === "object") errorBody.details = e.publicDetails;
       return json(errorBody, { status, headers });
     }
+  },
+  async queue(batch, env, ctx) {
+    return handleSuiteRunQueue(batch, env, ctx);
   },
 };

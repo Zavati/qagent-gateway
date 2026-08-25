@@ -192,6 +192,17 @@ export function resolveGatewayRoute(method, pathname) {
       return { name: 'consoleEndpointAutomationLatestGet', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
     }
 
+
+    // Foundation 07.7.10-B - Suite Run Contract + Durable Orchestration
+    // /v1/console/projects/:projectId/suite-runs
+    if (segs.length === 5 && segs[4] === 'suite-runs' && normalizedMethod === 'POST') {
+      return { name: 'consoleSuiteRunsCreate', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/suite-runs/:suiteRunId
+    if (segs.length === 6 && segs[4] === 'suite-runs' && normalizedMethod === 'GET') {
+      return { name: 'consoleSuiteRunGet', params: { projectId: decodeURIComponent(segs[3]), suiteRunId: decodeURIComponent(segs[5]) } };
+    }
+
     // Foundation 07.7.2 - Run Contract + immutable Execution Plan foundation
     // /v1/console/projects/:projectId/runs
     if (segs.length === 5 && segs[4] === 'runs') {

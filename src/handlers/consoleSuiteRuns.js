@@ -1,0 +1,11 @@
+import { requireConsoleTenant } from '../services/tenantContextService.js';
+import { getOrganizationProject } from '../services/projectService.js';
+import { normalizeSuiteRunCreateInput, normalizeSuiteRunIdempotencyKey } from '../lib/suiteRunContracts.js';
+import { createSuiteRunV1, getSuiteRunV1 } from '../services/suiteRunService.js';
+
+async function readJson(req,maxBytes=8000){const b=await req.arrayBuffer();if(!b.byteLength){const e=new Error('Payload de Suite Run é obrigatório.');e.status=400;e.code='SUITE_RUN_CREATE_BODY_REQUIRED';throw e;}if(b.byteLength>maxBytes){const e=new Error('Payload de Suite Run grande demais.');e.status=413;e.code='SUITE_RUN_CREATE_BODY_TOO_LARGE';throw e;}try{return JSON.parse(new TextDecoder().decode(b));}catch{const e=new Error('JSON inválido.');e.status=400;e.code='SUITE_RUN_CREATE_JSON_INVALID';throw e;}}
+function assertWrite(tenant){if(!['owner','admin','member'].includes(tenant.organizationRole)){const e=new Error('Sem permissão para criar Suite Runs nesta organização.');e.status=403;e.code='SUITE_RUN_CREATE_FORBIDDEN';throw e;}}
+function normalizeSuiteRunId(value){const v=String(value??'').trim();if(!/^srun_[A-Za-z0-9_-]{8,220}$/.test(v)){const e=new Error('suiteRunId inválido.');e.status=400;e.code='SUITE_RUN_ID_INVALID';throw e;}return v;}
+
+export async function postConsoleSuiteRun(req,env,{projectId},deps={}){const tenant=await (deps.requireTenant||requireConsoleTenant)(req,env);assertWrite(tenant);await (deps.getProject||getOrganizationProject)(env,tenant.organizationId,projectId);const input=normalizeSuiteRunCreateInput(await readJson(req));const key=normalizeSuiteRunIdempotencyKey(req.headers.get('Idempotency-Key'));const data=await (deps.createSuiteRun||createSuiteRunV1)({env,organizationId:tenant.organizationId,projectId,userId:tenant.user?.userId||null,input,idempotencyKey:key});return {status:'ok',data};}
+export async function getConsoleSuiteRun(req,env,{projectId,suiteRunId},deps={}){const tenant=await (deps.requireTenant||requireConsoleTenant)(req,env);await (deps.getProject||getOrganizationProject)(env,tenant.organizationId,projectId);const data=await (deps.getSuiteRun||getSuiteRunV1)({env,organizationId:tenant.organizationId,projectId,suiteRunId:normalizeSuiteRunId(suiteRunId)});return {status:'ok',data};}

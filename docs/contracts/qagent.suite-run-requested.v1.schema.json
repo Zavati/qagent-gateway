@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.suite-run-requested.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "suiteRunId", "organizationId", "projectId", "expectedCursor"],
+  "properties": {
+    "contractVersion": { "const": "qagent.suite-run-requested.v1" },
+    "suiteRunId": { "type": "string", "pattern": "^srun_[A-Za-z0-9_-]+$" },
+    "organizationId": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "expectedCursor": { "type": "integer", "minimum": 0 }
+  }
+}

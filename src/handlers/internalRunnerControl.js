@@ -45,6 +45,7 @@ import {
 import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
 import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
 import { resolveProjectSecretValue } from '../services/secretVaultService.js';
+import { refreshSuiteRunByChildRunId } from '../repositories/suiteRunRepository.js';
 
 function internalError(message, code, status = 409, publicDetails = null) {
   const error = new Error(message);
@@ -468,6 +469,7 @@ export async function postInternalRunnerReceived(
     getBundle = getRunBundleByRunId,
     markReceived = markRunRunnerReceived,
     markReceivedWithLease = markRunExecutionReceived,
+    refreshSuiteRun = refreshSuiteRunByChildRunId,
     now = () => new Date().toISOString(),
   } = {},
 ) {
@@ -516,6 +518,7 @@ export async function postInternalRunnerReceived(
 
     bundle = await getBundle(env, normalizedRunId);
     assertBundle(bundle, normalizedRunId);
+    try { await refreshSuiteRun(env, normalizedRunId); } catch {}
     return {
       status: 'ok',
       data: {
@@ -544,6 +547,7 @@ export async function postInternalRunnerReceived(
     normalizedRunId,
   );
   assertBundle(bundle, normalizedRunId);
+  try { await refreshSuiteRun(env, normalizedRunId); } catch {}
 
   return {
     status: 'ok',
@@ -1072,6 +1076,7 @@ export async function postInternalRunnerRejected(
     verifyRequest = verifyRunnerControlRequest,
     getBundle = getRunBundleByRunId,
     markRejected = markRunExecutionRejected,
+    refreshSuiteRun = refreshSuiteRunByChildRunId,
     now = () => new Date().toISOString(),
   } = {},
 ) {
@@ -1096,6 +1101,7 @@ export async function postInternalRunnerRejected(
   if (!result.updated) {
     internalError('Lease não está ativa para registrar rejection.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
   }
+  try { await refreshSuiteRun(env, normalizedRunId); } catch {}
   return {
     status: 'ok',
     data: {

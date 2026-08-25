@@ -21,6 +21,18 @@
 			{
 				"binding": "RUN_QUEUE",
 				"queue": "qagent-run-requests"
+			},
+			{
+				"binding": "SUITE_ORCHESTRATOR_QUEUE",
+				"queue": "qagent-suite-run-orchestration"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "qagent-suite-run-orchestration",
+				"max_batch_size": 5,
+				"max_batch_timeout": 1,
+				"max_retries": 5
 			}
 		]
 	},
@@ -60,7 +72,10 @@
 		"RUNNER_CONTROL_MAX_SKEW_SECONDS": "60",
 		"RUNNER_LEASE_SECONDS": "60",
 		// Foundation 07.7.9-C - Results Plane internal reads
-		"RESULTS_READ_TIMEOUT_MS": "10000"
+		"RESULTS_READ_TIMEOUT_MS": "10000",
+		// Foundation 07.7.10-B - bounded multi-tenant Suite fan-out
+		"SUITE_ORCHESTRATOR_CHILD_BATCH_SIZE": "4",
+		"SUITE_ORCHESTRATOR_CHILD_CONCURRENCY": "3"
 	},
 	"d1_databases": [
 		{

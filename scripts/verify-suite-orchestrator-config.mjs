@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+const wrangler=await readFile(new URL('../wrangler.jsonc',import.meta.url),'utf8');
+assert.match(wrangler,/"binding":\s*"SUITE_ORCHESTRATOR_QUEUE"/);
+assert.match(wrangler,/"queue":\s*"qagent-suite-run-orchestration"/);
+assert.match(wrangler,/"consumers"\s*:/);
+assert.match(wrangler,/SUITE_ORCHESTRATOR_CHILD_BATCH_SIZE/);
+assert.match(wrangler,/SUITE_ORCHESTRATOR_CHILD_CONCURRENCY/);
+assert.doesNotMatch(wrangler,/"secrets"\s*:/);
+const migration=await readFile(new URL('../migrations/0015_foundation_07_7_10_b_suite_run_orchestration.sql',import.meta.url),'utf8');
+for(const table of ['suite_runs','suite_run_dispatches','suite_run_children']) assert.match(migration,new RegExp(table));
+console.log('Foundation 07.7.10-B Suite Orchestrator config verified ✅');

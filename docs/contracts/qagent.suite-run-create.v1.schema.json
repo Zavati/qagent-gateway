@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.suite-run-create.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "suiteVersionId", "environmentId", "confirmDiscoveredRuntime"],
+  "properties": {
+    "contractVersion": { "const": "qagent.suite-run-create.v1" },
+    "suiteVersionId": { "type": "string", "pattern": "^suitev_[A-Za-z0-9_-]+$", "maxLength": 220 },
+    "environmentId": { "type": "string", "pattern": "^env_[A-Za-z0-9_-]+$", "maxLength": 220 },
+    "confirmDiscoveredRuntime": { "type": "boolean" }
+  }
+}

@@ -594,3 +594,38 @@ export async function getLatestAutoReadySuite({ env, organizationId, projectId, 
   });
   return validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissing: true });
 }
+
+export async function getSuiteExecutionSlice({
+  env, organizationId, projectId, suiteVersionId, offset = 0, limit = 10, fetchImpl = null,
+} = {}) {
+  const body = await requestTestRegistryProjectResource({
+    env, organizationId, projectId, fetchImpl,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suite-versions/${encodeURIComponent(suiteVersionId)}/execution-slice?offset=${encodeURIComponent(String(offset))}&limit=${encodeURIComponent(String(limit))}`,
+  });
+  const data = body?.data;
+  const valid = Boolean(
+    body?.status === 'ok'
+    && data?.contractVersion === 'qagent.suite-execution-slice.v1'
+    && data.organizationId === organizationId
+    && data.projectId === projectId
+    && data.suite?.suiteVersionId === suiteVersionId
+    && Number.isInteger(data.offset)
+    && Number.isInteger(data.totalItems)
+    && Array.isArray(data.items)
+  );
+  if (!valid) {
+    throw new TestRegistryClientError('Test Registry returned an invalid Suite execution slice.', {
+      code: 'TEST_REGISTRY_SUITE_EXECUTION_SLICE_INVALID', status: 502, retryable: false,
+    });
+  }
+  for (const item of data.items) {
+    if (!item || !Number.isInteger(item.ordinal) || typeof item.endpointId !== 'string'
+      || typeof item.testDesignVersionId !== 'string' || !Array.isArray(item.scenarioIds)
+      || item.scenarioIds.some((id) => typeof id !== 'string')) {
+      throw new TestRegistryClientError('Test Registry Suite execution item is invalid.', {
+        code: 'TEST_REGISTRY_SUITE_EXECUTION_SLICE_INVALID', status: 502, retryable: false,
+      });
+    }
+  }
+  return data;
+}

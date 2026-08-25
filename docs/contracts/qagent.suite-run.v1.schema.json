@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.suite-run.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "suiteRun", "orchestration", "progress", "children", "childrenTruncated", "idempotentReplay"],
+  "properties": {
+    "contractVersion": { "const": "qagent.suite-run.v1" },
+    "suiteRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suiteRunId", "status", "projectId", "suiteId", "suiteVersionId", "suiteVersion", "environmentId", "endpointCount", "scenarioCount", "createdAt", "updatedAt", "terminalAt"],
+      "properties": {
+        "suiteRunId": { "type": "string", "pattern": "^srun_" },
+        "status": { "enum": ["CREATED", "QUEUED", "DISPATCHING", "RUNNING", "PASSED", "FAILED", "ERROR", "CANCELLED"] },
+        "projectId": { "type": "string" },
+        "suiteId": { "type": "string", "pattern": "^suite_" },
+        "suiteVersionId": { "type": "string", "pattern": "^suitev_" },
+        "suiteVersion": { "type": "integer", "minimum": 1 },
+        "environmentId": { "type": "string", "pattern": "^env_" },
+        "endpointCount": { "type": "integer", "minimum": 1 },
+        "scenarioCount": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "terminalAt": { "type": ["string", "null"] }
+      }
+    },
+    "orchestration": { "type": ["object", "null"] },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["materializedChildren", "activeChildren", "passedChildren", "failedChildren", "errorChildren", "cancelledChildren", "completedChildren"],
+      "properties": {
+        "materializedChildren": { "type": "integer", "minimum": 0 },
+        "activeChildren": { "type": "integer", "minimum": 0 },
+        "passedChildren": { "type": "integer", "minimum": 0 },
+        "failedChildren": { "type": "integer", "minimum": 0 },
+        "errorChildren": { "type": "integer", "minimum": 0 },
+        "cancelledChildren": { "type": "integer", "minimum": 0 },
+        "completedChildren": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "children": { "type": "array" },
+    "childrenTruncated": { "type": "boolean" },
+    "idempotentReplay": { "type": "boolean" }
+  }
+}
