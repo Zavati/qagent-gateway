@@ -456,7 +456,13 @@ function validateProjectInventoryEnvelope(body, { organizationId, projectId }) {
     && Array.isArray(data.selection)
     && Number.isInteger(data.testDesignCount)
     && Number.isInteger(data.endpointWithReadyCount)
+    && Number.isInteger(data.endpointWithExecutionEligibleCount)
     && Number.isInteger(data.readyScenarioCount)
+    && Number.isInteger(data.executionEligibleScenarioCount)
+    && Number.isInteger(data.policyBlockedReadyScenarioCount)
+    && typeof data.eligibilityPolicyVersion === 'string'
+    && typeof data.selectionPolicyVersion === 'string'
+    && typeof data.executable === 'boolean'
   );
   if (!valid) {
     throw new TestRegistryClientError('Test Registry returned an invalid Project Test Inventory.', {
@@ -562,7 +568,7 @@ async function requestTestRegistryProjectResource({
 export async function getProjectTestInventory({ env, organizationId, projectId, fetchImpl = null } = {}) {
   const body = await requestTestRegistryProjectResource({
     env, organizationId, projectId, fetchImpl,
-    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/test-inventory`,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/test-inventory?view=compact`,
   });
   return validateProjectInventoryEnvelope(body, { organizationId, projectId });
 }
@@ -570,7 +576,7 @@ export async function getProjectTestInventory({ env, organizationId, projectId, 
 export async function materializeAutoReadySuite({ env, organizationId, projectId, fetchImpl = null } = {}) {
   const body = await requestTestRegistryProjectResource({
     env, organizationId, projectId, fetchImpl, method: 'POST',
-    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/materialize`,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/materialize?view=compact`,
   });
   const data = validateAutoSuiteEnvelope(body, { organizationId, projectId });
   if (data?.contractVersion !== 'qagent.test-suite.v1') {
@@ -584,7 +590,7 @@ export async function materializeAutoReadySuite({ env, organizationId, projectId
 export async function getLatestAutoReadySuite({ env, organizationId, projectId, fetchImpl = null } = {}) {
   const body = await requestTestRegistryProjectResource({
     env, organizationId, projectId, fetchImpl,
-    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/latest`,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/latest?view=compact`,
   });
   return validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissing: true });
 }
