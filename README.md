@@ -433,3 +433,7 @@ Production activation also requires upstream propagation through Plugin → Obse
 ## Foundation 07.7.3 — Queue + qagent-runner
 
 Run creation now publishes the immutable Run references to Cloudflare Queue `qagent-run-requests`. The new `qagent-runner` retrieves the authoritative bundle through an HMAC-protected Service Binding API, validates hashes/readiness, records `RECEIVED`, and ACKs. External target HTTP execution remains disabled until later Runner foundations.
+
+## Foundation 07.7.10-B FIX-1
+
+Corrects Suite Run INSERT SQL arity and adds a real SQLite repository regression test. No migration change.
