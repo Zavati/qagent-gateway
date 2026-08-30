@@ -39,6 +39,8 @@ const sqlite = new DatabaseSync(':memory:');
 sqlite.exec('PRAGMA foreign_keys = ON;');
 const migration = fs.readFileSync(new URL('../migrations/0015_foundation_07_7_10_b_suite_run_orchestration.sql', import.meta.url), 'utf8');
 sqlite.exec(migration);
+const migrationFix2 = fs.readFileSync(new URL('../migrations/0016_foundation_07_7_10_b_fix_2_mutation_safety.sql', import.meta.url), 'utf8');
+sqlite.exec(migrationFix2);
 
 const env = { QAGENT_DB: new D1DatabaseShim(sqlite) };
 const suiteRun = {
@@ -54,6 +56,7 @@ const suiteRun = {
   endpointCount: 4,
   scenarioCount: 21,
   confirmDiscoveredRuntime: true,
+  confirmProductionMutation: false,
   idempotencyKey: 'suite-fix1-key',
   requestFingerprint: 'a'.repeat(64),
   createdByUserId: 'usr_fix1',

@@ -16,7 +16,7 @@ function cleanId(value, field, prefix) {
 }
 export function normalizeSuiteRunCreateInput(input) {
   if (!input || typeof input!=='object' || Array.isArray(input)) fail('Payload de Suite Run inválido.');
-  const allowed=new Set(['contractVersion','suiteVersionId','environmentId','confirmDiscoveredRuntime']);
+  const allowed=new Set(['contractVersion','suiteVersionId','environmentId','confirmDiscoveredRuntime','confirmProductionMutation']);
   for (const key of Object.keys(input)) if (!allowed.has(key)) fail(`Campo não permitido no Suite Run: ${key}.`, 'SUITE_RUN_CREATE_CONTRACT_INVALID', 400, {field:key});
   if (input.contractVersion!==SUITE_RUN_CREATE_CONTRACT_VERSION) fail(`contractVersion deve ser '${SUITE_RUN_CREATE_CONTRACT_VERSION}'.`);
   return {
@@ -24,6 +24,7 @@ export function normalizeSuiteRunCreateInput(input) {
     suiteVersionId:cleanId(input.suiteVersionId,'suiteVersionId','suitev_'),
     environmentId:cleanId(input.environmentId,'environmentId','env_'),
     confirmDiscoveredRuntime:input.confirmDiscoveredRuntime===true,
+    confirmProductionMutation:input.confirmProductionMutation===true,
   };
 }
 export function normalizeSuiteRunIdempotencyKey(value) {
@@ -37,6 +38,7 @@ export async function fingerprintSuiteRunCreateInput(input) {
     suiteVersionId:input.suiteVersionId,
     environmentId:input.environmentId,
     confirmDiscoveredRuntime:input.confirmDiscoveredRuntime===true,
+    confirmProductionMutation:input.confirmProductionMutation===true,
   }));
 }
 export function buildSuiteRunRequestedMessage({suiteRunId, organizationId, projectId, expectedCursor=0}) {

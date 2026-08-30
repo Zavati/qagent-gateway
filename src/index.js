@@ -305,6 +305,7 @@ import {
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
+import { getConsoleMutationPolicies, putConsoleMutationPolicy } from './handlers/consoleMutationPolicies.js';
 import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
 import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest, getConsoleProjectTestInventory, postConsoleMaterializeAutoReadySuite, getConsoleLatestAutoReadySuite } from './handlers/consoleAutomation.js';
 import {
@@ -314,6 +315,7 @@ import {
   postInternalRunnerReceived,
   postInternalRunnerRetry,
   postInternalRunnerRuntimeReady,
+  postInternalRunnerMutationPreflight,
   postInternalRunnerAuthMaterial,
   postInternalRunnerAuthResolved,
   postInternalRunnerTestDataMaterial,
@@ -2065,6 +2067,7 @@ const gatewayRouteHandlers = {
   internalRunnerRunHeartbeatPost: async (req, env, _ctx, params) => json(await postInternalRunnerHeartbeat(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunRetryPost: async (req, env, _ctx, params) => json(await postInternalRunnerRetry(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunRuntimeReadyPost: async (req, env, _ctx, params) => json(await postInternalRunnerRuntimeReady(req, env, params), { headers: corsHeaders(req, env) }),
+  internalRunnerMutationPreflightPost: async (req, env, _ctx, params) => json(await postInternalRunnerMutationPreflight(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunAuthMaterialPost: async (req, env, _ctx, params) => json(await postInternalRunnerAuthMaterial(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunAuthResolvedPost: async (req, env, _ctx, params) => json(await postInternalRunnerAuthResolved(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunTestDataMaterialPost: async (req, env, _ctx, params) => json(await postInternalRunnerTestDataMaterial(req, env, params), { headers: corsHeaders(req, env) }),
@@ -2074,6 +2077,8 @@ const gatewayRouteHandlers = {
   internalRunnerRunRejectedPost: async (req, env, _ctx, params) => json(await postInternalRunnerRejected(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleMutationPoliciesList: async (req, env, _ctx, params) => json(await getConsoleMutationPolicies(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleMutationPolicyPut: async (req, env, _ctx, params) => json(await putConsoleMutationPolicy(req, env, params), { headers: corsHeaders(req, env) }),
   consoleSuiteRunsCreate: async (req, env, _ctx, params) => json(await postConsoleSuiteRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleSuiteRunGet: async (req, env, _ctx, params) => json(await getConsoleSuiteRun(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),

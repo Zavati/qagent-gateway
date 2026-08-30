@@ -46,6 +46,8 @@ import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
 import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
 import { resolveProjectSecretValue } from '../services/secretVaultService.js';
 import { refreshSuiteRunByChildRunId } from '../repositories/suiteRunRepository.js';
+import { normalizeMutationPreflightInput, MUTATION_METHODS } from '../lib/mutationContracts.js';
+import { preflightMutationExecution } from '../services/mutationExecutionJournalService.js';
 
 function internalError(message, code, status = 409, publicDetails = null) {
   const error = new Error(message);
@@ -622,6 +624,40 @@ export async function postInternalRunnerRuntimeReady(
 }
 
 
+
+
+export async function postInternalRunnerMutationPreflight(
+  req, env, { runId },
+  { verifyRequest = verifyRunnerControlRequest, getBundle = getRunBundleByRunId, getClaim = getRunExecutionClaim, preflight = preflightMutationExecution, now = () => new Date().toISOString() } = {},
+) {
+  const normalizedRunId = normalizeRunId(runId);
+  const { rawBody, body } = await readRawJson(req, 12_288);
+  await verifyRequest(req, env, { rawBody });
+  const input = normalizeMutationPreflightInput(body);
+  const bundle = await getBundle(env, normalizedRunId);
+  assertBundle(bundle, normalizedRunId);
+  if (!Array.isArray(bundle.run.scenarioIds) || bundle.run.scenarioIds.length !== 1 || bundle.run.scenarioIds[0] !== input.scenarioId) {
+    internalError('Business mutation exige um único cenário isolado por Run.', 'RUNNER_MUTATION_REQUIRES_SINGLE_SCENARIO', 409);
+  }
+  const scenario = (bundle.executionPlan?.plan?.scenarios || []).find((x) => x?.scenarioId === input.scenarioId);
+  const method = String(scenario?.spec?.target?.method || '').toUpperCase();
+  const canonicalPath = String(scenario?.spec?.target?.path || '');
+  if (!MUTATION_METHODS.includes(method) || method !== input.method || canonicalPath !== input.canonicalPath) {
+    internalError('Mutation preflight diverge do Execution Plan imutável.', 'RUNNER_MUTATION_PLAN_MISMATCH', 409);
+  }
+  const attempt = bundle.latestAttempt;
+  if (!attempt || attempt.attemptId !== input.attemptId || attempt.runtimeReadinessStatus !== 'READY' || attempt.runtimePlanHash !== input.runtimePlanHash) {
+    internalError('Mutation preflight exige o attempt/runtime READY atual.', 'RUNNER_MUTATION_RUNTIME_STATE_INVALID', 409);
+  }
+  const claim = await getClaim(env, bundle.run.organizationId, bundle.run.projectId, normalizedRunId);
+  const nowIso = now();
+  const leaseHash = await sha256Hex(input.leaseToken);
+  if (!claim || claim.state !== 'ACTIVE' || claim.currentAttemptId !== input.attemptId || claim.leaseTokenHash !== leaseHash || !claim.leaseExpiresAt || claim.leaseExpiresAt <= nowIso) {
+    internalError('Lease não está ativa para Mutation Preflight.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
+  }
+  const data = await preflight({ env, bundle, input });
+  return { status: 'ok', data };
+}
 
 function assertAuthMaterialLease(bundle, claim, input, nowIso) {
   const attempt = bundle?.latestAttempt;

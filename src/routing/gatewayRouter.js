@@ -40,7 +40,7 @@ export function resolveGatewayRoute(method, pathname) {
   // Foundation 07.7.3 - internal Runner Control API (HMAC protected)
   if (normalizedPath.startsWith('/internal/v1/runner/runs/')) {
     const segs = normalizedPath.split('/').filter(Boolean);
-    if (segs.length === 6 && segs[0] === 'internal' && segs[1] === 'v1' && segs[2] === 'runner' && segs[3] === 'runs') {
+    if (segs.length >= 6 && segs[0] === 'internal' && segs[1] === 'v1' && segs[2] === 'runner' && segs[3] === 'runs') {
       const runId = decodeURIComponent(segs[4]);
       if (segs[5] === 'bundle' && normalizedMethod === 'GET') {
         return { name: 'internalRunnerRunBundleGet', params: { runId } };
@@ -65,6 +65,9 @@ export function resolveGatewayRoute(method, pathname) {
       }
       if (segs[5] === 'auth-resolved' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunAuthResolvedPost', params: { runId } };
+      }
+      if (segs[5] === 'mutations' && segs.length === 8 && segs[7] === 'preflight' && normalizedMethod === 'POST') {
+        return { name: 'internalRunnerMutationPreflightPost', params: { runId, scenarioId: decodeURIComponent(segs[6]) } };
       }
       if (segs[5] === 'test-data-material' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunTestDataMaterialPost', params: { runId } };
@@ -192,6 +195,16 @@ export function resolveGatewayRoute(method, pathname) {
       return { name: 'consoleEndpointAutomationLatestGet', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
     }
 
+
+    // Foundation 07.7.10-B FIX-2 - Environment Mutation Governance
+    // /v1/console/projects/:projectId/environments/:environmentId/mutation-policies
+    if (segs.length === 7 && segs[4] === 'environments' && segs[6] === 'mutation-policies' && normalizedMethod === 'GET') {
+      return { name: 'consoleMutationPoliciesList', params: { projectId: decodeURIComponent(segs[3]), environmentId: decodeURIComponent(segs[5]) } };
+    }
+    // /v1/console/projects/:projectId/environments/:environmentId/mutation-policies/:endpointId/:method
+    if (segs.length === 9 && segs[4] === 'environments' && segs[6] === 'mutation-policies' && normalizedMethod === 'PUT') {
+      return { name: 'consoleMutationPolicyPut', params: { projectId: decodeURIComponent(segs[3]), environmentId: decodeURIComponent(segs[5]), endpointId: decodeURIComponent(segs[7]), method: decodeURIComponent(segs[8]) } };
+    }
 
     // Foundation 07.7.10-B - Suite Run Contract + Durable Orchestration
     // /v1/console/projects/:projectId/suite-runs
