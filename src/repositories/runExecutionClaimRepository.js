@@ -668,7 +668,7 @@ export async function markRunExecutionRejected(env, {
   const runUpdate = db.prepare(`
     UPDATE runs SET status = 'ERROR', updated_at = ?
     WHERE organization_id = ? AND project_id = ? AND run_id = ?
-      AND status IN ('CREATED', 'QUEUED')
+      AND status IN ('CREATED', 'QUEUED', 'RUNNING')
   `).bind(rejectedAt, organizationId, projectId, runId);
 
   const results = typeof db.batch === 'function'
@@ -682,6 +682,44 @@ export async function markRunExecutionRejected(env, {
   };
 }
 
+
+
+export async function markRunExecutionDeadLettered(env, {
+  organizationId, projectId, runId, errorCode = 'RUNNER_QUEUE_DLQ_EXHAUSTED', terminalAt,
+}) {
+  const db = requireDataDb(env);
+  const code = String(errorCode || 'RUNNER_QUEUE_DLQ_EXHAUSTED').slice(0, 120);
+  const attemptUpdate = db.prepare(`
+    UPDATE run_execution_attempts
+    SET status = 'REJECTED', last_error_code = ?, terminal_at = COALESCE(terminal_at, ?), updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ? AND status = 'CLAIMED'
+  `).bind(code, terminalAt, terminalAt, organizationId, projectId, runId);
+  const claimRelease = db.prepare(`
+    UPDATE run_execution_claims
+    SET state = 'IDLE', current_attempt_id = NULL, lease_owner_id = NULL, lease_token_hash = NULL,
+        lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ? AND state = 'ACTIVE'
+  `).bind(terminalAt, organizationId, projectId, runId);
+  const dispatchUpdate = db.prepare(`
+    UPDATE run_queue_dispatches
+    SET status = 'RECEIVED', runner_received_at = COALESCE(runner_received_at, ?),
+        last_error_code = ?, last_error_at = ?, updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+  `).bind(terminalAt, code, terminalAt, terminalAt, organizationId, projectId, runId);
+  const runUpdate = db.prepare(`
+    UPDATE runs SET status = 'ERROR', updated_at = ?
+    WHERE organization_id = ? AND project_id = ? AND run_id = ?
+      AND status IN ('CREATED', 'QUEUED', 'RUNNING')
+  `).bind(terminalAt, organizationId, projectId, runId);
+  const results = typeof db.batch === 'function'
+    ? await db.batch([attemptUpdate, claimRelease, dispatchUpdate, runUpdate])
+    : [await attemptUpdate.run(), await claimRelease.run(), await dispatchUpdate.run(), await runUpdate.run()];
+  return {
+    updated: changes(results?.[3]) === 1,
+    attempt: await getLatestRunExecutionAttempt(env, organizationId, projectId, runId),
+    claim: await getRunExecutionClaim(env, organizationId, projectId, runId),
+  };
+}
 
 
 export async function markRunTestDataResolved(env, {

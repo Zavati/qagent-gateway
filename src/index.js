@@ -307,6 +307,7 @@ import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
 import { getConsoleMutationPolicies, putConsoleMutationPolicy } from './handlers/consoleMutationPolicies.js';
 import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
+import { handleRunDlqQueue } from './handlers/runDlqQueue.js';
 import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest, getConsoleProjectTestInventory, postConsoleMaterializeAutoReadySuite, getConsoleLatestAutoReadySuite } from './handlers/consoleAutomation.js';
 import {
   getInternalRunnerRunBundle,
@@ -2262,6 +2263,7 @@ Em caso de dúvidas, entre em contato pelo e-mail:
     }
   },
   async queue(batch, env, ctx) {
+    if (String(batch?.queue || '') === 'qagent-run-dlq') return handleRunDlqQueue(batch, env, ctx);
     return handleSuiteRunQueue(batch, env, ctx);
   },
 };

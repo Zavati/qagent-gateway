@@ -45,7 +45,7 @@ import {
 import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
 import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
 import { resolveProjectSecretValue } from '../services/secretVaultService.js';
-import { refreshSuiteRunByChildRunId } from '../repositories/suiteRunRepository.js';
+import { refreshSuiteRunByChildRunId, reconcileSuiteRunChildTerminal } from '../repositories/suiteRunRepository.js';
 import { normalizeMutationPreflightInput, normalizeMutationDispatchInput, normalizeMutationResponseInput, normalizeMutationCompleteInput, normalizeMutationUnknownInput, normalizeMutationFailedBeforeDispatchInput, MUTATION_METHODS } from '../lib/mutationContracts.js';
 import { preflightMutationExecution, markMutationDispatching, markMutationResponseReceived, markMutationCompleted, markMutationUnknown, markMutationFailedBeforeDispatch } from '../services/mutationExecutionJournalService.js';
 
@@ -520,7 +520,7 @@ export async function postInternalRunnerReceived(
 
     bundle = await getBundle(env, normalizedRunId);
     assertBundle(bundle, normalizedRunId);
-    try { await refreshSuiteRun(env, normalizedRunId); } catch {}
+    try { await reconcileSuiteRunChildTerminal(env, normalizedRunId, input.errorCode); } catch { try { await refreshSuiteRun(env, normalizedRunId); } catch {} }
     return {
       status: 'ok',
       data: {
@@ -549,7 +549,7 @@ export async function postInternalRunnerReceived(
     normalizedRunId,
   );
   assertBundle(bundle, normalizedRunId);
-  try { await refreshSuiteRun(env, normalizedRunId); } catch {}
+  try { await reconcileSuiteRunChildTerminal(env, normalizedRunId, input.errorCode); } catch { try { await refreshSuiteRun(env, normalizedRunId); } catch {} }
 
   return {
     status: 'ok',
@@ -1152,7 +1152,7 @@ export async function postInternalRunnerRejected(
   if (!result.updated) {
     internalError('Lease não está ativa para registrar rejection.', 'RUNNER_CONTROL_LEASE_NOT_ACTIVE', 409);
   }
-  try { await refreshSuiteRun(env, normalizedRunId); } catch {}
+  try { await reconcileSuiteRunChildTerminal(env, normalizedRunId, input.errorCode); } catch { try { await refreshSuiteRun(env, normalizedRunId); } catch {} }
   return {
     status: 'ok',
     data: {

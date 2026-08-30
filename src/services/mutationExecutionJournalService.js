@@ -3,7 +3,7 @@ import { sha256Hex } from '../lib/runContracts.js';
 import { getProjectEnvironment } from './environmentService.js';
 import { resolveSingleMutationPolicy } from './mutationExecutionPolicyService.js';
 import { getMutationPolicyVersion } from '../repositories/mutationExecutionPolicyRepository.js';
-import { getMutationJournal,prepareMutationJournal,recordMutationDispatching,transitionMutationJournal } from '../repositories/mutationExecutionJournalRepository.js';
+import { getMutationJournal,listMutationJournalsByRun,prepareMutationJournal,recordMutationDispatching,transitionMutationJournal } from '../repositories/mutationExecutionJournalRepository.js';
 
 async function suiteContextForRun(env,runId){const db=requireDataDb(env);return await db.prepare(`SELECT sr.suite_run_id AS suiteRunId,sr.confirm_production_mutation AS confirmProductionMutation,u.execution_kind AS executionKind,u.decision,u.policy_version_id AS policyVersionId,u.retry_mode AS retryMode FROM suite_run_children c JOIN suite_runs sr ON sr.suite_run_id=c.suite_run_id LEFT JOIN suite_run_execution_units u ON u.suite_run_id=c.suite_run_id AND u.ordinal=c.ordinal WHERE c.run_id=? LIMIT 1`).bind(runId).first();}
 async function deterministicIdempotencyKey(mutationExecutionId){return `qagent-${(await sha256Hex(mutationExecutionId)).slice(0,48)}`;}
@@ -49,3 +49,13 @@ export async function markMutationResponseReceived({env,runId,scenarioId,mutatio
 export async function markMutationCompleted({env,runId,scenarioId,mutationExecutionId,attemptId,assertionOutcome}){return transitionMutationJournal(env,{runId,scenarioId,mutationExecutionId,attemptId,toState:'COMPLETED',eventCode:'COMPLETED',assertionOutcome});}
 export async function markMutationUnknown({env,runId,scenarioId,mutationExecutionId,attemptId,lastErrorCode}){return transitionMutationJournal(env,{runId,scenarioId,mutationExecutionId,attemptId,toState:'UNKNOWN_SIDE_EFFECT',eventCode:'UNKNOWN_SIDE_EFFECT',lastErrorCode,networkDispatchMayHaveOccurred:true});}
 export async function markMutationFailedBeforeDispatch({env,runId,scenarioId,mutationExecutionId,attemptId,lastErrorCode}){return transitionMutationJournal(env,{runId,scenarioId,mutationExecutionId,attemptId,toState:'FAILED_BEFORE_DISPATCH',eventCode:'FAILED_BEFORE_DISPATCH',lastErrorCode,networkDispatchMayHaveOccurred:false});}
+
+export async function reconcileMutationJournalsAfterDlq({env,runId,attemptId=null,errorCode='RUNNER_QUEUE_DLQ_EXHAUSTED'}){
+  const journals=await listMutationJournalsByRun(env,runId);const summary={count:journals.length,failedBeforeDispatch:0,unknownSideEffect:0,unchanged:0};
+  for(const journal of journals){
+    if(journal.state==='PREPARED'){await transitionMutationJournal(env,{runId,scenarioId:journal.scenarioId,mutationExecutionId:journal.mutationExecutionId,attemptId:attemptId||journal.latestAttemptId,toState:'FAILED_BEFORE_DISPATCH',eventCode:'DLQ_TERMINAL_BEFORE_DISPATCH',lastErrorCode:errorCode,networkDispatchMayHaveOccurred:false});summary.failedBeforeDispatch++;continue;}
+    if(journal.state==='DISPATCHING'){await transitionMutationJournal(env,{runId,scenarioId:journal.scenarioId,mutationExecutionId:journal.mutationExecutionId,attemptId:attemptId||journal.latestAttemptId,toState:'UNKNOWN_SIDE_EFFECT',eventCode:'DLQ_TERMINAL_AFTER_DISPATCH',lastErrorCode:'MUTATION_SIDE_EFFECT_UNKNOWN',networkDispatchMayHaveOccurred:true});summary.unknownSideEffect++;continue;}
+    summary.unchanged++;
+  }
+  return summary;
+}

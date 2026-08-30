@@ -12,6 +12,7 @@ export const RUNNER_HEARTBEAT_CONTRACT_VERSION = 'qagent.runner-heartbeat.v1';
 export const RUNNER_RETRY_CONTRACT_VERSION = 'qagent.runner-retry.v1';
 export const RUNNER_RUNTIME_READY_CONTRACT_VERSION = 'qagent.runner-runtime-ready.v1';
 export const RUNNER_REJECTED_CONTRACT_VERSION = 'qagent.runner-rejected.v1';
+export const RUNNER_REJECTION_PHASES = Object.freeze(['INTAKE','RUNTIME','TEST_DATA','AUTH','HTTP','ASSERTION','RESULTS','MUTATION_PREFLIGHT','MUTATION_CONTROL','MUTATION_HTTP']);
 export const RUNNER_HTTP_EXECUTED_CONTRACT_VERSION = 'qagent.runner-http-executed.v1';
 export const RUNNER_ASSERTIONS_EVALUATED_CONTRACT_VERSION = 'qagent.runner-assertions-evaluated.v1';
 export const RUNNER_AUTH_MATERIAL_REQUEST_CONTRACT_VERSION = 'qagent.runner-auth-material-request.v1';
@@ -745,7 +746,7 @@ export function normalizeRunnerRejectedInput(input) {
     fail('errorCode inválido.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'errorCode' });
   }
   const phase = String(input.phase || 'RUNTIME').trim().toUpperCase();
-  if (!['INTAKE', 'RUNTIME', 'AUTH', 'HTTP', 'ASSERTION'].includes(phase)) {
+  if (!RUNNER_REJECTION_PHASES.includes(phase)) {
     fail('phase inválida.', 'RUNNER_REJECTED_CONTRACT_INVALID', 400, { field: 'phase' });
   }
   return {
