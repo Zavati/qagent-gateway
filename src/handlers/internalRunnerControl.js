@@ -46,8 +46,8 @@ import { verifyRunnerControlRequest } from '../security/runnerControlAuth.js';
 import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
 import { resolveProjectSecretValue } from '../services/secretVaultService.js';
 import { refreshSuiteRunByChildRunId } from '../repositories/suiteRunRepository.js';
-import { normalizeMutationPreflightInput, MUTATION_METHODS } from '../lib/mutationContracts.js';
-import { preflightMutationExecution } from '../services/mutationExecutionJournalService.js';
+import { normalizeMutationPreflightInput, normalizeMutationDispatchInput, normalizeMutationResponseInput, normalizeMutationCompleteInput, normalizeMutationUnknownInput, normalizeMutationFailedBeforeDispatchInput, MUTATION_METHODS } from '../lib/mutationContracts.js';
+import { preflightMutationExecution, markMutationDispatching, markMutationResponseReceived, markMutationCompleted, markMutationUnknown, markMutationFailedBeforeDispatch } from '../services/mutationExecutionJournalService.js';
 
 function internalError(message, code, status = 409, publicDetails = null) {
   const error = new Error(message);
@@ -658,6 +658,21 @@ export async function postInternalRunnerMutationPreflight(
   const data = await preflight({ env, bundle, input });
   return { status: 'ok', data };
 }
+
+
+async function assertMutationControlBoundary(req, env, runId, scenarioId, normalizeInput, { verifyRequest=verifyRunnerControlRequest,getBundle=getRunBundleByRunId,getClaim=getRunExecutionClaim,now=()=>new Date().toISOString() }={}) {
+  const normalizedRunId=normalizeRunId(runId);const {rawBody,body}=await readRawJson(req,12_288);await verifyRequest(req,env,{rawBody});const input=normalizeInput(body);const bundle=await getBundle(env,normalizedRunId);assertBundle(bundle,normalizedRunId);
+  if(!Array.isArray(bundle.run.scenarioIds)||bundle.run.scenarioIds.length!==1||bundle.run.scenarioIds[0]!==scenarioId)internalError('Mutation control exige o cenário isolado do Run.','RUNNER_MUTATION_REQUIRES_SINGLE_SCENARIO',409);
+  const scenario=(bundle.executionPlan?.plan?.scenarios||[]).find((x)=>x?.scenarioId===scenarioId);const method=String(scenario?.spec?.target?.method||'').toUpperCase();if(!MUTATION_METHODS.includes(method))internalError('Mutation control não corresponde a método mutável.','RUNNER_MUTATION_PLAN_MISMATCH',409);
+  const attempt=bundle.latestAttempt;if(!attempt||attempt.attemptId!==input.attemptId||attempt.runtimeReadinessStatus!=='READY'||attempt.runtimePlanHash!==input.runtimePlanHash)internalError('Mutation control exige attempt/runtime READY atual.','RUNNER_MUTATION_RUNTIME_STATE_INVALID',409);
+  const claim=await getClaim(env,bundle.run.organizationId,bundle.run.projectId,normalizedRunId);const nowIso=now();const leaseHash=await sha256Hex(input.leaseToken);if(!claim||claim.state!=='ACTIVE'||claim.currentAttemptId!==input.attemptId||claim.leaseTokenHash!==leaseHash||!claim.leaseExpiresAt||claim.leaseExpiresAt<=nowIso)internalError('Lease não está ativa para Mutation control.','RUNNER_CONTROL_LEASE_NOT_ACTIVE',409);
+  return {normalizedRunId,input,bundle,method};
+}
+export async function postInternalRunnerMutationDispatching(req,env,{runId,scenarioId},deps={}){const c=await assertMutationControlBoundary(req,env,runId,scenarioId,normalizeMutationDispatchInput,deps);const journal=await (deps.markDispatching||markMutationDispatching)({env,runId:c.normalizedRunId,scenarioId,mutationExecutionId:c.input.mutationExecutionId,attemptId:c.input.attemptId,dispatchFingerprint:c.input.dispatchFingerprint,idempotencyKeyHash:c.input.idempotencyKeyHash});return {status:'ok',data:{contractVersion:'qagent.runner-mutation-state.v1',mutationExecutionId:journal.mutationExecutionId,state:journal.state,retryMode:journal.retryMode}};}
+export async function postInternalRunnerMutationResponseReceived(req,env,{runId,scenarioId},deps={}){const c=await assertMutationControlBoundary(req,env,runId,scenarioId,normalizeMutationResponseInput,deps);const journal=await (deps.markResponse||markMutationResponseReceived)({env,runId:c.normalizedRunId,scenarioId,mutationExecutionId:c.input.mutationExecutionId,attemptId:c.input.attemptId,httpStatusCode:c.input.httpStatusCode});return {status:'ok',data:{contractVersion:'qagent.runner-mutation-state.v1',mutationExecutionId:journal.mutationExecutionId,state:journal.state,httpStatusCode:journal.httpStatusCode}};}
+export async function postInternalRunnerMutationCompleted(req,env,{runId,scenarioId},deps={}){const c=await assertMutationControlBoundary(req,env,runId,scenarioId,normalizeMutationCompleteInput,deps);const journal=await (deps.markComplete||markMutationCompleted)({env,runId:c.normalizedRunId,scenarioId,mutationExecutionId:c.input.mutationExecutionId,attemptId:c.input.attemptId,assertionOutcome:c.input.assertionOutcome});return {status:'ok',data:{contractVersion:'qagent.runner-mutation-state.v1',mutationExecutionId:journal.mutationExecutionId,state:journal.state,assertionOutcome:journal.assertionOutcome}};}
+export async function postInternalRunnerMutationUnknown(req,env,{runId,scenarioId},deps={}){const c=await assertMutationControlBoundary(req,env,runId,scenarioId,normalizeMutationUnknownInput,deps);const journal=await (deps.markUnknown||markMutationUnknown)({env,runId:c.normalizedRunId,scenarioId,mutationExecutionId:c.input.mutationExecutionId,attemptId:c.input.attemptId,lastErrorCode:c.input.errorCode});return {status:'ok',data:{contractVersion:'qagent.runner-mutation-state.v1',mutationExecutionId:journal.mutationExecutionId,state:journal.state}};}
+export async function postInternalRunnerMutationFailedBeforeDispatch(req,env,{runId,scenarioId},deps={}){const c=await assertMutationControlBoundary(req,env,runId,scenarioId,normalizeMutationFailedBeforeDispatchInput,deps);const journal=await (deps.markFailed||markMutationFailedBeforeDispatch)({env,runId:c.normalizedRunId,scenarioId,mutationExecutionId:c.input.mutationExecutionId,attemptId:c.input.attemptId,lastErrorCode:c.input.errorCode});return {status:'ok',data:{contractVersion:'qagent.runner-mutation-state.v1',mutationExecutionId:journal.mutationExecutionId,state:journal.state}};}
 
 function assertAuthMaterialLease(bundle, claim, input, nowIso) {
   const attempt = bundle?.latestAttempt;

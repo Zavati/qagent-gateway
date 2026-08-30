@@ -69,6 +69,17 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[5] === 'mutations' && segs.length === 8 && segs[7] === 'preflight' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerMutationPreflightPost', params: { runId, scenarioId: decodeURIComponent(segs[6]) } };
       }
+      if (segs[5] === 'mutations' && segs.length === 8 && normalizedMethod === 'POST') {
+        const action = segs[7];
+        const names = {
+          dispatching: 'internalRunnerMutationDispatchingPost',
+          'response-received': 'internalRunnerMutationResponseReceivedPost',
+          completed: 'internalRunnerMutationCompletedPost',
+          unknown: 'internalRunnerMutationUnknownPost',
+          'failed-before-dispatch': 'internalRunnerMutationFailedBeforeDispatchPost',
+        };
+        if (names[action]) return { name: names[action], params: { runId, scenarioId: decodeURIComponent(segs[6]) } };
+      }
       if (segs[5] === 'test-data-material' && normalizedMethod === 'POST') {
         return { name: 'internalRunnerRunTestDataMaterialPost', params: { runId } };
       }

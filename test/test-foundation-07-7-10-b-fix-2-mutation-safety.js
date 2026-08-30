@@ -20,7 +20,7 @@ class D1DatabaseShim {
   async batch(stmts){this.db.exec('BEGIN');try{const out=[];for(const s of stmts)out.push(await s.run());this.db.exec('COMMIT');return out;}catch(e){this.db.exec('ROLLBACK');throw e;}}
 }
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON;');
-for(const f of ['0002_foundation_07_organization_project_environment.sql','0015_foundation_07_7_10_b_suite_run_orchestration.sql','0016_foundation_07_7_10_b_fix_2_mutation_safety.sql']) sqlite.exec(fs.readFileSync(new URL(`../migrations/${f}`,import.meta.url),'utf8'));
+for(const f of ['0002_foundation_07_organization_project_environment.sql','0015_foundation_07_7_10_b_suite_run_orchestration.sql','0016_foundation_07_7_10_b_fix_2_mutation_safety.sql','0017_foundation_07_7_10_b_fix_3_controlled_mutation_http.sql']) sqlite.exec(fs.readFileSync(new URL(`../migrations/${f}`,import.meta.url),'utf8'));
 const now='2026-08-29T20:00:00.000Z';
 sqlite.prepare(`INSERT INTO organizations(organization_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?)`).run('org_fix2','Org','active',now,now);
 sqlite.prepare(`INSERT INTO projects(project_id,organization_id,name,slug,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`).run('prj_fix2','org_fix2','Project','project','active',now,now);

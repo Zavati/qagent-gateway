@@ -3,6 +3,11 @@ import { canonicalizeJson, sha256Hex } from './runContracts.js';
 export const MUTATION_POLICY_CONTRACT_VERSION = 'qagent.mutation-policy.v1';
 export const MUTATION_PREFLIGHT_CONTRACT_VERSION = 'qagent.runner-mutation-preflight.v1';
 export const MUTATION_PREFLIGHT_RESULT_CONTRACT_VERSION = 'qagent.runner-mutation-preflight-result.v1';
+export const MUTATION_DISPATCH_CONTRACT_VERSION = 'qagent.runner-mutation-dispatch.v1';
+export const MUTATION_RESPONSE_CONTRACT_VERSION = 'qagent.runner-mutation-response.v1';
+export const MUTATION_COMPLETE_CONTRACT_VERSION = 'qagent.runner-mutation-complete.v1';
+export const MUTATION_UNKNOWN_CONTRACT_VERSION = 'qagent.runner-mutation-unknown.v1';
+export const MUTATION_FAILED_BEFORE_DISPATCH_CONTRACT_VERSION = 'qagent.runner-mutation-failed-before-dispatch.v1';
 export const MUTATION_ELIGIBILITY_POLICY_VERSION = 'qagent.suite-run-eligibility.v2';
 export const MUTATION_METHODS = Object.freeze(['POST','PUT','PATCH','DELETE']);
 export const SAFE_METHODS = Object.freeze(['GET','HEAD','OPTIONS']);
@@ -30,3 +35,37 @@ export function normalizeMutationPreflightInput(input){
   return {contractVersion:MUTATION_PREFLIGHT_CONTRACT_VERSION,scenarioId,attemptId,leaseToken,runtimePlanHash,method:normalizeMutationMethod(input.method),canonicalPath:text(input.canonicalPath,2000),requestFingerprint:requestFingerprint.toLowerCase()};
 }
 export async function mutationPolicyFingerprint(policies){return sha256Hex(canonicalizeJson(policies.map((p)=>({endpointId:p.endpointId,method:p.method,policyVersionId:p.policyVersionId||null,decision:p.executionDecision,retryMode:p.retryMode||null})).sort((a,b)=>`${a.endpointId}|${a.method}`.localeCompare(`${b.endpointId}|${b.method}`))));}
+
+function normalizeMutationControlBase(input, contractVersion, code='RUNNER_MUTATION_CONTROL_INVALID') {
+  if(!input||typeof input!=='object'||Array.isArray(input))fail('Mutation control inválido.',code);
+  if(input.contractVersion!==contractVersion)fail(`contractVersion deve ser '${contractVersion}'.`,code);
+  const attemptId=text(input.attemptId,220);const leaseToken=text(input.leaseToken,1024);const runtimePlanHash=text(input.runtimePlanHash,128);const mutationExecutionId=text(input.mutationExecutionId,220);
+  if(!attemptId||!leaseToken||!/^[0-9a-f]{64}$/i.test(runtimePlanHash)||!/^mex_[A-Za-z0-9_-]+$/.test(mutationExecutionId))fail('Campos obrigatórios de Mutation control inválidos.',code);
+  return {attemptId,leaseToken,runtimePlanHash:runtimePlanHash.toLowerCase(),mutationExecutionId};
+}
+export function normalizeMutationDispatchInput(input){
+  const base=normalizeMutationControlBase(input,MUTATION_DISPATCH_CONTRACT_VERSION,'RUNNER_MUTATION_DISPATCH_INVALID');
+  const dispatchFingerprint=text(input.dispatchFingerprint,128);if(!/^[0-9a-f]{64}$/i.test(dispatchFingerprint))fail('dispatchFingerprint inválido.','RUNNER_MUTATION_DISPATCH_INVALID');
+  let idempotencyKeyHash=input.idempotencyKeyHash==null?null:text(input.idempotencyKeyHash,128);if(idempotencyKeyHash!=null&&!/^[0-9a-f]{64}$/i.test(idempotencyKeyHash))fail('idempotencyKeyHash inválido.','RUNNER_MUTATION_DISPATCH_INVALID');
+  return {...base,dispatchFingerprint:dispatchFingerprint.toLowerCase(),idempotencyKeyHash:idempotencyKeyHash?.toLowerCase()||null};
+}
+export function normalizeMutationResponseInput(input){
+  const base=normalizeMutationControlBase(input,MUTATION_RESPONSE_CONTRACT_VERSION,'RUNNER_MUTATION_RESPONSE_INVALID');
+  const statusCode=Number(input.httpStatusCode);if(!Number.isInteger(statusCode)||statusCode<100||statusCode>599)fail('httpStatusCode inválido.','RUNNER_MUTATION_RESPONSE_INVALID');
+  return {...base,httpStatusCode:statusCode};
+}
+export function normalizeMutationCompleteInput(input){
+  const base=normalizeMutationControlBase(input,MUTATION_COMPLETE_CONTRACT_VERSION,'RUNNER_MUTATION_COMPLETE_INVALID');
+  const assertionOutcome=text(input.assertionOutcome||'NOT_EVALUATED',40).toUpperCase();if(!['PASSED','FAILED','NOT_EVALUATED'].includes(assertionOutcome))fail('assertionOutcome inválido.','RUNNER_MUTATION_COMPLETE_INVALID');
+  return {...base,assertionOutcome};
+}
+export function normalizeMutationUnknownInput(input){
+  const base=normalizeMutationControlBase(input,MUTATION_UNKNOWN_CONTRACT_VERSION,'RUNNER_MUTATION_UNKNOWN_INVALID');
+  const errorCode=text(input.errorCode||'MUTATION_SIDE_EFFECT_UNKNOWN',120).toUpperCase();if(!/^[A-Z][A-Z0-9_:-]{1,119}$/.test(errorCode))fail('errorCode inválido.','RUNNER_MUTATION_UNKNOWN_INVALID');
+  return {...base,errorCode};
+}
+export function normalizeMutationFailedBeforeDispatchInput(input){
+  const base=normalizeMutationControlBase(input,MUTATION_FAILED_BEFORE_DISPATCH_CONTRACT_VERSION,'RUNNER_MUTATION_FAILED_BEFORE_DISPATCH_INVALID');
+  const errorCode=text(input.errorCode||'MUTATION_FAILED_BEFORE_DISPATCH',120).toUpperCase();if(!/^[A-Z][A-Z0-9_:-]{1,119}$/.test(errorCode))fail('errorCode inválido.','RUNNER_MUTATION_FAILED_BEFORE_DISPATCH_INVALID');
+  return {...base,errorCode};
+}

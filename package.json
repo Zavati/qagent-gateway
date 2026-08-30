@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -87,7 +87,9 @@
     "test:f07-7-10-b-fix-1": "node test/test-foundation-07-7-10-b-fix-1-suite-run-sqlite-insert.js",
     "check:07.7.10-b-fix-1": "npm run check:07.7.10-b && npm run test:f07-7-10-b-fix-1 && npm run test:router",
     "test:f07-7-10-b-fix-2": "node test/test-foundation-07-7-10-b-fix-2-mutation-safety.js",
-    "check:07.7.10-b-fix-2": "npm run check:07.7.10-b-fix-1 && npm run test:f07-7-10-b-fix-2 && npm run test:router"
+    "check:07.7.10-b-fix-2": "npm run check:07.7.10-b-fix-1 && npm run test:f07-7-10-b-fix-2 && npm run test:router",
+    "test:f07-7-10-b-fix-3": "node test/test-foundation-07-7-10-b-fix-3-controlled-mutations.js",
+    "check:07.7.10-b-fix-3": "npm run check:07.7.10-b-fix-2 && npm run test:f07-7-10-b-fix-3 && npm run test:router"
   },
   "keywords": [],
   "author": "",
