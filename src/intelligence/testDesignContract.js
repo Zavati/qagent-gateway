@@ -736,7 +736,7 @@ function validateTestDataBindingsV1(testData, path) {
     assertKnownKeys(binding, new Set(['target', 'selector', 'source', 'valueType', 'bindingKey', 'generator']), bPath);
     assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${bPath}.target`);
     assertString(binding.selector, `${bPath}.selector`, { max: 320 });
-    assertEnum(binding.source, ['GENERATED', 'FIXED', 'SECRET'], `${bPath}.source`);
+    assertEnum(binding.source, ['GENERATED', 'FIXED', 'SECRET', 'OBSERVED'], `${bPath}.source`);
     if (isSensitiveTestDataSelector(binding.target, binding.selector) && binding.source !== 'SECRET') fail('Campo sensível de Test Data deve usar SECRET.', `${bPath}.source`, 'TEST_DATA_SECRET_SOURCE_REQUIRED');
     assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${bPath}.valueType`);
     if (binding.source === 'SECRET' && binding.valueType !== 'STRING') fail('SECRET Test Data v1 suporta somente STRING.', `${bPath}.valueType`, 'TEST_DATA_SECRET_VALUE_TYPE_INVALID');
@@ -748,7 +748,7 @@ function validateTestDataBindingsV1(testData, path) {
       if (binding.bindingKey != null) fail('GENERATED não usa bindingKey.', `${bPath}.bindingKey`, 'TEST_DATA_CONTRACT_INVALID');
     } else {
       assertString(binding.bindingKey, `${bPath}.bindingKey`, { max: 400 });
-      if (binding.generator != null) fail('FIXED/SECRET não usam generator.', `${bPath}.generator`, 'TEST_DATA_CONTRACT_INVALID');
+      if (binding.generator != null) fail('FIXED/SECRET/OBSERVED não usam generator.', `${bPath}.generator`, 'TEST_DATA_CONTRACT_INVALID');
     }
   });
 }

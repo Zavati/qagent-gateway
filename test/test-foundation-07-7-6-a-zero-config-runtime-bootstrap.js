@@ -82,7 +82,7 @@ const built = await buildCatalogTestDesignContextV1({
   controlPlaneLoader: async () => controlPlane,
 });
 
-assert.equal(built.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.7');
+assert.equal(built.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.8');
 assert.equal(built.diagnostics.runtimeMapping.status, 'DISCOVERED');
 assert.equal(built.diagnostics.runtimeMapping.resolutionSource, 'DISCOVERED_OBSERVATION');
 assert.equal(built.diagnostics.runtimeMapping.resolutionConfidence, 'HIGH');

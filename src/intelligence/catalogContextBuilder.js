@@ -6,6 +6,8 @@ import {
   getCatalogEndpointForTestDesign,
   getCatalogSchemasForTestDesign,
   getCatalogEvidenceForTestDesign,
+  getCatalogObservedTestDataForTestDesign,
+  getCatalogObservedRequestSamplesForTestDesign,
 } from './catalogKnowledgeClient.js';
 import { listProjectEnvironments } from '../services/environmentService.js';
 import { listProjectApiServices } from '../services/apiServiceService.js';
@@ -15,14 +17,17 @@ import { listProjectEnvironmentAuthProfileBindings } from '../services/authProfi
 import { listProjectEndpointTestDataBindings } from '../services/testDataBindingService.js';
 import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 import { sanitizeTestDataGeneratorConfig } from '../lib/testDataPolicy.js';
+import { buildObservedTestDataPlanningContext } from './observedTestDataPlanningContext.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.7';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.8';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
   schemaVersionsPerTrack: 8,
   schemaTrackLimit: 24,
   schemaVersionMetadataLimit: 8,
+  observedValueLimit: 100,
+  observedSampleLimit: 50,
 });
 
 function nullableString(value) {
@@ -579,19 +584,54 @@ function canonicalize(value) {
   return JSON.stringify(value);
 }
 
+function observedPlanningFingerprintView(observedTestData) {
+  return {
+    values: (observedTestData?.values || []).map((item) => ({
+      environmentId: item.environmentId,
+      target: item.target,
+      selector: item.selector,
+      valueType: item.valueType,
+      successAvailable: Number(item.successCount || 0) > 0,
+    })).sort((a, b) => `${a.environmentId}|${a.selector}|${a.valueType}`.localeCompare(`${b.environmentId}|${b.selector}|${b.valueType}`)),
+    samples: (observedTestData?.samples || []).map((item) => ({
+      environmentId: item.environmentId,
+      encoding: item.encoding,
+      successAvailable: Number(item.successCount || 0) > 0,
+      selectors: (item.selectors || []).map((value) => ({ selector: value.selector, valueType: value.valueType })),
+    })).sort((a, b) => `${a.environmentId}|${a.encoding}|${JSON.stringify(a.selectors)}`.localeCompare(`${b.environmentId}|${b.encoding}|${JSON.stringify(b.selectors)}`)),
+  };
+}
+
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+async function optionalObservedCatalogLoad(loader) {
+  try {
+    return { status: 'AVAILABLE', data: await loader() };
+  } catch {
+    return { status: 'UNAVAILABLE', data: [] };
+  }
+}
+
 async function defaultCatalogLoader({ env, organizationId, projectId, endpointId, limits }) {
   const base = { env, organizationId, projectId, endpointId };
-  const [endpointDetail, schemas, evidence] = await Promise.all([
+  const [endpointDetail, schemas, evidence, observedValues, observedSamples] = await Promise.all([
     getCatalogEndpointForTestDesign(base),
     getCatalogSchemasForTestDesign({ ...base, versionsPerTrack: limits.schemaVersionsPerTrack }),
     getCatalogEvidenceForTestDesign({ ...base, limit: limits.evidenceFetchLimit }),
+    optionalObservedCatalogLoad(() => getCatalogObservedTestDataForTestDesign({ ...base, limit: limits.observedValueLimit })),
+    optionalObservedCatalogLoad(() => getCatalogObservedRequestSamplesForTestDesign({ ...base, limit: limits.observedSampleLimit })),
   ]);
-  return { endpointDetail, schemas, evidence };
+  return {
+    endpointDetail,
+    schemas,
+    evidence,
+    observedValues: observedValues.data,
+    observedSamples: observedSamples.data,
+    observedTestDataLoadStatus: observedValues.status === 'AVAILABLE' && observedSamples.status === 'AVAILABLE' ? 'AVAILABLE' : 'PARTIAL',
+  };
 }
 
 async function defaultControlPlaneLoader({ env, organizationId, projectId, endpointId }) {
@@ -708,8 +748,14 @@ export async function buildCatalogTestDesignContextV1({
     },
   };
 
+  const observedTestData = buildObservedTestDataPlanningContext({
+    values: catalog?.observedValues || [],
+    samples: catalog?.observedSamples || [],
+    environmentIds: context.environments.map((item) => item.environmentId),
+  });
+
   validateCatalogTestDesignContextV1(context);
-  const contextFingerprint = await sha256Hex(canonicalize(context));
+  const contextFingerprint = await sha256Hex(canonicalize({ context, observedTestData: observedPlanningFingerprintView(observedTestData) }));
   const diagnostics = {
     builderVersion: CATALOG_CONTEXT_BUILDER_VERSION,
     runtimeMapping: {
@@ -754,6 +800,11 @@ export async function buildCatalogTestDesignContextV1({
       generatedBindingCount: (controlPlane?.testDataBindings || []).filter((item) => item?.sourceType === 'GENERATED').length,
       fixedBindingCount: (controlPlane?.testDataBindings || []).filter((item) => item?.sourceType === 'FIXED').length,
       secretBindingCount: (controlPlane?.testDataBindings || []).filter((item) => item?.sourceType === 'SECRET').length,
+      observedReservoirStatus: catalog?.observedTestDataLoadStatus || 'UNAVAILABLE',
+      observedValueMetadataCount: observedTestData.values.length,
+      observedSampleMetadataCount: observedTestData.samples.length,
+      observedSuccessValueMetadataCount: observedTestData.values.filter((item) => item.successCount > 0).length,
+      observedSuccessSampleMetadataCount: observedTestData.samples.filter((item) => item.successCount > 0).length,
     },
     schemas: {
       tracksFetched: schemaTracks.length,
@@ -768,5 +819,5 @@ export async function buildCatalogTestDesignContextV1({
     limits: resolvedLimits,
   };
 
-  return { context, contextFingerprint, diagnostics };
+  return { context, contextFingerprint, diagnostics, observedTestData };
 }

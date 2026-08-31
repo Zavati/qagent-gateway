@@ -65,3 +65,21 @@ export async function getCatalogEvidenceForTestDesign(input) {
   });
   return Array.isArray(data) ? data : [];
 }
+
+export async function getCatalogObservedTestDataForTestDesign(input) {
+  const data = await queryCatalogData({
+    ...input,
+    upstreamPath: `/v1/catalog/endpoints/${encodeURIComponent(input.endpointId)}/observed-test-data`,
+    query: { limit: input.limit },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getCatalogObservedRequestSamplesForTestDesign(input) {
+  const data = await queryCatalogData({
+    ...input,
+    upstreamPath: `/v1/catalog/endpoints/${encodeURIComponent(input.endpointId)}/observed-test-data/samples`,
+    query: { limit: input.limit },
+  });
+  return Array.isArray(data) ? data : [];
+}

@@ -143,7 +143,7 @@ export async function generateCatalogTestDesignV1({
   const startedAtMs = Date.now();
   const log = logger(env);
   const contextResult = await contextBuilder({ env, organizationId, projectId, endpointId });
-  const { context, contextFingerprint, diagnostics: contextDiagnostics } = contextResult;
+  const { context, contextFingerprint, diagnostics: contextDiagnostics, observedTestData = null } = contextResult;
 
   const fallbackModel = getTestDesignModel(env);
   const aiConfig = await resolveAiConfig(env, {
@@ -388,7 +388,12 @@ export async function generateCatalogTestDesignV1({
     });
   }
 
-  const testDataPlanner = applyTestDataPlannerV1(modelOutput, context, { secretSafeDiagnostics: secretSafeSanitizer, semanticDiagnostics: semanticGuard.diagnostics });
+  const testDataPlanner = applyTestDataPlannerV1(modelOutput, context, {
+    secretSafeDiagnostics: secretSafeSanitizer,
+    semanticDiagnostics: semanticGuard.diagnostics,
+    observedTestData,
+    observedRuntimeEnabled: false,
+  });
   modelOutput = testDataPlanner.output;
   validateTestDesignModelOutputV1(modelOutput, context);
   if (testDataPlanner.diagnostics.bindingCount > 0 || testDataPlanner.diagnostics.unresolvedCount > 0) {
@@ -400,6 +405,8 @@ export async function generateCatalogTestDesignV1({
       generatedCount: testDataPlanner.diagnostics.generatedCount,
       fixedCount: testDataPlanner.diagnostics.fixedCount,
       secretCount: testDataPlanner.diagnostics.secretCount,
+      observedCount: testDataPlanner.diagnostics.observedCount,
+      observedRuntimePendingCount: testDataPlanner.diagnostics.observedRuntimePendingCount,
       unresolvedCount: testDataPlanner.diagnostics.unresolvedCount,
       byGeneratorKind: testDataPlanner.diagnostics.byGeneratorKind,
     });
