@@ -135,29 +135,99 @@ function aggregateAuthObservation(items) {
 }
 
 function profileCompatibleWithObservedAuth(profile, scheme) {
-  if (!profile || profile.enabled === false || profile.status === 'archived' || profile.type === 'none') return false;
-  const normalizedScheme = normalizeObservedAuthScheme(scheme) || 'UNKNOWN';
-  const config = profile.config && typeof profile.config === 'object' ? profile.config : {};
-
-  if (normalizedScheme === 'UNKNOWN') return true;
-  if (normalizedScheme === 'BASIC') return profile.type === 'basic';
-  if (normalizedScheme === 'API_KEY') return profile.type === 'api_key';
-  if (normalizedScheme === 'COOKIE') return false;
-  if (normalizedScheme === 'BEARER') {
-    if (profile.type === 'api_key') {
-      return String(config.placement || '').toLowerCase() === 'header'
-        && String(config.name || '').toLowerCase() === 'authorization';
-    }
-    if (profile.type === 'oauth2_client_credentials') {
-      return String(config.targetHeader || 'Authorization').toLowerCase() === 'authorization';
-    }
-    if (profile.type === 'login_http_json') {
-      const targetHeader = String(config.targetHeader || 'Authorization').toLowerCase();
-      const configuredScheme = String(config.scheme ?? 'Bearer').trim().toUpperCase();
-      return targetHeader === 'authorization' && (!configuredScheme || configuredScheme === 'BEARER');
-    }
+  if (
+    !profile
+    || profile.enabled === false
+    || profile.status === 'archived'
+    || profile.type === 'none'
+  ) {
     return false;
   }
+
+  const normalizedScheme = normalizeObservedAuthScheme(scheme) || 'UNKNOWN';
+  const config = profile.config && typeof profile.config === 'object'
+    ? profile.config
+    : {};
+
+  const loginResultMode = String(config.resultMode || '')
+    .trim()
+    .toLowerCase();
+
+  if (normalizedScheme === 'UNKNOWN') {
+    return true;
+  }
+
+  if (normalizedScheme === 'BASIC') {
+    return profile.type === 'basic';
+  }
+
+  if (normalizedScheme === 'API_KEY') {
+    return profile.type === 'api_key';
+  }
+
+  /**
+   * 07.7.8-A FIX-1 — Stateful Cookie Session
+   *
+   * Cookie observado no tráfego é compatível somente com
+   * login_http_json configurado explicitamente para produzir
+   * uma sessão baseada em cookie.
+   *
+   * O cookie observado nunca é reutilizado; ele serve apenas
+   * como sinal para resolução automática do Auth Profile.
+   */
+  if (normalizedScheme === 'COOKIE') {
+    return (
+      profile.type === 'login_http_json'
+      && loginResultMode === 'cookie_session'
+    );
+  }
+
+  if (normalizedScheme === 'BEARER') {
+    if (profile.type === 'api_key') {
+      return (
+        String(config.placement || '').toLowerCase() === 'header'
+        && String(config.name || '').toLowerCase() === 'authorization'
+      );
+    }
+
+    if (profile.type === 'oauth2_client_credentials') {
+      return (
+        String(config.targetHeader || 'Authorization').toLowerCase()
+        === 'authorization'
+      );
+    }
+
+    if (profile.type === 'login_http_json') {
+      /**
+       * Cookie Session não produz Bearer Token.
+       *
+       * Sem esta defesa, como targetHeader/scheme não existem no
+       * config de cookie_session, os fallbacks abaixo fariam esse
+       * perfil parecer erroneamente compatível com BEARER.
+       */
+      if (loginResultMode === 'cookie_session') {
+        return false;
+      }
+
+      const targetHeader = String(
+        config.targetHeader || 'Authorization',
+      ).toLowerCase();
+
+      const configuredScheme = String(
+        config.scheme ?? 'Bearer',
+      )
+        .trim()
+        .toUpperCase();
+
+      return (
+        targetHeader === 'authorization'
+        && (!configuredScheme || configuredScheme === 'BEARER')
+      );
+    }
+
+    return false;
+  }
+
   return false;
 }
 
