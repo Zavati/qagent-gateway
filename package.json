@@ -11,7 +11,7 @@
     "test:integration": "pwsh -File test/run-integration-tests.ps1",
     "test:generate": "node test/test-generateTests.js",
     "test:router": "node test/test-router.js",
-    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1 && npm run test:f07-6-2 && npm run test:f07-6-3 && npm run test:f07-6-3-c && npm run test:f07-6-5-c && npm run test:f07-6-5-d && npm run test:f07-7-2 && npm run test:f07-7-2-a && npm run test:f07-7-2-a-fix-2 && npm run test:f07-7-3 && npm run test:f07-7-4 && npm run test:f07-7-5 && npm run test:f07-7-6 && npm run test:f07-7-6-a && npm run test:f07-7-6-fix-1 && npm run test:f07-7-7 && npm run test:f07-7-8 && npm run test:f07-7-8-b && npm run test:f07-7-8-b-fix-1 && npm run test:f07-7-8-a && npm run test:f07-7-8-fix-1 && npm run test:f07-7-8-c && npm run test:f07-7-9-c && npm run test:f07-7-9-c-fix-1 && npm run test:f07-7-10-a && npm run test:f07-7-10-a-fix-1",
+    "test:all": "npm test && npm run test:generate && npm run test:router && npm run test:ai && npm run test:openai-provider && npm run test:gemini-provider && npm run test:ai-resilience && npm run test:autofill-ai && npm run test:credential-crypto && npm run test:ai-config && npm run test:ai-config-service && npm run test:ai-provider-catalog && npm run test:stripe-billing && npm run test:f07-data && npm run test:f07-env-config && npm run test:f07-auth && npm run test:plugin-session && npm run test:observation-grant && npm run test:signup-tenant && npm run test:f07-6-1 && npm run test:f07-6-2 && npm run test:f07-6-3 && npm run test:f07-6-3-c && npm run test:f07-6-5-c && npm run test:f07-6-5-d && npm run test:f07-7-2 && npm run test:f07-7-2-a && npm run test:f07-7-2-a-fix-2 && npm run test:f07-7-3 && npm run test:f07-7-4 && npm run test:f07-7-5 && npm run test:f07-7-6 && npm run test:f07-7-6-a && npm run test:f07-7-6-fix-1 && npm run test:f07-7-7 && npm run test:f07-7-8 && npm run test:f07-7-8-b && npm run test:f07-7-8-b-fix-1 && npm run test:f07-7-8-a && npm run test:f07-7-8-fix-1 && npm run test:f07-7-8-c && npm run test:f07-7-8-c2-c && npm run test:f07-7-8-c2-c-fix-1 && npm run test:f07-7-9-c && npm run test:f07-7-9-c-fix-1 && npm run test:f07-7-10-a && npm run test:f07-7-10-a-fix-1",
     "test:ai": "node test/test-ai-engine.js",
     "test:autofill-ai": "node test/test-autofill-ai-service.js",
     "test:openai-provider": "node test/test-openai-provider.js",
@@ -93,7 +93,9 @@
     "test:f07-7-10-b-fix-3-1": "node test/test-foundation-07-7-10-b-fix-3-1-terminal-recovery.js",
     "check:07.7.10-b-fix-3-1": "npm run check:07.7.10-b-fix-3 && npm run test:f07-7-10-b-fix-3-1 && npm run test:router",
     "test:f07-7-8-c2-c": "node test/test-foundation-07-7-8-c2-c-hybrid-test-data-planner.js",
-    "check:07.7.8-c2-c": "npm run check:07.7.8-c && npm run test:f07-7-8-c2-c && npm run test:f07-7-9-c-fix-1 && npm run test:router"
+    "check:07.7.8-c2-c": "npm run check:07.7.8-c && npm run test:f07-7-8-c2-c && npm run test:f07-7-9-c-fix-1 && npm run test:router",
+    "test:f07-7-8-c2-c-fix-1": "node test/test-foundation-07-7-8-c2-c-fix-1-intent-aware-observed-selection.js",
+    "check:07.7.8-c2-c-fix-1": "npm run check:07.7.8-c2-c && npm run test:f07-7-8-c2-c-fix-1 && npm run test:f07-7-9-c-fix-1 && npm run test:router"
   },
   "keywords": [],
   "author": "",

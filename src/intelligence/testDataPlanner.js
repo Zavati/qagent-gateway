@@ -1,6 +1,6 @@
 import { isSensitiveTestDataSelector, sanitizeTestDataGeneratorConfig, scopeRank } from '../lib/testDataPolicy.js';
 
-export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2';
+export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2.1';
 export const TEST_DATA_BINDINGS_CONTRACT_VERSION = 'qagent.test-data-bindings.v1';
 
 const GENERIC_BODY_NEEDS_DATA = 'O formato do body é modelado, mas seus valores precisam ser fornecidos por massa de teste controlada.';
@@ -97,6 +97,115 @@ function statusCodes(scenario) {
 function isSuccessOrientedScenario(scenario) {
   if (!POSITIVE_BASELINE_CATEGORIES.has(String(scenario?.category || '').toUpperCase())) return false;
   return statusCodes(scenario).some((code) => code >= 200 && code < 300);
+}
+
+const INTENT_REASON_PREFIX = 'QAgent Scenario Intent:';
+const MUTATION_MARKERS = [
+  /\binvalid(?:o|a|os|as)?\b/, /\binvalid\b/, /\binexistente(?:s)?\b/, /\bnao existe(?:m)?\b/,
+  /\bmalformad(?:o|a|os|as)\b/, /\bmalformed\b/, /\bfora do intervalo\b/, /\bout of range\b/,
+  /\bausente(?:s)?\b/, /\bmissing\b/, /\bomit(?:ted|ting)?\b/, /\bsem\b/,
+];
+const OMISSION_MARKERS = [/\bausente(?:s)?\b/, /\bmissing\b/, /\bomit(?:ted|ting)?\b/, /\bsem\b/];
+const GENERIC_INTENT_TOKENS = new Set(['id', 'type', 'tipo', 'number', 'numero']);
+const INTENT_TOKEN_ALIASES = {
+  leave: ['leave', 'licenca', 'licencas', 'ausencia', 'ausencias', 'ferias'],
+  type: ['type', 'tipo', 'tipos'],
+  emp: ['emp', 'employee', 'funcionario', 'funcionaria', 'funcionarios', 'empregado', 'colaborador'],
+  employee: ['employee', 'emp', 'funcionario', 'funcionaria', 'funcionarios', 'empregado', 'colaborador'],
+  number: ['number', 'numero', 'numeros'],
+  from: ['from', 'start', 'inicio', 'inicial'],
+  to: ['to', 'end', 'fim', 'final'],
+  date: ['date', 'dates', 'data', 'datas'],
+  duration: ['duration', 'duracao'],
+  comment: ['comment', 'comentario', 'comentarios'],
+  status: ['status', 'estado'],
+  role: ['role', 'papel', 'perfil'],
+  category: ['category', 'categoria'],
+  product: ['product', 'produto'],
+  customer: ['customer', 'cliente'],
+  user: ['user', 'usuario', 'usuaria'],
+  account: ['account', 'conta'],
+  order: ['order', 'pedido'],
+  location: ['location', 'local', 'localizacao'],
+  department: ['department', 'departamento'],
+  project: ['project', 'projeto'],
+};
+
+function normalizeIntentText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function identifierTokens(value) {
+  return normalizeIntentText(String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2')).split(' ').filter(Boolean);
+}
+
+function scenarioIntentText(scenario) {
+  return normalizeIntentText([scenario?.title, scenario?.objective].filter(Boolean).join(' '));
+}
+
+function hasMutationMarker(text) {
+  return MUTATION_MARKERS.some((pattern) => pattern.test(text));
+}
+
+function hasOmissionMarker(text) {
+  return OMISSION_MARKERS.some((pattern) => pattern.test(text));
+}
+
+function tokenMatchesIntent(token, textWords) {
+  const aliases = INTENT_TOKEN_ALIASES[token] || [token];
+  return aliases.some((alias) => textWords.has(normalizeIntentText(alias)));
+}
+
+function selectorIntentTokens(selector) {
+  const segments = String(selector || '').replace(/^\$\./, '').split('.').filter(Boolean);
+  const leafTokens = identifierTokens(segments.at(-1));
+  const leafNeedsParent = leafTokens.length > 0 && leafTokens.every((token) => token === 'id' || GENERIC_INTENT_TOKENS.has(token));
+  if (leafNeedsParent && segments.length > 1) return [...identifierTokens(segments.at(-2)), ...leafTokens];
+  return leafTokens;
+}
+
+function selectorIntentScore(selector, intentText) {
+  const compactIntent = intentText.replace(/\s+/g, '');
+  const tokens = selectorIntentTokens(selector);
+  const compactSelector = tokens.join('');
+  if (compactSelector.length >= 5 && compactIntent.includes(compactSelector)) return 100;
+
+  const words = new Set(intentText.split(' ').filter(Boolean));
+  const relevantTokens = tokens.filter((token) => token !== 'id');
+  let score = 0;
+  let semanticMatches = 0;
+  let matchedTokens = 0;
+  for (const token of relevantTokens) {
+    if (!tokenMatchesIntent(token, words)) continue;
+    matchedTokens += 1;
+    if (GENERIC_INTENT_TOKENS.has(token)) score += 4;
+    else { score += 20; semanticMatches += 1; }
+  }
+  if (semanticMatches === 0) return 0;
+  if (relevantTokens.length > 1 && matchedTokens < 2) return 0;
+  return score;
+}
+
+function inferBodyMutationIntentTargets(scenario, selectors) {
+  const intentText = scenarioIntentText(scenario);
+  if (!intentText || !hasMutationMarker(intentText)) return new Map();
+  const targets = new Map();
+  for (const selector of selectors) {
+    const score = selectorIntentScore(selector, intentText);
+    if (score < 20) continue;
+    const kind = hasOmissionMarker(intentText)
+      ? 'OMIT'
+      : looksReferential(selector) ? 'INVALID_REFERENCE' : 'INVALID_VALUE';
+    targets.set(selector, { kind, score });
+  }
+  return targets;
 }
 
 function observedEnvironmentIds(context) {
@@ -318,6 +427,12 @@ export function applyTestDataPlannerV1(modelOutput, context, {
     observedCount: 0,
     observedRuntimePendingCount: 0,
     observedCoverageIncompleteCount: 0,
+    intentAwareScenarioCount: 0,
+    intentTargetCount: 0,
+    intentBlockedAutoBindingCount: 0,
+    intentBlockedObservedCount: 0,
+    intentBlockedGeneratedCount: 0,
+    intentTargets: [],
     observedValueMetadataCount: Array.isArray(observedTestData?.values) ? observedTestData.values.length : 0,
     observedSampleMetadataCount: Array.isArray(observedTestData?.samples) ? observedTestData.samples.length : 0,
     baselineObservedSelectorCount: baselineSelectors.length,
@@ -371,6 +486,15 @@ export function applyTestDataPlannerV1(modelOutput, context, {
       }
     }
 
+    const mutationIntentTargets = inferBodyMutationIntentTargets(scenario, [...candidates.keys()]);
+    if (mutationIntentTargets.size) {
+      diagnostics.intentAwareScenarioCount += 1;
+      diagnostics.intentTargetCount += mutationIntentTargets.size;
+      for (const [selector, intent] of mutationIntentTargets) {
+        if (diagnostics.intentTargets.length < 80) diagnostics.intentTargets.push(`${scenario.scenarioId}:BODY:${selector}:${intent.kind}`);
+      }
+    }
+
     for (const [selector, candidate] of candidates) {
       const sampleValue = candidate.value;
       const node = candidate.node;
@@ -383,6 +507,18 @@ export function applyTestDataPlannerV1(modelOutput, context, {
       }
       const classified = classifySource('BODY', selector, node, sampleValue, explicit, sensitiveBodySelectors.includes(selector), observed);
       const source = classified.source;
+      const mutationIntent = mutationIntentTargets.get(selector);
+      if (mutationIntent && !explicit && (source === 'OBSERVED' || source === 'GENERATED')) {
+        diagnostics.intentBlockedAutoBindingCount += 1;
+        if (source === 'OBSERVED') diagnostics.intentBlockedObservedCount += 1;
+        if (source === 'GENERATED') diagnostics.intentBlockedGeneratedCount += 1;
+        unresolved.push({
+          target: 'BODY', selector, source: 'MUTATION', code: 'TEST_DATA_MUTATION_INTENT_REQUIRES_EXPLICIT_STRATEGY',
+          mutationKind: mutationIntent.kind, blockedSource: source,
+        });
+        deleteBodySelector(body, selector);
+        continue;
+      }
       if (classified.securityMismatch) {
         unresolved.push({ target: 'BODY', selector, source: 'SECRET', code: 'TEST_DATA_SECRET_SOURCE_REQUIRED' });
         deleteBodySelector(body, selector);
@@ -476,6 +612,9 @@ export function applyTestDataPlannerV1(modelOutput, context, {
       diagnostics.unresolvedPaths.push(`${scenario.scenarioId}:${item.target}:${item.selector}:${item.source}`);
       if (item.code === 'TEST_DATA_OBSERVED_COVERAGE_INCOMPLETE') {
         addReason(scenario, `QAgent Observed Test Data: ${item.target} ${item.selector} não possui massa 2xx segura em todos os Environments observados; capture massa nesse Environment ou configure FIXED.`);
+      } else if (item.code === 'TEST_DATA_MUTATION_INTENT_REQUIRES_EXPLICIT_STRATEGY') {
+        scenario.automationHints.reviewRequired = true;
+        addReason(scenario, `${INTENT_REASON_PREFIX} ${item.target} ${item.selector} é o alvo provável de ${item.mutationKind}; o Planner não reutilizou massa 2xx nem gerou um valor válido automaticamente. Configure uma massa/mutação explícita ou revise o cenário.`);
       } else {
         addReason(scenario, `Test Data: configure ${item.source} para ${item.target} ${item.selector} no escopo apropriado.`);
       }
@@ -486,7 +625,7 @@ export function applyTestDataPlannerV1(modelOutput, context, {
     }
 
     if (bindings.length && unresolved.length === 0 && runtimePending.length === 0) {
-      stripReason(scenario, (reason) => reason === GENERIC_BODY_NEEDS_DATA || reason === PATH_NEEDS_DATA || reason.startsWith(SECRET_GUARD_PREFIX) || reason.startsWith(OBSERVED_RUNTIME_REASON_PREFIX));
+      stripReason(scenario, (reason) => reason === GENERIC_BODY_NEEDS_DATA || reason === PATH_NEEDS_DATA || reason.startsWith(SECRET_GUARD_PREFIX) || reason.startsWith(OBSERVED_RUNTIME_REASON_PREFIX) || reason.startsWith(INTENT_REASON_PREFIX));
       if (canPlannerClearNeedsData({ scenario, scenarioId: scenario.scenarioId, semanticDiagnostics, originalReasons })) {
         scenario.automationHints.needsData = false;
         diagnostics.readyDataScenarioCount += 1;
@@ -498,6 +637,7 @@ export function applyTestDataPlannerV1(modelOutput, context, {
 
   diagnostics.plannedPaths = diagnostics.plannedPaths.slice(0, 80);
   diagnostics.observedPlannedPaths = diagnostics.observedPlannedPaths.slice(0, 80);
+  diagnostics.intentTargets = diagnostics.intentTargets.slice(0, 80);
   diagnostics.unresolvedPaths = diagnostics.unresolvedPaths.slice(0, 80);
   return { output, plansByScenarioId, diagnostics };
 }
