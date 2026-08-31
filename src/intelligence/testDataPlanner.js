@@ -1,6 +1,6 @@
 import { isSensitiveTestDataSelector, sanitizeTestDataGeneratorConfig, scopeRank } from '../lib/testDataPolicy.js';
 
-export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2.1';
+export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2.2';
 export const TEST_DATA_BINDINGS_CONTRACT_VERSION = 'qagent.test-data-bindings.v1';
 
 const GENERIC_BODY_NEEDS_DATA = 'O formato do body é modelado, mas seus valores precisam ser fornecidos por massa de teste controlada.';
@@ -8,6 +8,7 @@ const PATH_NEEDS_DATA = 'Valores de path params precisam ser fornecidos por mass
 const SECRET_GUARD_PREFIX = 'QAgent Secret Guard:';
 const OBSERVED_RUNTIME_REASON_PREFIX = 'QAgent Observed Test Data:';
 const POSITIVE_BASELINE_CATEGORIES = new Set(['HAPPY_PATH', 'BOUNDARY', 'SCHEMA_CONTRACT', 'STATUS_BEHAVIOR', 'DATA_VARIATION', 'REGRESSION_CANDIDATE']);
+const INTENT_AWARE_CATEGORIES = new Set(['NEGATIVE', 'BOUNDARY', 'DATA_VARIATION', 'REGRESSION_CANDIDATE']);
 const PLANNER_OWNED_SEMANTIC_CODES = new Set(['SEMANTIC_REQUEST_BODY_NEEDS_DATA', 'SEMANTIC_PATH_PARAM_NEEDS_DATA']);
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -106,6 +107,15 @@ const MUTATION_MARKERS = [
   /\bausente(?:s)?\b/, /\bmissing\b/, /\bomit(?:ted|ting)?\b/, /\bsem\b/,
 ];
 const OMISSION_MARKERS = [/\bausente(?:s)?\b/, /\bmissing\b/, /\bomit(?:ted|ting)?\b/, /\bsem\b/];
+const DUPLICATE_MARKERS = [/\bduplicad(?:o|a|os|as)\b/, /\bduplicate(?:d)?\b/, /\bja existente\b/, /\balready exists?\b/, /\balready existing\b/];
+const NON_EXISTENT_MARKERS = [/\binexistente(?:s)?\b/, /\bnao existe(?:m)?\b/, /\bnot found\b/, /\bnon existent\b/, /\bnonexistent\b/];
+const REQUIRED_FIELDS_OMISSION_MARKERS = [
+  /\bcampos? obrigatorios? (?:ausentes?|faltantes?)\b/,
+  /\bsem (?:os )?campos? obrigatorios?\b/,
+  /\bmissing required fields?\b/,
+  /\brequired fields? missing\b/,
+  /\bomit(?:ted|ting)? required fields?\b/,
+];
 const GENERIC_INTENT_TOKENS = new Set(['id', 'type', 'tipo', 'number', 'numero']);
 const INTENT_TOKEN_ALIASES = {
   leave: ['leave', 'licenca', 'licencas', 'ausencia', 'ausencias', 'ferias'],
@@ -193,16 +203,44 @@ function selectorIntentScore(selector, intentText) {
   return score;
 }
 
-function inferBodyMutationIntentTargets(scenario, selectors) {
+function scenarioSupportsMutationIntent(scenario) {
+  return INTENT_AWARE_CATEGORIES.has(String(scenario?.category || '').toUpperCase());
+}
+
+function hasDuplicateMarker(text) {
+  return DUPLICATE_MARKERS.some((pattern) => pattern.test(text));
+}
+
+function hasNonExistentMarker(text) {
+  return NON_EXISTENT_MARKERS.some((pattern) => pattern.test(text));
+}
+
+function hasRequiredFieldsOmissionMarker(text) {
+  return REQUIRED_FIELDS_OMISSION_MARKERS.some((pattern) => pattern.test(text));
+}
+
+function inferGeneralBodyMutationIntent(scenario) {
+  if (!scenarioSupportsMutationIntent(scenario)) return null;
   const intentText = scenarioIntentText(scenario);
-  if (!intentText || !hasMutationMarker(intentText)) return new Map();
+  if (!intentText) return null;
+  if (hasRequiredFieldsOmissionMarker(intentText)) return { kind: 'OMIT_REQUIRED_FIELDS', score: 100 };
+  return null;
+}
+
+function inferBodyMutationIntentTargets(scenario, selectors) {
+  if (!scenarioSupportsMutationIntent(scenario)) return new Map();
+  const intentText = scenarioIntentText(scenario);
+  if (!intentText || (!hasMutationMarker(intentText) && !hasDuplicateMarker(intentText))) return new Map();
+  if (hasRequiredFieldsOmissionMarker(intentText)) return new Map();
   const targets = new Map();
   for (const selector of selectors) {
     const score = selectorIntentScore(selector, intentText);
     if (score < 20) continue;
-    const kind = hasOmissionMarker(intentText)
-      ? 'OMIT'
-      : looksReferential(selector) ? 'INVALID_REFERENCE' : 'INVALID_VALUE';
+    let kind;
+    if (hasDuplicateMarker(intentText)) kind = looksReferential(selector) ? 'DUPLICATE_REFERENCE' : 'DUPLICATE_VALUE';
+    else if (hasOmissionMarker(intentText)) kind = 'OMIT';
+    else if (hasNonExistentMarker(intentText) && looksReferential(selector)) kind = 'INVALID_REFERENCE';
+    else kind = 'INVALID_VALUE';
     targets.set(selector, { kind, score });
   }
   return targets;
@@ -432,6 +470,8 @@ export function applyTestDataPlannerV1(modelOutput, context, {
     intentBlockedAutoBindingCount: 0,
     intentBlockedObservedCount: 0,
     intentBlockedGeneratedCount: 0,
+    intentDuplicateObservedReuseCount: 0,
+    intentOmissionSatisfiedCount: 0,
     intentTargets: [],
     observedValueMetadataCount: Array.isArray(observedTestData?.values) ? observedTestData.values.length : 0,
     observedSampleMetadataCount: Array.isArray(observedTestData?.samples) ? observedTestData.samples.length : 0,
@@ -460,6 +500,33 @@ export function applyTestDataPlannerV1(modelOutput, context, {
     }
     const leaves = body ? bodyLeaves(body) : [];
     const sensitiveBodySelectors = sanitizerSelectors(secretSafeDiagnostics, index, 'BODY');
+    const requiredSelectors = requiredBodySelectors(schema);
+    const observedMetadataSelectors = unique((observedTestData?.values || [])
+      .filter((item) => item?.target === 'BODY' && item?.selector)
+      .map((item) => item.selector));
+    const intentSelectorUniverse = unique([
+      ...leaves.map((item) => item.selector),
+      ...sensitiveBodySelectors,
+      ...requiredSelectors.map((item) => item.selector),
+      ...baselineSelectors.map((item) => item.selector),
+      ...observedMetadataSelectors,
+    ]);
+    const generalMutationIntent = inferGeneralBodyMutationIntent(scenario);
+    const mutationIntentTargets = inferBodyMutationIntentTargets(scenario, intentSelectorUniverse);
+
+    if (generalMutationIntent || mutationIntentTargets.size) {
+      diagnostics.intentAwareScenarioCount += 1;
+      if (generalMutationIntent) {
+        diagnostics.intentTargetCount += 1;
+        diagnostics.intentOmissionSatisfiedCount += 1;
+        if (diagnostics.intentTargets.length < 80) diagnostics.intentTargets.push(`${scenario.scenarioId}:BODY:$:${generalMutationIntent.kind}`);
+      }
+      diagnostics.intentTargetCount += mutationIntentTargets.size;
+      for (const [selector, intent] of mutationIntentTargets) {
+        if (diagnostics.intentTargets.length < 80) diagnostics.intentTargets.push(`${scenario.scenarioId}:BODY:${selector}:${intent.kind}`);
+      }
+    }
+
     const candidates = new Map(leaves.map((item) => [item.selector, {
       value: item.value,
       node: nodeAtBodySelector(schema, item.selector),
@@ -468,12 +535,12 @@ export function applyTestDataPlannerV1(modelOutput, context, {
     for (const selector of sensitiveBodySelectors) {
       if (!candidates.has(selector)) candidates.set(selector, { value: undefined, node: nodeAtBodySelector(schema, selector), observedSeed: false });
     }
-    if (body && scenario.automationHints.needsData === true) {
-      for (const item of requiredBodySelectors(schema)) {
+    if (body && scenario.automationHints.needsData === true && !generalMutationIntent) {
+      for (const item of requiredSelectors) {
         if (!candidates.has(item.selector)) candidates.set(item.selector, { value: undefined, node: item.node, observedSeed: false });
       }
     }
-    if (body && isSuccessOrientedScenario(scenario)) {
+    if (body && isSuccessOrientedScenario(scenario) && !generalMutationIntent) {
       for (const item of baselineSelectors) {
         if (!candidates.has(item.selector)) {
           candidates.set(item.selector, {
@@ -485,13 +552,15 @@ export function applyTestDataPlannerV1(modelOutput, context, {
         }
       }
     }
-
-    const mutationIntentTargets = inferBodyMutationIntentTargets(scenario, [...candidates.keys()]);
-    if (mutationIntentTargets.size) {
-      diagnostics.intentAwareScenarioCount += 1;
-      diagnostics.intentTargetCount += mutationIntentTargets.size;
-      for (const [selector, intent] of mutationIntentTargets) {
-        if (diagnostics.intentTargets.length < 80) diagnostics.intentTargets.push(`${scenario.scenarioId}:BODY:${selector}:${intent.kind}`);
+    for (const [selector] of mutationIntentTargets) {
+      if (!candidates.has(selector)) {
+        const baseline = baselineSelectors.find((item) => item.selector === selector);
+        candidates.set(selector, {
+          value: undefined,
+          node: nodeAtBodySelector(schema, selector),
+          observedSeed: Boolean(baseline),
+          observedValueType: baseline?.valueType || null,
+        });
       }
     }
 
@@ -505,10 +574,30 @@ export function applyTestDataPlannerV1(modelOutput, context, {
         deleteBodySelector(body, selector);
         continue;
       }
-      const classified = classifySource('BODY', selector, node, sampleValue, explicit, sensitiveBodySelectors.includes(selector), observed);
-      const source = classified.source;
+      const sensitiveSelector = sensitiveBodySelectors.includes(selector) || isSensitiveTestDataSelector('BODY', selector);
+      let classified = classifySource('BODY', selector, node, sampleValue, explicit, sensitiveSelector, observed);
       const mutationIntent = mutationIntentTargets.get(selector);
-      if (mutationIntent && !explicit && (source === 'OBSERVED' || source === 'GENERATED')) {
+      if (mutationIntent && !explicit && mutationIntent.kind === 'OMIT') {
+        diagnostics.intentOmissionSatisfiedCount += 1;
+        deleteBodySelector(body, selector);
+        continue;
+      }
+      if (mutationIntent && !explicit && mutationIntent.kind.startsWith('DUPLICATE_') && !sensitiveSelector) {
+        if (observed?.any && observed.complete === true) {
+          classified = { source: 'OBSERVED', securityMismatch: false, coverageIncomplete: false };
+          diagnostics.intentDuplicateObservedReuseCount += 1;
+        } else {
+          diagnostics.intentBlockedAutoBindingCount += 1;
+          unresolved.push({
+            target: 'BODY', selector, source: 'MUTATION', code: 'TEST_DATA_DUPLICATE_INTENT_REQUIRES_OBSERVED_OR_EXPLICIT_STRATEGY',
+            mutationKind: mutationIntent.kind, blockedSource: classified.source,
+          });
+          deleteBodySelector(body, selector);
+          continue;
+        }
+      }
+      const source = classified.source;
+      if (mutationIntent && !explicit && !mutationIntent.kind.startsWith('DUPLICATE_') && (source === 'OBSERVED' || source === 'GENERATED')) {
         diagnostics.intentBlockedAutoBindingCount += 1;
         if (source === 'OBSERVED') diagnostics.intentBlockedObservedCount += 1;
         if (source === 'GENERATED') diagnostics.intentBlockedGeneratedCount += 1;
@@ -615,6 +704,9 @@ export function applyTestDataPlannerV1(modelOutput, context, {
       } else if (item.code === 'TEST_DATA_MUTATION_INTENT_REQUIRES_EXPLICIT_STRATEGY') {
         scenario.automationHints.reviewRequired = true;
         addReason(scenario, `${INTENT_REASON_PREFIX} ${item.target} ${item.selector} é o alvo provável de ${item.mutationKind}; o Planner não reutilizou massa 2xx nem gerou um valor válido automaticamente. Configure uma massa/mutação explícita ou revise o cenário.`);
+      } else if (item.code === 'TEST_DATA_DUPLICATE_INTENT_REQUIRES_OBSERVED_OR_EXPLICIT_STRATEGY') {
+        scenario.automationHints.reviewRequired = true;
+        addReason(scenario, `${INTENT_REASON_PREFIX} ${item.target} ${item.selector} é o alvo provável de ${item.mutationKind}; não há valor observado 2xx com cobertura suficiente para reproduzir a duplicidade. Capture uma massa existente ou configure FIXED explicitamente.`);
       } else {
         addReason(scenario, `Test Data: configure ${item.source} para ${item.target} ${item.selector} no escopo apropriado.`);
       }

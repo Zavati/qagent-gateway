@@ -82,7 +82,7 @@ function planOne(scenarioValue, contextValue = context, options = {}) {
   );
 }
 
-assert.equal(TEST_DATA_PLANNER_VERSION, 'qagent.test-data-planner.v1.2.1');
+assert.equal(TEST_DATA_PLANNER_VERSION, 'qagent.test-data-planner.v1.2.2');
 
 // Invalid reference: keep a valid observed baseline for unrelated fields, but never reuse
 // a successful leaveTypeId for the field whose intent is explicitly "non-existent".
@@ -124,7 +124,7 @@ const invalidEmpNumber = planOne(scenario('invalid_emp_number', {
 }));
 assert.equal(invalidEmpNumber.plansByScenarioId.invalid_emp_number.bindings.some((item) => item.selector === '$.empNumber'), false);
 assert.equal(invalidEmpNumber.plansByScenarioId.invalid_emp_number.bindings.find((item) => item.selector === '$.leaveTypeId')?.source, 'OBSERVED');
-assert.ok(invalidEmpNumber.diagnostics.intentTargets.includes('invalid_emp_number:BODY:$.empNumber:INVALID_REFERENCE'));
+assert.ok(invalidEmpNumber.diagnostics.intentTargets.includes('invalid_emp_number:BODY:$.empNumber:INVALID_VALUE'));
 
 // Invalid dates: normal DATE generators would create valid values and contradict the scenario.
 // They are therefore blocked until a real mutation strategy exists. Valid unrelated baseline remains.
@@ -158,8 +158,10 @@ const missingFields = planOne(scenario('missing_fields', {
   body: {},
   needsData: false,
 }));
-assert.equal(missingFields.diagnostics.intentTargetCount, 0);
+assert.equal(missingFields.diagnostics.intentTargetCount, 1);
+assert.ok(missingFields.diagnostics.intentTargets.includes('missing_fields:BODY:$:OMIT_REQUIRED_FIELDS'));
 assert.equal(missingFields.diagnostics.intentBlockedAutoBindingCount, 0);
+assert.equal(missingFields.diagnostics.intentTargets.some((item) => item.includes('$.leaveTypeId')), false);
 
 // Authorization isolation: body stays valid and can use OBSERVED; only authentication is absent.
 const unauthorized = planOne(scenario('unauthorized', {
@@ -196,5 +198,113 @@ const explicitInvalid = planOne(scenario('explicit_invalid_leave', {
 }), explicitContext);
 assert.equal(explicitInvalid.plansByScenarioId.explicit_invalid_leave.bindings.find((item) => item.selector === '$.leaveTypeId')?.source, 'FIXED');
 assert.equal(explicitInvalid.diagnostics.intentBlockedAutoBindingCount, 0);
+
+
+// Production reproduction: intent detection must run even when Semantic Guard left
+// needsData=false and the AI returned an empty body. The intent target itself makes
+// the scenario eligible for deterministic planning/review.
+const employeeContext = {
+  endpoint: { endpointId: 'cep_employee_create', normalizedPath: '/pim/employees', method: 'POST' },
+  environments: [{ environmentId: 'env_stg', name: 'STG' }],
+  schemas: [{
+    direction: 'REQUEST',
+    schema: {
+      type: 'object',
+      required: ['employeeId', 'firstName', 'lastName'],
+      properties: {
+        employeeId: { type: 'string' },
+        firstName: { type: 'string' },
+        middleName: { type: 'string' },
+        lastName: { type: 'string' },
+      },
+    },
+  }],
+  testData: { configuredBindings: [] },
+};
+const employeeObserved = {
+  contractVersion: 'qagent.observed-test-data-metadata.v1',
+  values: [
+    ['$.employeeId', 'STRING'], ['$.firstName', 'STRING'], ['$.middleName', 'STRING'], ['$.lastName', 'STRING'],
+  ].flatMap(([selector, valueType]) => [1, 2].map((n) => ({
+    environmentId: 'env_stg', target: 'BODY', selector, valueType,
+    observationCount: n, successCount: n, clientErrorCount: 0, serverErrorCount: 0,
+    lastSeenAt: `2026-08-31T0${n}:00:00.000Z`,
+  }))),
+  samples: [1, 2].map((n) => ({
+    environmentId: 'env_stg', encoding: 'JSON', observationCount: 1, successCount: 1,
+    clientErrorCount: 0, serverErrorCount: 0, lastSeenAt: `2026-08-31T0${n}:00:00.000Z`,
+    selectors: [
+      { target: 'BODY', selector: '$.employeeId', valueType: 'STRING' },
+      { target: 'BODY', selector: '$.firstName', valueType: 'STRING' },
+      { target: 'BODY', selector: '$.middleName', valueType: 'STRING' },
+      { target: 'BODY', selector: '$.lastName', valueType: 'STRING' },
+    ],
+  })),
+};
+function planEmployee(scenarioValue, options = {}) {
+  return applyTestDataPlannerV1(
+    { title: 'Employee intent', objective: 'Employee intent', assumptions: [], scenarios: [scenarioValue] },
+    employeeContext,
+    { observedTestData: employeeObserved, ...options },
+  );
+}
+
+const invalidEmployeeId = planEmployee(scenario('create_employee_invalid_employeeId', {
+  title: 'Criar funcionário com employeeId inválido',
+  objective: 'Verificar erro ao tentar criar um funcionário com um employeeId inválido.',
+  body: {},
+  needsData: false,
+}));
+assert.equal(invalidEmployeeId.diagnostics.intentAwareScenarioCount, 1);
+assert.equal(invalidEmployeeId.diagnostics.intentTargetCount, 1);
+assert.ok(invalidEmployeeId.diagnostics.intentTargets.includes('create_employee_invalid_employeeId:BODY:$.employeeId:INVALID_VALUE'));
+assert.equal(invalidEmployeeId.diagnostics.intentBlockedObservedCount, 1);
+assert.equal(invalidEmployeeId.diagnostics.plannedScenarioCount, 1);
+assert.equal(invalidEmployeeId.plansByScenarioId.create_employee_invalid_employeeId.bindings.length, 0);
+assert.equal(invalidEmployeeId.output.scenarios[0].automationHints.needsData, true);
+assert.equal(invalidEmployeeId.output.scenarios[0].automationHints.reviewRequired, true);
+assert.match(invalidEmployeeId.output.scenarios[0].automationHints.reasons.join(' '), /Scenario Intent.*employeeId.*INVALID_VALUE/i);
+
+// Duplicate is semantically different from invalid: a successful observed value is
+// useful because it represents a value that has already existed in the system.
+const duplicateEmployeeId = planEmployee(scenario('create_employee_duplicate_employeeId', {
+  title: 'Criar funcionário com employeeId duplicado',
+  objective: 'Verificar erro ao tentar criar um funcionário com um employeeId já existente.',
+  status: 409,
+  body: {},
+  needsData: false,
+}));
+assert.ok(duplicateEmployeeId.diagnostics.intentTargets.includes('create_employee_duplicate_employeeId:BODY:$.employeeId:DUPLICATE_REFERENCE'));
+assert.equal(duplicateEmployeeId.diagnostics.intentDuplicateObservedReuseCount, 1);
+assert.equal(duplicateEmployeeId.plansByScenarioId.create_employee_duplicate_employeeId.bindings.find((item) => item.selector === '$.employeeId')?.source, 'OBSERVED');
+assert.equal(duplicateEmployeeId.diagnostics.observedRuntimePendingCount, 1);
+assert.equal(duplicateEmployeeId.output.scenarios[0].automationHints.needsData, true);
+
+const invalidFirstName = planEmployee(scenario('create_employee_invalid_firstName', {
+  title: 'Criar funcionário com firstName inválido',
+  objective: 'Verificar erro ao tentar criar um funcionário com um firstName inválido.',
+  body: {},
+  needsData: false,
+}));
+assert.ok(invalidFirstName.diagnostics.intentTargets.includes('create_employee_invalid_firstName:BODY:$.firstName:INVALID_VALUE'));
+assert.equal(invalidFirstName.diagnostics.intentBlockedGeneratedCount, 1);
+assert.equal(invalidFirstName.plansByScenarioId.create_employee_invalid_firstName.bindings.some((item) => item.selector === '$.firstName'), false);
+assert.equal(invalidFirstName.output.scenarios[0].automationHints.needsData, true);
+
+// A generic required-field omission is recognized before planning but does not get
+// a valid baseline auto-filled. Empty body already represents the omission intent.
+const missingEmployeeFields = planEmployee(scenario('create_employee_missing_fields', {
+  title: 'Criar funcionário sem campos obrigatórios',
+  objective: 'Verificar erro ao tentar criar um funcionário sem campos obrigatórios.',
+  body: {},
+  needsData: false,
+}));
+assert.equal(missingEmployeeFields.diagnostics.intentAwareScenarioCount, 1);
+assert.equal(missingEmployeeFields.diagnostics.intentTargetCount, 1);
+assert.ok(missingEmployeeFields.diagnostics.intentTargets.includes('create_employee_missing_fields:BODY:$:OMIT_REQUIRED_FIELDS'));
+assert.equal(missingEmployeeFields.diagnostics.intentOmissionSatisfiedCount, 1);
+assert.equal(missingEmployeeFields.diagnostics.plannedScenarioCount, 0);
+assert.deepEqual(missingEmployeeFields.output.scenarios[0].request.body, {});
+assert.equal(missingEmployeeFields.output.scenarios[0].automationHints.needsData, false);
 
 console.log('Foundation 07.7.8-C2-C FIX-1 Intent-Aware Observed Selection tests passed ✅');
