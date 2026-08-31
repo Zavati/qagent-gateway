@@ -124,6 +124,8 @@ const COOKIE_SESSION_DEFAULT_SUCCESS_STATUS_CODES = Object.freeze([
 
 const AUTH_COOKIE_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const AUTH_FORM_FIELD_RE = /^[A-Za-z_][A-Za-z0-9_.:[\]-]{0,127}$/;
+const AUTH_HTML_TAG_RE = /^[A-Za-z][A-Za-z0-9:._-]{0,127}$/;
+const AUTH_HTML_ATTRIBUTE_RE = /^[^\s\"'<>/=]{1,128}$/;
 
 function authConfigError(message, code) {
   const err = new Error(message);
@@ -160,6 +162,32 @@ function normalizeAuthFormField(value, label) {
   }
 
   return field;
+}
+
+function normalizeHtmlTagName(value, label) {
+  const tag = cleanConfigText(value, 128).toLowerCase();
+
+  if (!tag || !AUTH_HTML_TAG_RE.test(tag)) {
+    throw authConfigError(
+      `${label} inválido no Auth Profile.`,
+      'INVALID_AUTH_HTML_TAG',
+    );
+  }
+
+  return tag;
+}
+
+function normalizeHtmlAttributeName(value, label) {
+  const attribute = cleanConfigText(value, 128);
+
+  if (!attribute || !AUTH_HTML_ATTRIBUTE_RE.test(attribute)) {
+    throw authConfigError(
+      `${label} inválido no Auth Profile.`,
+      'INVALID_AUTH_HTML_ATTRIBUTE',
+    );
+  }
+
+  return attribute;
 }
 
 function normalizeCookieSessionSuccessStatusCodes(value) {
@@ -250,21 +278,49 @@ function normalizeCookieSessionPreflight(value) {
     64,
   ).toUpperCase();
 
-  if (kind !== 'HTML_INPUT_BY_NAME') {
+  if (!['HTML_INPUT_BY_NAME', 'HTML_ATTRIBUTE_BY_TAG'].includes(kind)) {
     throw authConfigError(
       'Extractor de preflight não suportado.',
       'INVALID_AUTH_PREFLIGHT_EXTRACT_KIND',
     );
   }
 
-  const name = normalizeAuthFormField(
-    value.extract.name,
-    'preflight.extract.name',
-  );
-
   const injectField = normalizeAuthFormField(
     value.extract.injectField,
     'preflight.extract.injectField',
+  );
+
+  if (kind === 'HTML_INPUT_BY_NAME') {
+    const name = normalizeAuthFormField(
+      value.extract.name,
+      'preflight.extract.name',
+    );
+
+    return {
+      enabled: true,
+      method: 'GET',
+      path,
+      preserveCookies,
+      extract: {
+        kind: 'HTML_INPUT_BY_NAME',
+        name,
+        injectField,
+      },
+    };
+  }
+
+  // FIX-1.1: alguns frameworks entregam o CSRF em atributos de
+  // componentes server-rendered/bootstrap, e não em <input>.
+  // O contrato permanece determinístico: tag + atributo exatos,
+  // sem CSS selector, XPath ou JavaScript arbitrário.
+  const tag = normalizeHtmlTagName(
+    value.extract.tag,
+    'preflight.extract.tag',
+  );
+
+  const attribute = normalizeHtmlAttributeName(
+    value.extract.attribute,
+    'preflight.extract.attribute',
   );
 
   return {
@@ -273,8 +329,9 @@ function normalizeCookieSessionPreflight(value) {
     path,
     preserveCookies,
     extract: {
-      kind: 'HTML_INPUT_BY_NAME',
-      name,
+      kind: 'HTML_ATTRIBUTE_BY_TAG',
+      tag,
+      attribute,
       injectField,
     },
   };
