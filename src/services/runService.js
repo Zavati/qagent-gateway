@@ -78,6 +78,12 @@ function safeRunEnvelope(bundle, { idempotentReplay = false } = {}) {
       } : null,
       apiServiceKeys: Object.keys(snapshot.snapshot?.apiServices || {}).sort(),
       authProfileRefs: Object.keys(snapshot.snapshot?.authProfiles || {}).sort(),
+      testData: snapshot.snapshot?.testData?.observedResolution ? {
+        observedResolutionContractVersion: snapshot.snapshot.testData.observedResolution.contractVersion || null,
+        observedResolvedCount: Number(snapshot.snapshot.testData.observedResolution.resolvedCount || 0),
+        observedCorrelatedSampleBindingCount: Number(snapshot.snapshot.testData.observedResolution.correlatedSampleBindingCount || 0),
+        observedScalarFallbackBindingCount: Number(snapshot.snapshot.testData.observedResolution.scalarFallbackBindingCount || 0),
+      } : null,
       createdAt: snapshot.createdAt,
     } : null,
     queue: bundle?.dispatch ? {
@@ -303,6 +309,7 @@ export async function createRunV1({
     scenarioCount: materialized.selectedScenarioIds.length,
     schemaSnapshotCount: materialized.executionPlan.schemaSnapshots.length,
     runtimeResolutionSource: materialized.runtimeSnapshot.resolution.source,
+    observedTestDataResolvedCount: Number(materialized.runtimeSnapshot?.testData?.observedResolution?.resolvedCount || 0),
   });
 
   bundle = await dispatchRun({ env, bundle });

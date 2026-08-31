@@ -70,7 +70,13 @@ export async function getCatalogObservedTestDataForTestDesign(input) {
   const data = await queryCatalogData({
     ...input,
     upstreamPath: `/v1/catalog/endpoints/${encodeURIComponent(input.endpointId)}/observed-test-data`,
-    query: { limit: input.limit },
+    query: {
+      limit: input.limit,
+      environmentId: input.environmentId,
+      selector: input.selector,
+      outcomeClass: input.outcomeClass,
+      cursor: input.cursor,
+    },
   });
   return Array.isArray(data) ? data : [];
 }
@@ -79,7 +85,12 @@ export async function getCatalogObservedRequestSamplesForTestDesign(input) {
   const data = await queryCatalogData({
     ...input,
     upstreamPath: `/v1/catalog/endpoints/${encodeURIComponent(input.endpointId)}/observed-test-data/samples`,
-    query: { limit: input.limit },
+    query: {
+      limit: input.limit,
+      environmentId: input.environmentId,
+      outcomeClass: input.outcomeClass,
+      cursor: input.cursor,
+    },
   });
   return Array.isArray(data) ? data : [];
 }

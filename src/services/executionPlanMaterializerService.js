@@ -2,6 +2,7 @@ import { getCatalogEndpointForTestDesign, getCatalogEvidenceForTestDesign, getCa
 import { deriveDiscoveredRuntimeCandidate, isDiscoveredRuntimeServiceKey } from '../intelligence/discoveredRuntime.js';
 import { resolveEnvironmentRuntimeConfig } from './environmentRuntimeConfigService.js';
 import { resolveEndpointTestDataBindingsForRun } from './testDataBindingService.js';
+import { resolveObservedTestDataForRun } from './observedTestDataRuntimeResolver.js';
 import {
   EXECUTION_PLAN_CONTRACT_VERSION,
   RUNTIME_SNAPSHOT_CONTRACT_VERSION,
@@ -101,7 +102,6 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
   confirmDiscoveredRuntime = false,
   loadEndpoint = getCatalogEndpointForTestDesign,
   loadEvidence = getCatalogEvidenceForTestDesign,
-  resolveTestDataBindings = resolveEndpointTestDataBindingsForRun,
 } = {}) {
   const referencedServiceKeys = uniqueStrings(selectedScenarios.map((scenario) => scenario?.spec?.target?.apiServiceKey));
   const apiServices = {};
@@ -399,6 +399,7 @@ export async function materializeExecutionPlanV1({
   loadEndpoint = getCatalogEndpointForTestDesign,
   loadEvidence = getCatalogEvidenceForTestDesign,
   resolveTestDataBindings = resolveEndpointTestDataBindingsForRun,
+  resolveObservedTestData = resolveObservedTestDataForRun,
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
   const selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds);
@@ -419,6 +420,28 @@ export async function materializeExecutionPlanV1({
     loadEvidence,
   });
 
+  const requiresObservedTestData = selectedScenarios.some((scenario) =>
+    (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'OBSERVED')
+  );
+  const observedResolution = requiresObservedTestData
+    ? await resolveObservedTestData({
+        env,
+        organizationId,
+        projectId,
+        endpointId: artifact.endpointId,
+        environmentId,
+        selectedScenarios,
+      })
+    : {
+        contractVersion: 'qagent.observed-test-data-runtime-resolution.v1',
+        frozenByBindingKey: {},
+        provenanceByBindingKey: {},
+        resolvedCount: 0,
+        correlatedSampleBindingCount: 0,
+        scalarFallbackBindingCount: 0,
+        durationMs: 0,
+      };
+
   const requiresConfiguredTestData = selectedScenarios.some((scenario) =>
     (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'FIXED' || binding?.source === 'SECRET')
   );
@@ -434,6 +457,26 @@ export async function materializeExecutionPlanV1({
       if (binding?.source === 'GENERATED') continue;
       const bindingKey = String(binding?.bindingKey || `${binding?.target}:${binding?.selector}`).trim();
       referencedTestDataKeys.add(bindingKey);
+
+      if (binding?.source === 'OBSERVED') {
+        const observed = observedResolution.frozenByBindingKey?.[bindingKey] || null;
+        if (!observed) {
+          runError('Test Data OBSERVED não foi congelado no Runtime Snapshot.', 'RUN_OBSERVED_TEST_DATA_UNAVAILABLE', 409, {
+            scenarioId: scenario?.scenarioId || null,
+            bindingKey,
+          });
+        }
+        frozenFixed[bindingKey] = {
+          bindingId: null,
+          scopeType: null,
+          target: observed.target,
+          selector: observed.selector,
+          valueType: observed.valueType,
+          value: clone(observed.value),
+        };
+        continue;
+      }
+
       const configured = configuredByKey.get(bindingKey);
       if (!configured) {
         runError('Test Data binding requerido não está configurado no Environment selecionado.', 'RUN_TEST_DATA_BINDING_MISSING', 409, {
@@ -504,6 +547,13 @@ export async function materializeExecutionPlanV1({
       contractVersion: 'qagent.runtime-test-data-snapshot.v1',
       fixed: frozenFixed,
       secrets: frozenSecrets,
+      observedProvenance: clone(observedResolution.provenanceByBindingKey || {}),
+      observedResolution: {
+        contractVersion: observedResolution.contractVersion,
+        resolvedCount: Number(observedResolution.resolvedCount || 0),
+        correlatedSampleBindingCount: Number(observedResolution.correlatedSampleBindingCount || 0),
+        scalarFallbackBindingCount: Number(observedResolution.scalarFallbackBindingCount || 0),
+      },
       referencedBindingKeys: [...referencedTestDataKeys].sort(),
     },
     createdAt,
@@ -513,16 +563,34 @@ export async function materializeExecutionPlanV1({
     snapshotHash: await sha256Hex(runtimeSnapshotBase),
   };
 
-  const scenarioPlans = selectedScenarios.map((scenario) => ({
-    scenarioId: scenario.scenarioId,
-    title: scenario.title,
-    category: scenario.category,
-    priority: scenario.priority,
-    confidence: scenario.confidence,
-    groundingLevel: scenario?.grounding?.level || null,
-    readiness: scenario.automation.readiness,
-    spec: clone(scenario.spec),
-  }));
+  const scenarioPlans = selectedScenarios.map((scenario) => {
+    const spec = clone(scenario.spec);
+    // OBSERVED is a Test Design policy. At Run creation the Gateway resolves it
+    // against the pinned Environment and freezes the non-secret literal in the
+    // Runtime Snapshot. The Runner therefore consumes the existing FIXED path;
+    // Queue/Test Design contracts and the execution pipeline remain unchanged.
+    for (const binding of spec?.testData?.bindings || []) {
+      if (binding?.source !== 'OBSERVED') continue;
+      const key = String(binding?.bindingKey || `${binding?.target}:${binding?.selector}`).trim();
+      if (!observedResolution.frozenByBindingKey?.[key]) {
+        runError('Execution Plan referencia OBSERVED sem material congelado.', 'RUN_OBSERVED_TEST_DATA_UNAVAILABLE', 409, {
+          scenarioId: scenario?.scenarioId || null,
+          bindingKey: key,
+        });
+      }
+      binding.source = 'FIXED';
+    }
+    return {
+      scenarioId: scenario.scenarioId,
+      title: scenario.title,
+      category: scenario.category,
+      priority: scenario.priority,
+      confidence: scenario.confidence,
+      groundingLevel: scenario?.grounding?.level || null,
+      readiness: scenario.automation.readiness,
+      spec,
+    };
+  });
 
   const executionPlanBase = {
     contractVersion: EXECUTION_PLAN_CONTRACT_VERSION,

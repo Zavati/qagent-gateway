@@ -457,6 +457,7 @@ export function applyTestDataPlannerV1(modelOutput, context, {
   const diagnostics = {
     plannerVersion: TEST_DATA_PLANNER_VERSION,
     strategy: 'HYBRID',
+    observedRuntimeEnabled: observedRuntimeEnabled === true,
     plannedScenarioCount: 0,
     bindingCount: 0,
     generatedCount: 0,

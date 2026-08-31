@@ -392,7 +392,7 @@ export async function generateCatalogTestDesignV1({
     secretSafeDiagnostics: secretSafeSanitizer,
     semanticDiagnostics: semanticGuard.diagnostics,
     observedTestData,
-    observedRuntimeEnabled: false,
+    observedRuntimeEnabled: true,
   });
   modelOutput = testDataPlanner.output;
   validateTestDesignModelOutputV1(modelOutput, context);
