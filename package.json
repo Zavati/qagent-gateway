@@ -93,7 +93,7 @@
     "test:f07-7-10-b-fix-3-1": "node test/test-foundation-07-7-10-b-fix-3-1-terminal-recovery.js",
     "check:07.7.10-b-fix-3-1": "npm run check:07.7.10-b-fix-3 && npm run test:f07-7-10-b-fix-3-1 && npm run test:router",
     "test:f07-7-8-c2-c": "node test/test-foundation-07-7-8-c2-c-hybrid-test-data-planner.js",
-    "check:07.7.8-c2-c": "npm run check:07.7.8-c && npm run test:f07-7-8-c2-c && npm run test:router"
+    "check:07.7.8-c2-c": "npm run check:07.7.8-c && npm run test:f07-7-8-c2-c && npm run test:f07-7-9-c-fix-1 && npm run test:router"
   },
   "keywords": [],
   "author": "",
