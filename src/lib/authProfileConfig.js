@@ -341,6 +341,7 @@ function normalizeCookieSessionDescriptor(value) {
   if (value == null) {
     return {
       cookieName: null,
+      requireRotation: false,
     };
   }
 
@@ -351,8 +352,29 @@ function normalizeCookieSessionDescriptor(value) {
     );
   }
 
+  if (
+    value.requireRotation !== undefined
+    && typeof value.requireRotation !== 'boolean'
+  ) {
+    throw authConfigError(
+      'session.requireRotation deve ser boolean.',
+      'INVALID_AUTH_COOKIE_SESSION_REQUIRE_ROTATION',
+    );
+  }
+
+  const cookieName = normalizeCookieName(value.cookieName);
+  const requireRotation = value.requireRotation === true;
+
+  if (requireRotation && !cookieName) {
+    throw authConfigError(
+      'session.cookieName é obrigatório quando requireRotation=true.',
+      'AUTH_COOKIE_ROTATION_COOKIE_NAME_REQUIRED',
+    );
+  }
+
   return {
-    cookieName: normalizeCookieName(value.cookieName),
+    cookieName,
+    requireRotation,
   };
 }
 

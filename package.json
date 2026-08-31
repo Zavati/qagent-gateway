@@ -99,7 +99,9 @@
     "test:f07-7-8-c2-d": "node test/test-foundation-07-7-8-c2-d-observed-runtime-resolution.js",
     "check:07.7.8-c2-d": "npm run check:07.7.8-c2-c-fix-1 && npm run test:f07-7-8-c2-d && npm run check:07.7.10-b-fix-3-1 && npm run test:router",
     "test:f07-7-8-a-fix-1-1": "node test/test-foundation-07-7-8-a-fix-1-1-html-attribute-csrf.js",
-    "check:07.7.8-a-fix-1-1": "npm run test:f07-7-8-a && npm run test:f07-7-8-a-fix-1-1 && npm run test:router"
+    "check:07.7.8-a-fix-1-1": "npm run test:f07-7-8-a && npm run test:f07-7-8-a-fix-1-1 && npm run test:router",
+    "test:f07-7-8-a-fix-1-2": "node test/test-foundation-07-7-8-a-fix-1-2-session-confirmation.js",
+    "check:07.7.8-a-fix-1-2": "npm run check:07.7.8-a-fix-1-1 && npm run test:f07-7-8-a-fix-1-2"
   },
   "keywords": [],
   "author": "",
