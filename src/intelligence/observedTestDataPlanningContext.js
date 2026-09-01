@@ -3,7 +3,8 @@ import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
 export const OBSERVED_TEST_DATA_PLANNING_CONTEXT_VERSION = 'qagent.observed-test-data-planning-context.v1';
 
 const VALUE_TYPES = new Set(['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON']);
-const ENCODINGS = new Set(['JSON', 'FORM_URLENCODED']);
+const TARGETS = new Set(['BODY', 'QUERY']);
+const ENCODINGS = new Set(['JSON', 'FORM_URLENCODED', 'QUERY']);
 
 function nullableString(value) {
   const text = String(value ?? '').trim();
@@ -15,11 +16,31 @@ function nonNegativeInteger(value) {
   return Number.isFinite(number) && Number.isInteger(number) && number >= 0 ? number : 0;
 }
 
+function safeTarget(value) {
+  // Rolling compatibility:
+  // C2-D antigo é BODY-only e pode chegar sem target explícito.
+  const target = nullableString(value)?.toUpperCase() || 'BODY';
+  return TARGETS.has(target) ? target : null;
+}
+
 function safeBodySelector(value) {
   const selector = nullableString(value);
   if (!selector || !/^\$\.[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/.test(selector)) return null;
   if (isSensitiveTestDataSelector('BODY', selector)) return null;
   return selector;
+}
+
+function safeQuerySelector(value) {
+  const selector = nullableString(value);
+  if (!selector || !/^[A-Za-z_][A-Za-z0-9_.-]{0,119}$/.test(selector)) return null;
+  if (isSensitiveTestDataSelector('QUERY', selector)) return null;
+  return selector;
+}
+
+function safeSelector(target, value) {
+  if (target === 'BODY') return safeBodySelector(value);
+  if (target === 'QUERY') return safeQuerySelector(value);
+  return null;
 }
 
 function safeValueType(value) {
@@ -33,12 +54,23 @@ function allowedEnvironment(environmentId, allowed) {
 
 function valueMetadata(item, allowedEnvironments) {
   const environmentId = nullableString(item?.environmentId);
-  const selector = safeBodySelector(item?.selector);
+  const target = safeTarget(item?.target);
+  const selector = target ? safeSelector(target, item?.selector) : null;
   const valueType = safeValueType(item?.valueType);
-  if (!environmentId || !selector || !valueType || !allowedEnvironment(environmentId, allowedEnvironments)) return null;
+
+  if (
+    !environmentId
+    || !target
+    || !selector
+    || !valueType
+    || !allowedEnvironment(environmentId, allowedEnvironments)
+  ) {
+    return null;
+  }
+
   return {
     environmentId,
-    target: 'BODY',
+    target,
     selector,
     valueType,
     observationCount: nonNegativeInteger(item?.observationCount),
@@ -52,18 +84,44 @@ function valueMetadata(item, allowedEnvironments) {
 function sampleMetadata(item, allowedEnvironments) {
   const environmentId = nullableString(item?.environmentId);
   const encoding = nullableString(item?.encoding)?.toUpperCase() || null;
-  if (!environmentId || !allowedEnvironment(environmentId, allowedEnvironments) || !ENCODINGS.has(encoding)) return null;
+
+  if (
+    !environmentId
+    || !allowedEnvironment(environmentId, allowedEnvironments)
+    || !ENCODINGS.has(encoding)
+  ) {
+    return null;
+  }
+
   const selectors = [];
   const seen = new Set();
+
   for (const value of Array.isArray(item?.values) ? item.values : []) {
-    const selector = safeBodySelector(value?.selector);
+    const target = safeTarget(value?.target);
+    const selector = target ? safeSelector(target, value?.selector) : null;
     const valueType = safeValueType(value?.valueType);
-    if (!selector || !valueType || seen.has(selector)) continue;
-    seen.add(selector);
-    selectors.push({ target: 'BODY', selector, valueType });
+
+    if (!target || !selector || !valueType) continue;
+
+    const key = `${target}:${selector}`;
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+
+    selectors.push({
+      target,
+      selector,
+      valueType,
+    });
   }
+
   if (!selectors.length) return null;
-  selectors.sort((a, b) => a.selector.localeCompare(b.selector));
+
+  selectors.sort((a, b) => (
+    a.target.localeCompare(b.target)
+    || a.selector.localeCompare(b.selector)
+  ));
+
   return {
     environmentId,
     encoding,
@@ -82,13 +140,23 @@ function rankObserved(a, b) {
     || String(b.lastSeenAt || '').localeCompare(String(a.lastSeenAt || ''));
 }
 
-export function buildObservedTestDataPlanningContext({ values = [], samples = [], environmentIds = [] } = {}) {
-  const allowedEnvironments = new Set((environmentIds || []).map(nullableString).filter(Boolean));
+export function buildObservedTestDataPlanningContext({
+  values = [],
+  samples = [],
+  environmentIds = [],
+} = {}) {
+  const allowedEnvironments = new Set(
+    (environmentIds || [])
+      .map(nullableString)
+      .filter(Boolean),
+  );
+
   const mappedValues = (Array.isArray(values) ? values : [])
     .map((item) => valueMetadata(item, allowedEnvironments))
     .filter(Boolean)
     .sort(rankObserved)
     .slice(0, 100);
+
   const mappedSamples = (Array.isArray(samples) ? samples : [])
     .map((item) => sampleMetadata(item, allowedEnvironments))
     .filter(Boolean)

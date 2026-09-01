@@ -347,7 +347,11 @@ export function validateCatalogTestDesignContextV1(context) {
   ]), 'context');
 
   if (context.contractVersion !== TEST_DESIGN_CONTRACT_VERSION) {
-    fail(`contractVersion deve ser ${TEST_DESIGN_CONTRACT_VERSION}.`, 'context.contractVersion', 'TEST_DESIGN_VERSION_UNSUPPORTED');
+    fail(
+      `contractVersion deve ser ${TEST_DESIGN_CONTRACT_VERSION}.`,
+      'context.contractVersion',
+      'TEST_DESIGN_VERSION_UNSUPPORTED',
+    );
   }
 
   assertString(context.organizationId, 'context.organizationId', { max: 128 });
@@ -355,155 +359,953 @@ export function validateCatalogTestDesignContextV1(context) {
 
   assertPlainObject(context.endpoint, 'context.endpoint');
   assertKnownKeys(context.endpoint, new Set([
-    'endpointId', 'serviceId', 'serviceName', 'classification', 'classificationConfidence',
-    'method', 'normalizedPath', 'discoveryConfidenceScore', 'discoveryConfidenceLevel',
-    'lifecycleState', 'observationCount', 'sessionCount', 'environmentCount', 'successRatePct',
-    'latencyAvgMs', 'firstSeenAt', 'lastSeenAt',
+    'endpointId',
+    'serviceId',
+    'serviceName',
+    'classification',
+    'classificationConfidence',
+    'method',
+    'normalizedPath',
+    'discoveryConfidenceScore',
+    'discoveryConfidenceLevel',
+    'lifecycleState',
+    'observationCount',
+    'sessionCount',
+    'environmentCount',
+    'successRatePct',
+    'latencyAvgMs',
+    'firstSeenAt',
+    'lastSeenAt',
+    'queryParameters',
   ]), 'context.endpoint');
 
-  assertString(context.endpoint.endpointId, 'context.endpoint.endpointId', { max: 160 });
-  assertNullableString(context.endpoint.serviceId, 'context.endpoint.serviceId', { max: 160 });
-  assertNullableString(context.endpoint.serviceName, 'context.endpoint.serviceName', { max: 260 });
-  normalizeMethod(context.endpoint.method, 'context.endpoint.method');
-  assertRelativePath(context.endpoint.normalizedPath, 'context.endpoint.normalizedPath');
+  assertString(
+    context.endpoint.endpointId,
+    'context.endpoint.endpointId',
+    { max: 160 },
+  );
 
-  if (context.endpoint.classification != null) assertString(context.endpoint.classification, 'context.endpoint.classification', { max: 80 });
-  if (context.endpoint.classificationConfidence != null) assertFiniteNumber(context.endpoint.classificationConfidence, 'context.endpoint.classificationConfidence', { min: 0, max: 100 });
-  if (context.endpoint.discoveryConfidenceScore != null) assertFiniteNumber(context.endpoint.discoveryConfidenceScore, 'context.endpoint.discoveryConfidenceScore', { min: 0, max: 100 });
-  if (context.endpoint.discoveryConfidenceLevel != null) assertString(context.endpoint.discoveryConfidenceLevel, 'context.endpoint.discoveryConfidenceLevel', { max: 40 });
-  if (context.endpoint.lifecycleState != null) assertString(context.endpoint.lifecycleState, 'context.endpoint.lifecycleState', { max: 40 });
-  for (const field of ['observationCount', 'sessionCount', 'environmentCount']) {
-    if (context.endpoint[field] != null) assertInteger(context.endpoint[field], `context.endpoint.${field}`, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  assertNullableString(
+    context.endpoint.serviceId,
+    'context.endpoint.serviceId',
+    { max: 160 },
+  );
+
+  assertNullableString(
+    context.endpoint.serviceName,
+    'context.endpoint.serviceName',
+    { max: 260 },
+  );
+
+  normalizeMethod(
+    context.endpoint.method,
+    'context.endpoint.method',
+  );
+
+  assertRelativePath(
+    context.endpoint.normalizedPath,
+    'context.endpoint.normalizedPath',
+  );
+
+  if (context.endpoint.classification != null) {
+    assertString(
+      context.endpoint.classification,
+      'context.endpoint.classification',
+      { max: 80 },
+    );
   }
-  if (context.endpoint.successRatePct != null) assertFiniteNumber(context.endpoint.successRatePct, 'context.endpoint.successRatePct', { min: 0, max: 100 });
-  if (context.endpoint.latencyAvgMs != null) assertFiniteNumber(context.endpoint.latencyAvgMs, 'context.endpoint.latencyAvgMs', { min: 0, max: 86_400_000 });
 
-  const schemas = assertArray(context.schemas ?? [], 'context.schemas', { max: 30 });
+  if (context.endpoint.classificationConfidence != null) {
+    assertFiniteNumber(
+      context.endpoint.classificationConfidence,
+      'context.endpoint.classificationConfidence',
+      { min: 0, max: 100 },
+    );
+  }
+
+  if (context.endpoint.discoveryConfidenceScore != null) {
+    assertFiniteNumber(
+      context.endpoint.discoveryConfidenceScore,
+      'context.endpoint.discoveryConfidenceScore',
+      { min: 0, max: 100 },
+    );
+  }
+
+  if (context.endpoint.discoveryConfidenceLevel != null) {
+    assertString(
+      context.endpoint.discoveryConfidenceLevel,
+      'context.endpoint.discoveryConfidenceLevel',
+      { max: 40 },
+    );
+  }
+
+  if (context.endpoint.lifecycleState != null) {
+    assertString(
+      context.endpoint.lifecycleState,
+      'context.endpoint.lifecycleState',
+      { max: 40 },
+    );
+  }
+
+  for (const field of [
+    'observationCount',
+    'sessionCount',
+    'environmentCount',
+  ]) {
+    if (context.endpoint[field] != null) {
+      assertInteger(
+        context.endpoint[field],
+        `context.endpoint.${field}`,
+        {
+          min: 0,
+          max: Number.MAX_SAFE_INTEGER,
+        },
+      );
+    }
+  }
+
+  if (context.endpoint.successRatePct != null) {
+    assertFiniteNumber(
+      context.endpoint.successRatePct,
+      'context.endpoint.successRatePct',
+      { min: 0, max: 100 },
+    );
+  }
+
+  if (context.endpoint.latencyAvgMs != null) {
+    assertFiniteNumber(
+      context.endpoint.latencyAvgMs,
+      'context.endpoint.latencyAvgMs',
+      { min: 0, max: 86_400_000 },
+    );
+  }
+
+  /*
+   * 07.7.8-C2-E — Observed Query Shape Integration
+   *
+   * O Catalog Context pode informar somente o shape seguro da query:
+   * nomes + metadata agregada.
+   *
+   * Valores observados de query NÃO fazem parte deste contrato.
+   */
+  if (context.endpoint.queryParameters !== undefined) {
+    const queryParameters = assertArray(
+      context.endpoint.queryParameters,
+      'context.endpoint.queryParameters',
+      { max: 64 },
+    );
+
+    const queryNames = [];
+
+    queryParameters.forEach((item, index) => {
+      const path =
+        `context.endpoint.queryParameters[${index}]`;
+
+      assertPlainObject(item, path);
+
+      assertKnownKeys(item, new Set([
+        'name',
+        'observationCount',
+        'successCount',
+        'successShapeObservationCount',
+        'environmentCount',
+        'firstSeenAt',
+        'lastSeenAt',
+        'baselineEligible',
+      ]), path);
+
+      const name = assertString(
+        item.name,
+        `${path}.name`,
+        { max: 120 },
+      );
+
+      /*
+       * Defesa em profundidade:
+       * - formato limitado;
+       * - selectors sensíveis continuam fora do Catalog Context.
+       */
+      if (
+        !/^[A-Za-z_][A-Za-z0-9_.-]{0,119}$/.test(name)
+        || isSensitiveTestDataSelector('QUERY', name)
+      ) {
+        fail(
+          'Query parameter modelado inválido ou sensível.',
+          `${path}.name`,
+          'TEST_DESIGN_SECRET_MATERIAL_FORBIDDEN',
+        );
+      }
+
+      queryNames.push(name);
+
+      for (const field of [
+        'observationCount',
+        'successCount',
+        'successShapeObservationCount',
+        'environmentCount',
+      ]) {
+        if (item[field] != null) {
+          assertInteger(
+            item[field],
+            `${path}.${field}`,
+            {
+              min: 0,
+              max: Number.MAX_SAFE_INTEGER,
+            },
+          );
+        }
+      }
+
+      if (item.firstSeenAt != null) {
+        assertString(
+          item.firstSeenAt,
+          `${path}.firstSeenAt`,
+          { max: 64 },
+        );
+      }
+
+      if (item.lastSeenAt != null) {
+        assertString(
+          item.lastSeenAt,
+          `${path}.lastSeenAt`,
+          { max: 64 },
+        );
+      }
+
+      if (typeof item.baselineEligible !== 'boolean') {
+        fail(
+          'Boolean esperado.',
+          `${path}.baselineEligible`,
+        );
+      }
+    });
+
+    assertUniqueStrings(
+      queryNames,
+      'context.endpoint.queryParameters',
+    );
+  }
+
+  const schemas = assertArray(
+    context.schemas ?? [],
+    'context.schemas',
+    { max: 30 },
+  );
+
   schemas.forEach((schema, index) => {
     const path = `context.schemas[${index}]`;
+
     assertPlainObject(schema, path);
+
     assertKnownKeys(schema, new Set([
-      'trackId', 'direction', 'statusCode', 'currentVersionId', 'currentSchemaHash',
-      'contentTypes', 'schema', 'versions',
+      'trackId',
+      'direction',
+      'statusCode',
+      'currentVersionId',
+      'currentSchemaHash',
+      'contentTypes',
+      'schema',
+      'versions',
     ]), path);
-    assertString(schema.trackId, `${path}.trackId`, { max: 160 });
-    assertEnum(schema.direction, ['REQUEST', 'RESPONSE'], `${path}.direction`);
-    if (schema.statusCode != null) assertInteger(schema.statusCode, `${path}.statusCode`, { min: 100, max: 599 });
-    assertNullableString(schema.currentVersionId, `${path}.currentVersionId`, { max: 160 });
-    assertNullableString(schema.currentSchemaHash, `${path}.currentSchemaHash`, { max: 256 });
-    assertStringArray(schema.contentTypes ?? [], `${path}.contentTypes`, { maxItems: 20, maxLength: 160 });
-    if ('schema' in schema) assertJsonValue(schema.schema, `${path}.schema`);
-    const versions = assertArray(schema.versions ?? [], `${path}.versions`, { max: 20 });
+
+    assertString(
+      schema.trackId,
+      `${path}.trackId`,
+      { max: 160 },
+    );
+
+    assertEnum(
+      schema.direction,
+      ['REQUEST', 'RESPONSE'],
+      `${path}.direction`,
+    );
+
+    if (schema.statusCode != null) {
+      assertInteger(
+        schema.statusCode,
+        `${path}.statusCode`,
+        { min: 100, max: 599 },
+      );
+    }
+
+    assertNullableString(
+      schema.currentVersionId,
+      `${path}.currentVersionId`,
+      { max: 160 },
+    );
+
+    assertNullableString(
+      schema.currentSchemaHash,
+      `${path}.currentSchemaHash`,
+      { max: 256 },
+    );
+
+    assertStringArray(
+      schema.contentTypes ?? [],
+      `${path}.contentTypes`,
+      { maxItems: 20, maxLength: 160 },
+    );
+
+    if ('schema' in schema) {
+      assertJsonValue(
+        schema.schema,
+        `${path}.schema`,
+      );
+    }
+
+    const versions = assertArray(
+      schema.versions ?? [],
+      `${path}.versions`,
+      { max: 20 },
+    );
+
     versions.forEach((version, versionIndex) => {
-      const vPath = `${path}.versions[${versionIndex}]`;
+      const vPath =
+        `${path}.versions[${versionIndex}]`;
+
       assertPlainObject(version, vPath);
-      assertKnownKeys(version, new Set(['versionId', 'schemaHash', 'observationCount', 'introducedAt']), vPath);
-      assertString(version.versionId, `${vPath}.versionId`, { max: 160 });
-      assertString(version.schemaHash, `${vPath}.schemaHash`, { max: 256 });
-      if (version.observationCount != null) assertInteger(version.observationCount, `${vPath}.observationCount`, { min: 0, max: Number.MAX_SAFE_INTEGER });
-      if (version.introducedAt != null) assertString(version.introducedAt, `${vPath}.introducedAt`, { max: 64 });
+
+      assertKnownKeys(version, new Set([
+        'versionId',
+        'schemaHash',
+        'observationCount',
+        'introducedAt',
+      ]), vPath);
+
+      assertString(
+        version.versionId,
+        `${vPath}.versionId`,
+        { max: 160 },
+      );
+
+      assertString(
+        version.schemaHash,
+        `${vPath}.schemaHash`,
+        { max: 256 },
+      );
+
+      if (version.observationCount != null) {
+        assertInteger(
+          version.observationCount,
+          `${vPath}.observationCount`,
+          {
+            min: 0,
+            max: Number.MAX_SAFE_INTEGER,
+          },
+        );
+      }
+
+      if (version.introducedAt != null) {
+        assertString(
+          version.introducedAt,
+          `${vPath}.introducedAt`,
+          { max: 64 },
+        );
+      }
     });
   });
 
-  const evidence = assertArray(context.evidence ?? [], 'context.evidence', { max: 50 });
+  const evidence = assertArray(
+    context.evidence ?? [],
+    'context.evidence',
+    { max: 50 },
+  );
+
   evidence.forEach((item, index) => {
     const path = `context.evidence[${index}]`;
+
     assertPlainObject(item, path);
+
     assertKnownKeys(item, new Set([
-      'evidenceId', 'observedAt', 'environmentId', 'outcome', 'statusCode', 'latencyMs',
-      'sourceHost', 'sessionId', 'requestSchemaVersionId', 'responseSchemaVersionId',
-      'authObserved', 'authScheme',
+      'evidenceId',
+      'observedAt',
+      'environmentId',
+      'outcome',
+      'statusCode',
+      'latencyMs',
+      'sourceHost',
+      'sessionId',
+      'requestSchemaVersionId',
+      'responseSchemaVersionId',
+      'authObserved',
+      'authScheme',
     ]), path);
-    assertString(item.evidenceId, `${path}.evidenceId`, { max: 160 });
-    assertString(item.observedAt, `${path}.observedAt`, { max: 64 });
-    assertNullableString(item.environmentId, `${path}.environmentId`, { max: 160 });
-    assertNullableString(item.outcome, `${path}.outcome`, { max: 80 });
-    if (item.statusCode != null) assertInteger(item.statusCode, `${path}.statusCode`, { min: 100, max: 599 });
-    if (item.latencyMs != null) assertFiniteNumber(item.latencyMs, `${path}.latencyMs`, { min: 0, max: 86_400_000 });
-    assertNullableString(item.sourceHost, `${path}.sourceHost`, { max: 500 });
-    assertNullableString(item.sessionId, `${path}.sessionId`, { max: 160 });
-    assertNullableString(item.requestSchemaVersionId, `${path}.requestSchemaVersionId`, { max: 160 });
-    assertNullableString(item.responseSchemaVersionId, `${path}.responseSchemaVersionId`, { max: 160 });
-    if (item.authObserved != null && typeof item.authObserved !== 'boolean') fail('authObserved deve ser boolean ou null.', `${path}.authObserved`);
-    if (item.authScheme != null) assertEnum(item.authScheme, ['BEARER', 'BASIC', 'API_KEY', 'COOKIE', 'UNKNOWN'], `${path}.authScheme`);
-    if (item.authObserved !== true && item.authScheme != null) fail('authScheme só pode existir quando authObserved=true.', `${path}.authScheme`, 'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT');
+
+    assertString(
+      item.evidenceId,
+      `${path}.evidenceId`,
+      { max: 160 },
+    );
+
+    assertString(
+      item.observedAt,
+      `${path}.observedAt`,
+      { max: 64 },
+    );
+
+    assertNullableString(
+      item.environmentId,
+      `${path}.environmentId`,
+      { max: 160 },
+    );
+
+    assertNullableString(
+      item.outcome,
+      `${path}.outcome`,
+      { max: 80 },
+    );
+
+    if (item.statusCode != null) {
+      assertInteger(
+        item.statusCode,
+        `${path}.statusCode`,
+        { min: 100, max: 599 },
+      );
+    }
+
+    if (item.latencyMs != null) {
+      assertFiniteNumber(
+        item.latencyMs,
+        `${path}.latencyMs`,
+        { min: 0, max: 86_400_000 },
+      );
+    }
+
+    assertNullableString(
+      item.sourceHost,
+      `${path}.sourceHost`,
+      { max: 500 },
+    );
+
+    assertNullableString(
+      item.sessionId,
+      `${path}.sessionId`,
+      { max: 160 },
+    );
+
+    assertNullableString(
+      item.requestSchemaVersionId,
+      `${path}.requestSchemaVersionId`,
+      { max: 160 },
+    );
+
+    assertNullableString(
+      item.responseSchemaVersionId,
+      `${path}.responseSchemaVersionId`,
+      { max: 160 },
+    );
+
+    if (
+      item.authObserved != null
+      && typeof item.authObserved !== 'boolean'
+    ) {
+      fail(
+        'authObserved deve ser boolean ou null.',
+        `${path}.authObserved`,
+      );
+    }
+
+    if (item.authScheme != null) {
+      assertEnum(
+        item.authScheme,
+        [
+          'BEARER',
+          'BASIC',
+          'API_KEY',
+          'COOKIE',
+          'UNKNOWN',
+        ],
+        `${path}.authScheme`,
+      );
+    }
+
+    if (
+      item.authObserved !== true
+      && item.authScheme != null
+    ) {
+      fail(
+        'authScheme só pode existir quando authObserved=true.',
+        `${path}.authScheme`,
+        'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT',
+      );
+    }
   });
 
-  const environments = assertArray(context.environments ?? [], 'context.environments', { max: 30 });
+  const environments = assertArray(
+    context.environments ?? [],
+    'context.environments',
+    { max: 30 },
+  );
+
   environments.forEach((environment, index) => {
-    const path = `context.environments[${index}]`;
+    const path =
+      `context.environments[${index}]`;
+
     assertPlainObject(environment, path);
-    assertKnownKeys(environment, new Set(['environmentId', 'name', 'observationCount', 'successRatePct', 'lastSeenAt']), path);
-    assertString(environment.environmentId, `${path}.environmentId`, { max: 160 });
-    assertNullableString(environment.name, `${path}.name`, { max: 160 });
-    if (environment.observationCount != null) assertInteger(environment.observationCount, `${path}.observationCount`, { min: 0, max: Number.MAX_SAFE_INTEGER });
-    if (environment.successRatePct != null) assertFiniteNumber(environment.successRatePct, `${path}.successRatePct`, { min: 0, max: 100 });
-    if (environment.lastSeenAt != null) assertString(environment.lastSeenAt, `${path}.lastSeenAt`, { max: 64 });
+
+    assertKnownKeys(environment, new Set([
+      'environmentId',
+      'name',
+      'observationCount',
+      'successRatePct',
+      'lastSeenAt',
+    ]), path);
+
+    assertString(
+      environment.environmentId,
+      `${path}.environmentId`,
+      { max: 160 },
+    );
+
+    assertNullableString(
+      environment.name,
+      `${path}.name`,
+      { max: 160 },
+    );
+
+    if (environment.observationCount != null) {
+      assertInteger(
+        environment.observationCount,
+        `${path}.observationCount`,
+        {
+          min: 0,
+          max: Number.MAX_SAFE_INTEGER,
+        },
+      );
+    }
+
+    if (environment.successRatePct != null) {
+      assertFiniteNumber(
+        environment.successRatePct,
+        `${path}.successRatePct`,
+        { min: 0, max: 100 },
+      );
+    }
+
+    if (environment.lastSeenAt != null) {
+      assertString(
+        environment.lastSeenAt,
+        `${path}.lastSeenAt`,
+        { max: 64 },
+      );
+    }
   });
 
-  const testData = context.testData ?? { configuredBindings: [] };
-  assertPlainObject(testData, 'context.testData');
-  assertKnownKeys(testData, new Set(['configuredBindings']), 'context.testData');
-  const configuredBindings = assertArray(testData.configuredBindings ?? [], 'context.testData.configuredBindings', { max: 200 });
+  const testData =
+    context.testData
+    ?? { configuredBindings: [] };
+
+  assertPlainObject(
+    testData,
+    'context.testData',
+  );
+
+  assertKnownKeys(
+    testData,
+    new Set(['configuredBindings']),
+    'context.testData',
+  );
+
+  const configuredBindings = assertArray(
+    testData.configuredBindings ?? [],
+    'context.testData.configuredBindings',
+    { max: 200 },
+  );
+
   configuredBindings.forEach((binding, index) => {
-    const path = `context.testData.configuredBindings[${index}]`;
+    const path =
+      `context.testData.configuredBindings[${index}]`;
+
     assertPlainObject(binding, path);
-    assertKnownKeys(binding, new Set(['bindingId', 'scopeType', 'environmentId', 'target', 'selector', 'sourceType', 'valueType', 'generatorKind', 'generatorConfig', 'secretConfigured']), path);
-    assertString(binding.bindingId, `${path}.bindingId`, { max: 160 });
-    assertEnum(binding.scopeType, ['PROJECT', 'ENVIRONMENT', 'ENDPOINT'], `${path}.scopeType`);
-    assertNullableString(binding.environmentId, `${path}.environmentId`, { max: 160 });
-    if (binding.scopeType === 'PROJECT' && binding.environmentId != null) fail('PROJECT Test Data não usa environmentId.', `${path}.environmentId`, 'TEST_DATA_SCOPE_INVALID');
-    if (binding.scopeType !== 'PROJECT' && !binding.environmentId) fail(`${binding.scopeType} Test Data exige environmentId.`, `${path}.environmentId`, 'TEST_DATA_SCOPE_INVALID');
-    assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${path}.target`);
-    assertString(binding.selector, `${path}.selector`, { max: 320 });
-    assertEnum(binding.sourceType, ['GENERATED', 'FIXED', 'SECRET'], `${path}.sourceType`);
-    if (isSensitiveTestDataSelector(binding.target, binding.selector) && binding.sourceType !== 'SECRET') fail('Campo sensível de Test Data deve usar SECRET.', `${path}.sourceType`, 'TEST_DATA_SECRET_SOURCE_REQUIRED');
-    assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${path}.valueType`);
-    assertNullableString(binding.generatorKind, `${path}.generatorKind`, { max: 64 });
-    if (binding.generatorConfig != null) assertJsonValue(binding.generatorConfig, `${path}.generatorConfig`);
-    if (binding.secretConfigured != null && typeof binding.secretConfigured !== 'boolean') fail('secretConfigured deve ser boolean.', `${path}.secretConfigured`);
+
+    assertKnownKeys(binding, new Set([
+      'bindingId',
+      'scopeType',
+      'environmentId',
+      'target',
+      'selector',
+      'sourceType',
+      'valueType',
+      'generatorKind',
+      'generatorConfig',
+      'secretConfigured',
+    ]), path);
+
+    assertString(
+      binding.bindingId,
+      `${path}.bindingId`,
+      { max: 160 },
+    );
+
+    assertEnum(
+      binding.scopeType,
+      ['PROJECT', 'ENVIRONMENT', 'ENDPOINT'],
+      `${path}.scopeType`,
+    );
+
+    assertNullableString(
+      binding.environmentId,
+      `${path}.environmentId`,
+      { max: 160 },
+    );
+
+    if (
+      binding.scopeType === 'PROJECT'
+      && binding.environmentId != null
+    ) {
+      fail(
+        'PROJECT Test Data não usa environmentId.',
+        `${path}.environmentId`,
+        'TEST_DATA_SCOPE_INVALID',
+      );
+    }
+
+    if (
+      binding.scopeType !== 'PROJECT'
+      && !binding.environmentId
+    ) {
+      fail(
+        `${binding.scopeType} Test Data exige environmentId.`,
+        `${path}.environmentId`,
+        'TEST_DATA_SCOPE_INVALID',
+      );
+    }
+
+    assertEnum(
+      binding.target,
+      ['BODY', 'PATH_PARAM', 'QUERY'],
+      `${path}.target`,
+    );
+
+    assertString(
+      binding.selector,
+      `${path}.selector`,
+      { max: 320 },
+    );
+
+    assertEnum(
+      binding.sourceType,
+      ['GENERATED', 'FIXED', 'SECRET'],
+      `${path}.sourceType`,
+    );
+
+    if (
+      isSensitiveTestDataSelector(
+        binding.target,
+        binding.selector,
+      )
+      && binding.sourceType !== 'SECRET'
+    ) {
+      fail(
+        'Campo sensível de Test Data deve usar SECRET.',
+        `${path}.sourceType`,
+        'TEST_DATA_SECRET_SOURCE_REQUIRED',
+      );
+    }
+
+    assertEnum(
+      binding.valueType,
+      [
+        'STRING',
+        'NUMBER',
+        'INTEGER',
+        'BOOLEAN',
+        'JSON',
+      ],
+      `${path}.valueType`,
+    );
+
+    assertNullableString(
+      binding.generatorKind,
+      `${path}.generatorKind`,
+      { max: 64 },
+    );
+
+    if (binding.generatorConfig != null) {
+      assertJsonValue(
+        binding.generatorConfig,
+        `${path}.generatorConfig`,
+      );
+    }
+
+    if (
+      binding.secretConfigured != null
+      && typeof binding.secretConfigured !== 'boolean'
+    ) {
+      fail(
+        'secretConfigured deve ser boolean.',
+        `${path}.secretConfigured`,
+      );
+    }
   });
 
   const runtime = context.runtime ?? {};
-  assertPlainObject(runtime, 'context.runtime');
-  assertKnownKeys(runtime, new Set(['apiServiceKey', 'resolutionSource', 'resolutionConfidence', 'requiresExecutionConfirmation', 'discoveredOrigin', 'defaultAuthProfileRef', 'availableAuthProfileRefs', 'authObservation']), 'context.runtime');
-  assertNullableString(runtime.apiServiceKey, 'context.runtime.apiServiceKey', { max: 120 });
-  if (runtime.resolutionSource != null) assertEnum(runtime.resolutionSource, ['EXPLICIT_CONFIG', 'DISCOVERED_OBSERVATION', 'ORIGIN'], 'context.runtime.resolutionSource');
-  if (runtime.resolutionConfidence != null) assertEnum(runtime.resolutionConfidence, ['CONFIRMED', 'HIGH', 'MEDIUM', 'LOW'], 'context.runtime.resolutionConfidence');
-  if (runtime.requiresExecutionConfirmation != null && typeof runtime.requiresExecutionConfirmation !== 'boolean') fail('requiresExecutionConfirmation deve ser boolean.', 'context.runtime.requiresExecutionConfirmation');
-  assertNullableString(runtime.discoveredOrigin, 'context.runtime.discoveredOrigin', { max: 500 });
-  if (runtime.resolutionSource === 'DISCOVERED_OBSERVATION') {
-    const normalizedOrigin = normalizeObservedOrigin(runtime.discoveredOrigin);
-    if (!normalizedOrigin) fail('Runtime descoberto exige origin HTTPS público e seguro.', 'context.runtime.discoveredOrigin', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
-    if (runtime.apiServiceKey !== discoveredRuntimeServiceKey(normalizedOrigin)) fail('Runtime descoberto possui identidade divergente do origin observado.', 'context.runtime.apiServiceKey', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
-    if (runtime.resolutionConfidence !== 'HIGH') fail('Runtime descoberto v1 exige confidence HIGH.', 'context.runtime.resolutionConfidence', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
-    if (runtime.requiresExecutionConfirmation !== true) fail('Runtime descoberto precisa exigir confirmação de execução.', 'context.runtime.requiresExecutionConfirmation', 'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID');
+
+  assertPlainObject(
+    runtime,
+    'context.runtime',
+  );
+
+  assertKnownKeys(runtime, new Set([
+    'apiServiceKey',
+    'resolutionSource',
+    'resolutionConfidence',
+    'requiresExecutionConfirmation',
+    'discoveredOrigin',
+    'defaultAuthProfileRef',
+    'availableAuthProfileRefs',
+    'authObservation',
+  ]), 'context.runtime');
+
+  assertNullableString(
+    runtime.apiServiceKey,
+    'context.runtime.apiServiceKey',
+    { max: 120 },
+  );
+
+  if (runtime.resolutionSource != null) {
+    assertEnum(
+      runtime.resolutionSource,
+      [
+        'EXPLICIT_CONFIG',
+        'DISCOVERED_OBSERVATION',
+        'ORIGIN',
+      ],
+      'context.runtime.resolutionSource',
+    );
   }
-  assertNullableString(runtime.defaultAuthProfileRef, 'context.runtime.defaultAuthProfileRef', { max: 160 });
-  const authRefs = assertStringArray(runtime.availableAuthProfileRefs ?? [], 'context.runtime.availableAuthProfileRefs', { maxItems: 30, maxLength: 160 });
-  assertUniqueStrings(authRefs, 'context.runtime.availableAuthProfileRefs');
-  if (runtime.defaultAuthProfileRef && !authRefs.includes(runtime.defaultAuthProfileRef)) {
-    fail('defaultAuthProfileRef precisa existir em availableAuthProfileRefs.', 'context.runtime.defaultAuthProfileRef', 'TEST_DESIGN_AUTH_PROFILE_UNKNOWN');
+
+  if (runtime.resolutionConfidence != null) {
+    assertEnum(
+      runtime.resolutionConfidence,
+      [
+        'CONFIRMED',
+        'HIGH',
+        'MEDIUM',
+        'LOW',
+      ],
+      'context.runtime.resolutionConfidence',
+    );
   }
-  if (runtime.authObservation != null) {
-    assertPlainObject(runtime.authObservation, 'context.runtime.authObservation');
-    assertKnownKeys(runtime.authObservation, new Set(['status', 'scheme', 'evidenceRefs']), 'context.runtime.authObservation');
-    assertEnum(runtime.authObservation.status, ['REQUIRED', 'NONE', 'OPTIONAL', 'MIXED', 'UNKNOWN'], 'context.runtime.authObservation.status');
-    if (runtime.authObservation.scheme != null) assertEnum(runtime.authObservation.scheme, ['BEARER', 'BASIC', 'API_KEY', 'COOKIE', 'UNKNOWN'], 'context.runtime.authObservation.scheme');
-    const observedEvidenceRefs = assertStringArray(runtime.authObservation.evidenceRefs ?? [], 'context.runtime.authObservation.evidenceRefs', { maxItems: 20, maxLength: 160 });
-    assertUniqueStrings(observedEvidenceRefs, 'context.runtime.authObservation.evidenceRefs');
-    const allowedEvidenceRefs = new Set((context.evidence || []).map((item) => item?.evidenceId).filter(Boolean));
-    for (const ref of observedEvidenceRefs) {
-      if (!allowedEvidenceRefs.has(ref)) fail('authObservation.evidenceRefs precisa apontar para Evidence presente no contexto.', 'context.runtime.authObservation.evidenceRefs', 'TEST_DESIGN_EVIDENCE_REF_UNKNOWN');
+
+  if (
+    runtime.requiresExecutionConfirmation != null
+    && typeof runtime.requiresExecutionConfirmation
+    !== 'boolean'
+  ) {
+    fail(
+      'requiresExecutionConfirmation deve ser boolean.',
+      'context.runtime.requiresExecutionConfirmation',
+    );
+  }
+
+  assertNullableString(
+    runtime.discoveredOrigin,
+    'context.runtime.discoveredOrigin',
+    { max: 500 },
+  );
+
+  if (
+    runtime.resolutionSource
+    === 'DISCOVERED_OBSERVATION'
+  ) {
+    const normalizedOrigin =
+      normalizeObservedOrigin(
+        runtime.discoveredOrigin,
+      );
+
+    if (!normalizedOrigin) {
+      fail(
+        'Runtime descoberto exige origin HTTPS público e seguro.',
+        'context.runtime.discoveredOrigin',
+        'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID',
+      );
     }
-    if (!['REQUIRED', 'OPTIONAL'].includes(runtime.authObservation.status) && runtime.authObservation.scheme != null) {
-      fail('authObservation.scheme só pode ser materializado quando status=REQUIRED ou OPTIONAL.', 'context.runtime.authObservation.scheme', 'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT');
+
+    if (
+      runtime.apiServiceKey
+      !== discoveredRuntimeServiceKey(
+        normalizedOrigin,
+      )
+    ) {
+      fail(
+        'Runtime descoberto possui identidade divergente do origin observado.',
+        'context.runtime.apiServiceKey',
+        'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID',
+      );
+    }
+
+    if (
+      runtime.resolutionConfidence
+      !== 'HIGH'
+    ) {
+      fail(
+        'Runtime descoberto v1 exige confidence HIGH.',
+        'context.runtime.resolutionConfidence',
+        'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID',
+      );
+    }
+
+    if (
+      runtime.requiresExecutionConfirmation
+      !== true
+    ) {
+      fail(
+        'Runtime descoberto precisa exigir confirmação de execução.',
+        'context.runtime.requiresExecutionConfirmation',
+        'TEST_DESIGN_DISCOVERED_RUNTIME_INVALID',
+      );
     }
   }
 
-  const refs = collectContextReferences(context);
-  assertUniqueStrings([...refs.evidenceRefs], 'context.evidence');
-  assertUniqueStrings([...refs.schemaRefs], 'context.schemas');
+  assertNullableString(
+    runtime.defaultAuthProfileRef,
+    'context.runtime.defaultAuthProfileRef',
+    { max: 160 },
+  );
+
+  const authRefs = assertStringArray(
+    runtime.availableAuthProfileRefs ?? [],
+    'context.runtime.availableAuthProfileRefs',
+    {
+      maxItems: 30,
+      maxLength: 160,
+    },
+  );
+
+  assertUniqueStrings(
+    authRefs,
+    'context.runtime.availableAuthProfileRefs',
+  );
+
+  if (
+    runtime.defaultAuthProfileRef
+    && !authRefs.includes(
+      runtime.defaultAuthProfileRef,
+    )
+  ) {
+    fail(
+      'defaultAuthProfileRef precisa existir em availableAuthProfileRefs.',
+      'context.runtime.defaultAuthProfileRef',
+      'TEST_DESIGN_AUTH_PROFILE_UNKNOWN',
+    );
+  }
+
+  if (runtime.authObservation != null) {
+    assertPlainObject(
+      runtime.authObservation,
+      'context.runtime.authObservation',
+    );
+
+    assertKnownKeys(
+      runtime.authObservation,
+      new Set([
+        'status',
+        'scheme',
+        'evidenceRefs',
+      ]),
+      'context.runtime.authObservation',
+    );
+
+    assertEnum(
+      runtime.authObservation.status,
+      [
+        'REQUIRED',
+        'NONE',
+        'OPTIONAL',
+        'MIXED',
+        'UNKNOWN',
+      ],
+      'context.runtime.authObservation.status',
+    );
+
+    if (
+      runtime.authObservation.scheme
+      != null
+    ) {
+      assertEnum(
+        runtime.authObservation.scheme,
+        [
+          'BEARER',
+          'BASIC',
+          'API_KEY',
+          'COOKIE',
+          'UNKNOWN',
+        ],
+        'context.runtime.authObservation.scheme',
+      );
+    }
+
+    const observedEvidenceRefs =
+      assertStringArray(
+        runtime.authObservation.evidenceRefs
+        ?? [],
+        'context.runtime.authObservation.evidenceRefs',
+        {
+          maxItems: 20,
+          maxLength: 160,
+        },
+      );
+
+    assertUniqueStrings(
+      observedEvidenceRefs,
+      'context.runtime.authObservation.evidenceRefs',
+    );
+
+    const allowedEvidenceRefs =
+      new Set(
+        (context.evidence || [])
+          .map(
+            (item) =>
+              item?.evidenceId,
+          )
+          .filter(Boolean),
+      );
+
+    for (
+      const ref
+      of observedEvidenceRefs
+    ) {
+      if (!allowedEvidenceRefs.has(ref)) {
+        fail(
+          'authObservation.evidenceRefs precisa apontar para Evidence presente no contexto.',
+          'context.runtime.authObservation.evidenceRefs',
+          'TEST_DESIGN_EVIDENCE_REF_UNKNOWN',
+        );
+      }
+    }
+
+    if (
+      ![
+        'REQUIRED',
+        'OPTIONAL',
+      ].includes(
+        runtime.authObservation.status,
+      )
+      && runtime.authObservation.scheme
+      != null
+    ) {
+      fail(
+        'authObservation.scheme só pode ser materializado quando status=REQUIRED ou OPTIONAL.',
+        'context.runtime.authObservation.scheme',
+        'TEST_DESIGN_AUTH_SIGNAL_INCONSISTENT',
+      );
+    }
+  }
+
+  const refs =
+    collectContextReferences(context);
+
+  assertUniqueStrings(
+    [...refs.evidenceRefs],
+    'context.evidence',
+  );
+
+  assertUniqueStrings(
+    [...refs.schemaRefs],
+    'context.schemas',
+  );
+
   return context;
 }
 

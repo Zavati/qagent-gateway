@@ -1,4 +1,4 @@
-export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.3';
+export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.4';
 
 const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
 const CONFIDENCE_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2 });
@@ -418,12 +418,44 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
 
   const request = scenario.request || {};
   const queryKeys = Object.keys(request.query || {});
+
+  /*
+   * 07.7.8-C2-E — Observed Query Shape Integration
+   *
+   * Query params conhecidos pelo Catalog Context são semanticamente
+   * modelados e podem seguir normalmente para o Hybrid Test Data Planner.
+   *
+   * Query params desconhecidos continuam protegidos pelo mesmo Guard.
+   *
+   * Nenhum valor observado de query é utilizado aqui — somente nomes.
+   */
   if (queryKeys.length) {
-    const reason = `Query params (${queryKeys.join(', ')}) não são modelados pelo Catalog Context v1; sua existência precisa ser revisada.`;
-    markAssumption(scenario, reason);
-    markNeedsData(scenario, reason);
-    markReview(scenario, reason);
-    addIssue({ code: 'SEMANTIC_QUERY_PARAM_UNMODELED', path: `modelOutput.scenarios[${index}].request.query`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
+    const modeledQueryNames = new Set(
+      (context?.endpoint?.queryParameters || [])
+        .map((item) => item?.name)
+        .filter(Boolean),
+    );
+
+    const unknownQueryKeys = queryKeys.filter(
+      (key) => !modeledQueryNames.has(key),
+    );
+
+    if (unknownQueryKeys.length) {
+      const reason =
+        `Query params (${unknownQueryKeys.join(', ')}) não são modelados pelo Catalog Context; sua existência precisa ser revisada.`;
+
+      markAssumption(scenario, reason);
+      markNeedsData(scenario, reason);
+      markReview(scenario, reason);
+
+      addIssue({
+        code: 'SEMANTIC_QUERY_PARAM_UNMODELED',
+        path: `modelOutput.scenarios[${index}].request.query`,
+        severity: 'REVIEW',
+        reason,
+        action: 'REVIEW_REQUIRED',
+      });
+    }
   }
 
   const pathParams = request.pathParams || {};

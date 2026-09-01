@@ -19,7 +19,7 @@ import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 import { sanitizeTestDataGeneratorConfig } from '../lib/testDataPolicy.js';
 import { buildObservedTestDataPlanningContext } from './observedTestDataPlanningContext.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.8';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.9';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -631,6 +631,26 @@ function mapEndpoint(endpointDetail) {
     latencyAvgMs: nullableNumber(endpointDetail?.latencyAvgMs),
     firstSeenAt: nullableString(endpointDetail?.firstSeenAt),
     lastSeenAt: nullableString(endpointDetail?.lastSeenAt),
+    ...(Array.isArray(endpointDetail?.queryParameters) ? {
+      queryParameters: endpointDetail.queryParameters
+        .slice(0, 64)
+        .map((item) => ({
+          name: nullableString(item?.name),
+          observationCount: nullableInteger(item?.observationCount),
+          successCount: nullableInteger(item?.successCount),
+          successShapeObservationCount: nullableInteger(item?.successShapeObservationCount),
+          environmentCount: nullableInteger(item?.environmentCount),
+          firstSeenAt: nullableString(item?.firstSeenAt),
+          lastSeenAt: nullableString(item?.lastSeenAt),
+          baselineEligible:
+            item?.baselineEligible === true
+            || Number(item?.baselineEligible) === 1,
+        }))
+        .filter((item) => (
+          item.name
+          && /^[A-Za-z_][A-Za-z0-9_.-]{0,119}$/.test(item.name)
+        )),
+    } : {}),
   };
 }
 
