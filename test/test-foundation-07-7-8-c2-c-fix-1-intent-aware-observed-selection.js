@@ -82,7 +82,7 @@ function planOne(scenarioValue, contextValue = context, options = {}) {
   );
 }
 
-assert.equal(TEST_DATA_PLANNER_VERSION, 'qagent.test-data-planner.v1.2.2');
+assert.equal(TEST_DATA_PLANNER_VERSION, 'qagent.test-data-planner.v1.2.3');
 
 // Invalid reference: keep a valid observed baseline for unrelated fields, but never reuse
 // a successful leaveTypeId for the field whose intent is explicitly "non-existent".

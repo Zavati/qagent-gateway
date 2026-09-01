@@ -8,11 +8,11 @@ assert.doesNotMatch(repo, /INSERT INTO endpoint_test_data_bindings/);
 assert.match(repo, /scope_type AS scopeType/);
 
 const planner = await readFile(new URL('../src/intelligence/testDataPlanner.js', import.meta.url), 'utf8');
-assert.match(planner, /qagent\.test-data-planner\.v1\.2\.2/);
+assert.match(planner, /qagent\.test-data-planner\.v1\.2\.3/);
 assert.match(planner, /testDataPolicy\.js/);
 
 const context = await readFile(new URL('../src/intelligence/catalogContextBuilder.js', import.meta.url), 'utf8');
-assert.match(context, /qagent\.catalog-context-builder\.v1\.8/);
+assert.match(context, /qagent\.catalog-context-builder\.v1\.9/);
 assert.match(context, /scopeType/);
 
 await access(new URL('../migrations/0014_foundation_07_7_8_c_scope_hierarchy.sql', import.meta.url));
