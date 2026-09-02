@@ -3,8 +3,8 @@ import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
 export const OBSERVED_TEST_DATA_PLANNING_CONTEXT_VERSION = 'qagent.observed-test-data-planning-context.v1';
 
 const VALUE_TYPES = new Set(['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON']);
-const TARGETS = new Set(['BODY', 'QUERY']);
-const ENCODINGS = new Set(['JSON', 'FORM_URLENCODED', 'QUERY']);
+const TARGETS = new Set(['BODY', 'QUERY', 'PATH_PARAM']);
+const ENCODINGS = new Set(['JSON', 'FORM_URLENCODED', 'QUERY', 'PATH']);
 
 function nullableString(value) {
   const text = String(value ?? '').trim();
@@ -37,10 +37,25 @@ function safeQuerySelector(value) {
   return selector;
 }
 
+function safePathSelector(value) {
+  const selector = nullableString(value);
+  if (!selector || !/^(?:id|uuid|objectId|ulid)$/.test(selector)) return null;
+  if (isSensitiveTestDataSelector('PATH_PARAM', selector)) return null;
+  return selector;
+}
+
 function safeSelector(target, value) {
   if (target === 'BODY') return safeBodySelector(value);
   if (target === 'QUERY') return safeQuerySelector(value);
+  if (target === 'PATH_PARAM') return safePathSelector(value);
   return null;
+}
+
+function strictNonNegativeInteger(value, max) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && number <= max
+    ? number
+    : null;
 }
 
 function safeValueType(value) {
@@ -103,15 +118,48 @@ function sampleMetadata(item, allowedEnvironments) {
 
     if (!target || !selector || !valueType) continue;
 
-    const key = `${target}:${selector}`;
-    if (seen.has(key)) continue;
+    let segmentIndex = null;
+    let occurrence = null;
+    let key = `${target}:${selector}`;
 
+    if (target === 'PATH_PARAM') {
+      segmentIndex =
+        strictNonNegativeInteger(
+          value?.segmentIndex,
+          255,
+        );
+
+      occurrence =
+        strictNonNegativeInteger(
+          value?.occurrence,
+          47,
+        );
+
+      if (
+        segmentIndex == null
+        || occurrence == null
+        || valueType !== 'STRING'
+      ) {
+        continue;
+      }
+
+      key =
+        `${target}:${selector}@${segmentIndex}:${occurrence}`;
+    }
+
+    if (seen.has(key)) continue;
     seen.add(key);
 
     selectors.push({
       target,
       selector,
       valueType,
+      ...(target === 'PATH_PARAM'
+        ? {
+          segmentIndex,
+          occurrence,
+        }
+        : {}),
     });
   }
 
@@ -119,6 +167,15 @@ function sampleMetadata(item, allowedEnvironments) {
 
   selectors.sort((a, b) => (
     a.target.localeCompare(b.target)
+    || (
+      a.target === 'PATH_PARAM'
+      && b.target === 'PATH_PARAM'
+        ? (
+          Number(a.segmentIndex) - Number(b.segmentIndex)
+          || Number(a.occurrence) - Number(b.occurrence)
+        )
+        : 0
+    )
     || a.selector.localeCompare(b.selector)
   ));
 

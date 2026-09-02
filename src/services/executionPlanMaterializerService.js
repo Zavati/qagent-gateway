@@ -29,6 +29,140 @@ function uniqueStrings(values) {
   return [...new Set(values.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()))];
 }
 
+const POSITIONAL_PATH_BINDING_KEY =
+  /^PATH_PARAM:([A-Za-z_][A-Za-z0-9_.-]{0,119})@(\d{1,3}):(\d{1,2})$/;
+
+function positionalObservedPathBinding(
+  bindingKey,
+  observed,
+) {
+  const match =
+    POSITIONAL_PATH_BINDING_KEY
+      .exec(
+        String(bindingKey || ''),
+      );
+
+  if (
+    !match
+    || observed?.target !== 'PATH_PARAM'
+    || observed?.selector !== match[1]
+  ) {
+    return null;
+  }
+
+  const segmentIndex =
+    Number(match[2]);
+
+  const occurrence =
+    Number(match[3]);
+
+  if (
+    !Number.isInteger(segmentIndex)
+    || segmentIndex < 0
+    || segmentIndex > 255
+    || !Number.isInteger(occurrence)
+    || occurrence < 0
+    || occurrence > 47
+    || Number(observed?.segmentIndex)
+      !== segmentIndex
+    || Number(observed?.occurrence)
+      !== occurrence
+  ) {
+    return null;
+  }
+
+  return {
+    selector:
+      match[1],
+    segmentIndex,
+    occurrence,
+    runtimeSelector:
+      `__qagent_path_${segmentIndex}_${occurrence}`,
+  };
+}
+
+function pathPlaceholderCount(
+  path,
+  selector,
+) {
+  const expected =
+    `{${selector}}`;
+
+  return String(path || '')
+    .split('/')
+    .filter(Boolean)
+    .filter(
+      (segment) =>
+        segment === expected,
+    )
+    .length;
+}
+
+function rewriteObservedPathOccurrence(
+  path,
+  {
+    selector,
+    segmentIndex,
+    runtimeSelector,
+  },
+) {
+  const parts =
+    String(path || '')
+      .split('/');
+
+  let logicalIndex = -1;
+  let replaced = false;
+
+  for (
+    let index = 0;
+    index < parts.length;
+    index += 1
+  ) {
+    if (!parts[index]) continue;
+
+    logicalIndex += 1;
+
+    if (logicalIndex !== segmentIndex) {
+      continue;
+    }
+
+    if (
+      parts[index]
+      !== `{${selector}}`
+    ) {
+      runError(
+        'PATH_PARAM OBSERVED posicional diverge do path canônico do Test Design.',
+        'RUN_OBSERVED_PATH_POSITION_MISMATCH',
+        409,
+        {
+          selector,
+          segmentIndex,
+        },
+      );
+    }
+
+    parts[index] =
+      `{${runtimeSelector}}`;
+
+    replaced = true;
+    break;
+  }
+
+  if (!replaced) {
+    runError(
+      'PATH_PARAM OBSERVED posicional não pôde ser localizado no path do Execution Plan.',
+      'RUN_OBSERVED_PATH_POSITION_MISMATCH',
+      409,
+      {
+        selector,
+        segmentIndex,
+      },
+    );
+  }
+
+  return parts.join('/');
+}
+
 function validateArtifactScope(artifact, { organizationId, projectId }) {
   const specification = artifact?.specification;
   if (
@@ -466,11 +600,51 @@ export async function materializeExecutionPlanV1({
             bindingKey,
           });
         }
+        let frozenSelector =
+          observed.selector;
+
+        if (
+          observed.target
+          === 'PATH_PARAM'
+        ) {
+          const positional =
+            positionalObservedPathBinding(
+              bindingKey,
+              observed,
+            );
+
+          if (!positional) {
+            runError(
+              'PATH_PARAM OBSERVED não possui identidade posicional válida.',
+              'RUN_OBSERVED_PATH_BINDING_INVALID',
+              409,
+              {
+                scenarioId:
+                  scenario?.scenarioId
+                  || null,
+                bindingKey,
+              },
+            );
+          }
+
+          const repeatedPlaceholder =
+            pathPlaceholderCount(
+              scenario?.spec
+                ?.target?.path,
+              positional.selector,
+            ) > 1;
+
+          if (repeatedPlaceholder) {
+            frozenSelector =
+              positional.runtimeSelector;
+          }
+        }
+
         frozenFixed[bindingKey] = {
           bindingId: null,
           scopeType: null,
           target: observed.target,
-          selector: observed.selector,
+          selector: frozenSelector,
           valueType: observed.valueType,
           value: clone(observed.value),
         };
@@ -565,21 +739,115 @@ export async function materializeExecutionPlanV1({
 
   const scenarioPlans = selectedScenarios.map((scenario) => {
     const spec = clone(scenario.spec);
-    // OBSERVED is a Test Design policy. At Run creation the Gateway resolves it
-    // against the pinned Environment and freezes the non-secret literal in the
-    // Runtime Snapshot. The Runner therefore consumes the existing FIXED path;
-    // Queue/Test Design contracts and the execution pipeline remain unchanged.
+
+    /*
+     * OBSERVED is a Test Design policy.
+     *
+     * At Run creation the Gateway resolves it against the pinned
+     * Environment and freezes the non-secret literal in the Runtime
+     * Snapshot. The Runner continues consuming the existing FIXED path.
+     *
+     * C2-F adds one internal bridge for repeated PATH_PARAM names:
+     *
+     * Test Design:
+     *   /companies/{id}/employees/{id}
+     *
+     * Execution Plan:
+     *   /companies/{__qagent_path_1_0}/employees/{__qagent_path_3_1}
+     *
+     * Those aliases contain no observed value and are runtime-only.
+     * The Runner therefore needs no positional-path implementation.
+     */
+    let runtimePath =
+      spec?.target?.path;
+
     for (const binding of spec?.testData?.bindings || []) {
       if (binding?.source !== 'OBSERVED') continue;
-      const key = String(binding?.bindingKey || `${binding?.target}:${binding?.selector}`).trim();
-      if (!observedResolution.frozenByBindingKey?.[key]) {
-        runError('Execution Plan referencia OBSERVED sem material congelado.', 'RUN_OBSERVED_TEST_DATA_UNAVAILABLE', 409, {
-          scenarioId: scenario?.scenarioId || null,
-          bindingKey: key,
-        });
+
+      const key =
+        String(
+          binding?.bindingKey
+          || `${binding?.target}:${binding?.selector}`,
+        ).trim();
+
+      const observed =
+        observedResolution
+          .frozenByBindingKey?.[key]
+        || null;
+
+      if (!observed) {
+        runError(
+          'Execution Plan referencia OBSERVED sem material congelado.',
+          'RUN_OBSERVED_TEST_DATA_UNAVAILABLE',
+          409,
+          {
+            scenarioId:
+              scenario?.scenarioId
+              || null,
+            bindingKey:
+              key,
+          },
+        );
       }
+
+      if (
+        binding.target
+        === 'PATH_PARAM'
+      ) {
+        const positional =
+          positionalObservedPathBinding(
+            key,
+            observed,
+          );
+
+        if (!positional) {
+          runError(
+            'PATH_PARAM OBSERVED não possui identidade posicional válida.',
+            'RUN_OBSERVED_PATH_BINDING_INVALID',
+            409,
+            {
+              scenarioId:
+                scenario?.scenarioId
+                || null,
+              bindingKey:
+                key,
+            },
+          );
+        }
+
+        const repeatedPlaceholder =
+          pathPlaceholderCount(
+            spec?.target?.path,
+            positional.selector,
+          ) > 1;
+
+        if (repeatedPlaceholder) {
+          runtimePath =
+            rewriteObservedPathOccurrence(
+              runtimePath,
+              positional,
+            );
+
+          /*
+           * Only repeated same-name placeholders need runtime aliases.
+           * A single /employees/{id} remains canonical and uses selector=id.
+           */
+          binding.selector =
+            positional.runtimeSelector;
+        }
+      }
+
       binding.source = 'FIXED';
     }
+
+    if (
+      spec?.target
+      && runtimePath
+    ) {
+      spec.target.path =
+        runtimePath;
+    }
+
     return {
       scenarioId: scenario.scenarioId,
       title: scenario.title,

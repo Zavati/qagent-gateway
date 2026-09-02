@@ -113,7 +113,7 @@ function specFrom(contextResult, scenarios) {
 
 // Public 2xx + authenticated 2xx means OPTIONAL, not unresolved MIXED.
 const optional = await build();
-assert.equal(optional.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.9');
+assert.equal(optional.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.10');
 assert.equal(optional.diagnostics.auth.observationStatus, 'OPTIONAL');
 assert.equal(optional.diagnostics.auth.observedScheme, 'BEARER');
 assert.equal(optional.diagnostics.auth.authenticatedSuccessCount, 1);

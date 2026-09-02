@@ -8,7 +8,9 @@ export const OBSERVED_TEST_DATA_RUNTIME_RESOLUTION_VERSION = 'qagent.observed-te
 
 const BODY_SELECTOR = /^\$\.[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/;
 const QUERY_SELECTOR = /^[A-Za-z_][A-Za-z0-9_.-]{0,119}$/;
-const TARGETS = new Set(['BODY', 'QUERY']);
+const PATH_SELECTOR = /^(?:id|uuid|objectId|ulid)$/;
+const POSITIONAL_PATH_BINDING_KEY = /^PATH_PARAM:([A-Za-z_][A-Za-z0-9_.-]{0,119})@(\d{1,3}):(\d{1,2})$/;
+const TARGETS = new Set(['BODY', 'QUERY', 'PATH_PARAM']);
 const FORBIDDEN_MARKERS = ['[REDACTED]', '[TRUNCATED]', '__qagent_redacted__', '__qagent_truncated__'];
 const VALUE_TYPES = new Set(['STRING', 'INTEGER', 'NUMBER', 'BOOLEAN', 'JSON']);
 
@@ -67,6 +69,7 @@ function safeSelector(target, selector) {
   if (!resolvedTarget || !normalizedSelector) return null;
   if (resolvedTarget === 'BODY' && !BODY_SELECTOR.test(normalizedSelector)) return null;
   if (resolvedTarget === 'QUERY' && !QUERY_SELECTOR.test(normalizedSelector)) return null;
+  if (resolvedTarget === 'PATH_PARAM' && !PATH_SELECTOR.test(normalizedSelector)) return null;
   if (isSensitiveTestDataSelector(resolvedTarget, normalizedSelector)) return null;
 
   return normalizedSelector;
@@ -142,6 +145,66 @@ function bindingKey(binding) {
   ).trim();
 }
 
+function positionalPathIdentity(
+  key,
+  selector,
+) {
+  const match =
+    POSITIONAL_PATH_BINDING_KEY
+      .exec(
+        String(key || ''),
+      );
+
+  if (
+    !match
+    || match[1] !== selector
+  ) {
+    return null;
+  }
+
+  const segmentIndex =
+    Number(match[2]);
+
+  const occurrence =
+    Number(match[3]);
+
+  if (
+    !Number.isInteger(segmentIndex)
+    || segmentIndex < 0
+    || segmentIndex > 255
+    || !Number.isInteger(occurrence)
+    || occurrence < 0
+    || occurrence > 47
+  ) {
+    return null;
+  }
+
+  return {
+    segmentIndex,
+    occurrence,
+  };
+}
+
+function sampleBindingKey({
+  target,
+  selector,
+  segmentIndex = null,
+  occurrence = null,
+}) {
+  if (target === 'PATH_PARAM') {
+    if (
+      !Number.isInteger(segmentIndex)
+      || !Number.isInteger(occurrence)
+    ) {
+      return null;
+    }
+
+    return `PATH_PARAM:${selector}@${segmentIndex}:${occurrence}`;
+  }
+
+  return `${target}:${selector}`;
+}
+
 function collectObservedScenarioBindings(selectedScenarios) {
   const groups = [];
   const descriptors = new Map();
@@ -154,19 +217,41 @@ function collectObservedScenarioBindings(selectedScenarios) {
     for (const binding of scenario?.spec?.testData?.bindings || []) {
       if (String(binding?.source || '').trim().toUpperCase() !== 'OBSERVED') continue;
 
-      /**
-       * Aqui NÃO usamos legacyBody.
-       *
-       * Um Test Design novo precisa declarar target explicitamente.
-       * Compatibilidade BODY implícita é somente para dados históricos
-       * recuperados do Reservoir.
-       */
       const target = normalizedTarget(binding?.target);
       const selector = safeSelector(target, binding?.selector);
       const valueType = normalizedValueType(binding?.valueType);
       const key = bindingKey(binding);
 
-      if (!target || !selector || !valueType || key !== `${target}:${selector}`) {
+      let pathIdentity = null;
+
+      if (target === 'PATH_PARAM') {
+        pathIdentity =
+          positionalPathIdentity(
+            key,
+            selector,
+          );
+      }
+
+      const expectedKey =
+        target === 'PATH_PARAM'
+          ? (
+            pathIdentity
+              ? sampleBindingKey({
+                target,
+                selector,
+                ...pathIdentity,
+              })
+              : null
+          )
+          : `${target}:${selector}`;
+
+      if (
+        !target
+        || !selector
+        || !valueType
+        || !expectedKey
+        || key !== expectedKey
+      ) {
         runtimeError(
           'Binding OBSERVED inválido para resolução de runtime.',
           'RUN_OBSERVED_TEST_DATA_BINDING_INVALID',
@@ -184,6 +269,7 @@ function collectObservedScenarioBindings(selectedScenarios) {
         selector,
         valueType,
         bindingKey: key,
+        ...(pathIdentity || {}),
       };
 
       const existing = descriptors.get(key);
@@ -194,6 +280,8 @@ function collectObservedScenarioBindings(selectedScenarios) {
           existing.selector !== selector
           || existing.valueType !== valueType
           || existing.target !== target
+          || existing.segmentIndex !== descriptor.segmentIndex
+          || existing.occurrence !== descriptor.occurrence
         )
       ) {
         runtimeError(
@@ -219,10 +307,6 @@ function collectObservedScenarioBindings(selectedScenarios) {
     }
   }
 
-  /**
-   * Cenários com mais bindings são resolvidos primeiro para maximizar
-   * reutilização consistente dos mesmos valores congelados.
-   */
   groups.sort(
     (a, b) =>
       b.bindings.length - a.bindings.length
@@ -235,17 +319,6 @@ function collectObservedScenarioBindings(selectedScenarios) {
   };
 }
 
-/**
- * Normaliza um request sample completo.
- *
- * O mesmo sample pode conter simultaneamente:
- *
- *   BODY:$.leaveTypeId
- *   QUERY:fromDate
- *   QUERY:toDate
- *
- * Isso permite preservar relações reais observadas na mesma request.
- */
 function normalizeSample(sample, environmentId) {
   if (
     text(sample?.environmentId) !== environmentId
@@ -257,28 +330,68 @@ function normalizeSample(sample, environmentId) {
   const values = new Map();
 
   for (const item of Array.isArray(sample?.values) ? sample.values : []) {
-    /**
-     * Rolling compatibility com C2-D:
-     * ausência de target nos registros históricos significa BODY.
-     */
     const target = normalizedTarget(item?.target, { legacyBody: true });
     const selector = safeSelector(target, item?.selector);
     const valueType = normalizedValueType(item?.valueType);
+
+    let key = null;
+    let segmentIndex = null;
+    let occurrence = null;
+
+    if (target === 'PATH_PARAM') {
+      segmentIndex =
+        Number(item?.segmentIndex);
+
+      occurrence =
+        Number(item?.occurrence);
+
+      if (
+        !Number.isInteger(segmentIndex)
+        || segmentIndex < 0
+        || segmentIndex > 255
+        || !Number.isInteger(occurrence)
+        || occurrence < 0
+        || occurrence > 47
+      ) {
+        continue;
+      }
+
+      key =
+        sampleBindingKey({
+          target,
+          selector,
+          segmentIndex,
+          occurrence,
+        });
+    } else if (target && selector) {
+      key =
+        sampleBindingKey({
+          target,
+          selector,
+        });
+    }
 
     if (
       !target
       || !selector
       || !valueType
+      || !key
       || !valueMatchesType(item?.value, valueType)
     ) {
       continue;
     }
 
-    values.set(`${target}:${selector}`, {
+    values.set(key, {
       target,
       selector,
       valueType,
       value: structuredClone(item.value),
+      ...(target === 'PATH_PARAM'
+        ? {
+          segmentIndex,
+          occurrence,
+        }
+        : {}),
     });
   }
 
@@ -295,12 +408,6 @@ function normalizeSample(sample, environmentId) {
   };
 }
 
-/**
- * Um sample só serve para o cenário quando contém TODOS os bindings
- * OBSERVED requeridos.
- *
- * Também respeitamos valores já congelados por cenários anteriores.
- */
 function sampleMatchesGroup(sample, group, frozenByBindingKey) {
   for (const descriptor of group.bindings) {
     const candidate = sample.values.get(descriptor.bindingKey);
@@ -335,6 +442,12 @@ function freezeFromSample({
       selector: descriptor.selector,
       valueType: descriptor.valueType,
       value: structuredClone(candidate.value),
+      ...(descriptor.target === 'PATH_PARAM'
+        ? {
+          segmentIndex: descriptor.segmentIndex,
+          occurrence: descriptor.occurrence,
+        }
+        : {}),
     };
 
     provenanceByBindingKey[descriptor.bindingKey] = {
@@ -523,6 +636,28 @@ export async function resolveObservedTestDataForRun({
     const descriptor = unresolved[0];
 
     if (!descriptor) continue;
+
+    /*
+     * C2-F:
+     *
+     * PATH_PARAM is sample-only. Even a single path identifier
+     * represents referential data and must come from a successful
+     * correlated request sample. The Catalog deliberately does not
+     * scalarize PATH_PARAM.
+     */
+    if (descriptor.target === 'PATH_PARAM') {
+      runtimeError(
+        'Não existe request sample 2xx correlacionado para resolver o PATH_PARAM observado.',
+        'RUN_OBSERVED_TEST_DATA_CORRELATED_SAMPLE_MISSING',
+        409,
+        {
+          scenarioId: group.scenarioId || null,
+          bindingKeys: group.bindings
+            .map((item) => item.bindingKey)
+            .sort(),
+        },
+      );
+    }
 
     /**
      * Fallback escalar.

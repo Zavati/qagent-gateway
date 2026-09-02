@@ -1,6 +1,6 @@
 import { isSensitiveTestDataSelector, sanitizeTestDataGeneratorConfig, scopeRank } from '../lib/testDataPolicy.js';
 
-export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2.3';
+export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2.4';
 export const TEST_DATA_BINDINGS_CONTRACT_VERSION = 'qagent.test-data-bindings.v1';
 
 const GENERIC_BODY_NEEDS_DATA = 'O formato do body é modelado, mas seus valores precisam ser fornecidos por massa de teste controlada.';
@@ -907,6 +907,7 @@ function bindingDescriptor({
   sampleValue,
   explicit,
   observedValueType = null,
+  bindingKey = null,
 }) {
   const base = {
     target,
@@ -971,24 +972,217 @@ function bindingDescriptor({
   return {
     ...base,
     bindingKey:
-      `${target}:${selector}`,
+      bindingKey
+      || `${target}:${selector}`,
   };
 }
 
-function pathPlaceholderNames(path) {
+function pathBindingKey({
+  selector,
+  segmentIndex,
+  occurrence,
+}) {
+  return `PATH_PARAM:${selector}@${segmentIndex}:${occurrence}`;
+}
+
+function pathPlaceholderDescriptors(path) {
+  const segments =
+    String(path || '')
+      .split('/')
+      .filter(Boolean);
+
+  const occurrences =
+    new Map();
+
   const out = [];
 
   for (
-    const match
-    of String(path || '')
-      .matchAll(
-        /\{([A-Za-z_][A-Za-z0-9_.-]*)\}/g,
-      )
+    let segmentIndex = 0;
+    segmentIndex < segments.length;
+    segmentIndex += 1
   ) {
-    out.push(match[1]);
+    const match =
+      /^\{([A-Za-z_][A-Za-z0-9_.-]*)\}$/
+        .exec(
+          segments[segmentIndex],
+        );
+
+    if (!match) continue;
+
+    const selector =
+      match[1];
+
+    const occurrence =
+      occurrences.get(selector)
+      || 0;
+
+    occurrences.set(
+      selector,
+      occurrence + 1,
+    );
+
+    out.push({
+      selector,
+      segmentIndex,
+      occurrence,
+      bindingKey:
+        pathBindingKey({
+          selector,
+          segmentIndex,
+          occurrence,
+        }),
+    });
   }
 
-  return unique(out);
+  return out;
+}
+
+function observedPathSampleCoverage(
+  observedTestData,
+  context,
+  descriptors,
+) {
+  const environmentIds =
+    observedEnvironmentIds(context);
+
+  const successfulSamples =
+    (observedTestData?.samples || [])
+      .filter(
+        (sample) =>
+          Number(
+            sample?.successCount || 0,
+          ) > 0,
+      );
+
+  const keyForSelector =
+    (item) => (
+      item?.target === 'PATH_PARAM'
+      && Number.isInteger(
+        Number(item?.segmentIndex),
+      )
+      && Number.isInteger(
+        Number(item?.occurrence),
+      )
+        ? pathBindingKey({
+          selector:
+            item.selector,
+          segmentIndex:
+            Number(
+              item.segmentIndex,
+            ),
+          occurrence:
+            Number(
+              item.occurrence,
+            ),
+        })
+        : null
+    );
+
+  const requiredKeys =
+    descriptors.map(
+      (item) =>
+        item.bindingKey,
+    );
+
+  const samplesWithKeys =
+    successfulSamples.map(
+      (sample) => {
+        const byKey =
+          new Map();
+
+        for (
+          const item
+          of sample?.selectors || []
+        ) {
+          const key =
+            keyForSelector(item);
+
+          if (key) {
+            byKey.set(
+              key,
+              item,
+            );
+          }
+        }
+
+        return {
+          sample,
+          byKey,
+          complete:
+            requiredKeys.length > 0
+            && requiredKeys.every(
+              (key) =>
+                byKey.has(key),
+            ),
+        };
+      },
+    );
+
+  const completeEnvironmentCoverage =
+    environmentIds.length
+      ? environmentIds.every(
+        (environmentId) =>
+          samplesWithKeys.some(
+            (item) =>
+              item.complete
+              && item.sample
+                ?.environmentId
+                === environmentId,
+          ),
+      )
+      : samplesWithKeys.some(
+        (item) =>
+          item.complete,
+      );
+
+  const byBindingKey =
+    new Map();
+
+  for (
+    const descriptor
+    of descriptors
+  ) {
+    const matching =
+      samplesWithKeys.filter(
+        (item) =>
+          item.byKey.has(
+            descriptor.bindingKey,
+          ),
+      );
+
+    const valueTypes =
+      unique(
+        matching.map(
+          (item) =>
+            item.byKey.get(
+              descriptor.bindingKey,
+            )?.valueType,
+        ),
+      );
+
+    byBindingKey.set(
+      descriptor.bindingKey,
+      {
+        any:
+          matching.length > 0,
+
+        complete:
+          completeEnvironmentCoverage,
+
+        valueType:
+          valueTypes.length === 1
+            ? valueTypes[0]
+            : 'STRING',
+      },
+    );
+  }
+
+  return {
+    complete:
+      completeEnvironmentCoverage,
+
+    byBindingKey,
+  };
 }
 
 function semanticNeedsDataIssues(
@@ -1086,6 +1280,7 @@ function classifySource(
 
   const observedPreferred =
     target === 'QUERY'
+    || target === 'PATH_PARAM'
     || (
       target === 'BODY'
       && (
@@ -1785,15 +1980,30 @@ export function applyTestDataPlannerV1(
 
       /*
        * PATH PARAM
+       *
+       * C2-F:
+       * - explicit Test Data keeps historical selector-by-name behavior;
+       * - zero-config OBSERVED path uses positional correlated samples;
+       * - repeated placeholders receive distinct bindingKeys;
+       * - no scalar observed fallback is planned for PATH_PARAM.
        */
-      const pathNames =
+      const canonicalPathDescriptors =
+        pathPlaceholderDescriptors(
+          context?.endpoint?.normalizedPath,
+        );
+
+      const canonicalPathNames =
+        new Set(
+          canonicalPathDescriptors.map(
+            (item) =>
+              item.selector,
+          ),
+        );
+
+      const supplementalPathNames =
         unique([
           ...Object.keys(
             scenario?.request?.pathParams || {},
-          ),
-
-          ...pathPlaceholderNames(
-            context?.endpoint?.normalizedPath,
           ),
 
           ...sanitizerSelectors(
@@ -1801,9 +2011,57 @@ export function applyTestDataPlannerV1(
             index,
             'PATH_PARAM',
           ),
-        ]);
+        ])
+          .filter(
+            (name) =>
+              !canonicalPathNames.has(
+                name,
+              ),
+          );
 
-      for (const name of pathNames) {
+      const pathCoverage =
+        observedPathSampleCoverage(
+          observedTestData,
+          context,
+          canonicalPathDescriptors,
+        );
+
+      const pathCandidates = [
+        ...canonicalPathDescriptors.map(
+          (item) => ({
+            ...item,
+            positional: true,
+          }),
+        ),
+
+        ...supplementalPathNames.map(
+          (selector) => ({
+            selector,
+            segmentIndex: null,
+            occurrence: null,
+            bindingKey: null,
+            positional: false,
+          }),
+        ),
+      ];
+
+      /*
+       * Configuração explícita histórica continua por selector.
+       *
+       * Em um path com {id} repetido, uma configuração FIXED antiga
+       * permanece um único binding e o Runner mantém o comportamento
+       * anterior de usar o mesmo valor em todas as ocorrências.
+       */
+      const legacyHandledSelectors =
+        new Set();
+
+      for (
+        const pathCandidate
+        of pathCandidates
+      ) {
+        const name =
+          pathCandidate.selector;
+
         const explicit =
           explicitBinding(
             context,
@@ -1811,8 +2069,47 @@ export function applyTestDataPlannerV1(
             name,
           );
 
+        const observed =
+          pathCandidate.positional
+            ? (
+              pathCoverage
+                .byBindingKey
+                .get(
+                  pathCandidate.bindingKey,
+                )
+              || {
+                any: false,
+                complete: false,
+                valueType: null,
+              }
+            )
+            : null;
+
+        const usePositionalObserved =
+          !explicit
+          && pathCandidate.positional
+          && observed?.any
+          && isSuccessOrientedScenario(
+            scenario,
+          );
+
+        if (
+          !usePositionalObserved
+          && legacyHandledSelectors
+            .has(name)
+        ) {
+          continue;
+        }
+
+        if (!usePositionalObserved) {
+          legacyHandledSelectors.add(
+            name,
+          );
+        }
+
         const sampleValue =
-          scenario?.request?.pathParams?.[name];
+          scenario?.request
+            ?.pathParams?.[name];
 
         if (explicit?.ambiguous) {
           unresolved.push({
@@ -1833,7 +2130,9 @@ export function applyTestDataPlannerV1(
               sampleValue,
               explicit,
               false,
-              null,
+              usePositionalObserved
+                ? observed
+                : null,
             );
 
           if (classified.securityMismatch) {
@@ -1845,8 +2144,22 @@ export function applyTestDataPlannerV1(
                 'TEST_DATA_SECRET_SOURCE_REQUIRED',
             });
           } else if (
+            classified.source === 'OBSERVED'
+            && classified.coverageIncomplete
+          ) {
+            diagnostics.observedCoverageIncompleteCount += 1;
+
+            unresolved.push({
+              target: 'PATH_PARAM',
+              selector: name,
+              source: 'OBSERVED',
+              code:
+                'TEST_DATA_OBSERVED_COVERAGE_INCOMPLETE',
+            });
+          } else if (
             !explicit
             && classified.source !== 'GENERATED'
+            && classified.source !== 'OBSERVED'
           ) {
             unresolved.push({
               target: 'PATH_PARAM',
@@ -1878,8 +2191,29 @@ export function applyTestDataPlannerV1(
                 node: null,
                 sampleValue,
                 explicit,
+                observedValueType:
+                  observed?.valueType
+                  || null,
+                bindingKey:
+                  classified.source
+                    === 'OBSERVED'
+                    ? pathCandidate.bindingKey
+                    : null,
               }),
             );
+
+            if (
+              classified.source === 'OBSERVED'
+              && observedRuntimeEnabled
+                !== true
+            ) {
+              runtimePending.push({
+                target:
+                  'PATH_PARAM',
+                selector:
+                  name,
+              });
+            }
           }
         }
 

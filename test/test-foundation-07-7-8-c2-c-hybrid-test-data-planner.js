@@ -75,7 +75,7 @@ const built = await buildCatalogTestDesignContextV1({
   controlPlaneLoader: async () => controlPlane,
 });
 
-assert.equal(built.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.9');
+assert.equal(built.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.10');
 assert.equal(built.diagnostics.testData.observedReservoirStatus, 'AVAILABLE');
 assert.equal(built.observedTestData.values.length, 4, 'sensitive observed selector must be removed from planning metadata');
 assert.equal(built.observedTestData.samples[0].selectors.length, 4);

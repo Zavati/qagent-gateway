@@ -19,7 +19,7 @@ import { deriveDiscoveredRuntimeCandidate } from './discoveredRuntime.js';
 import { sanitizeTestDataGeneratorConfig } from '../lib/testDataPolicy.js';
 import { buildObservedTestDataPlanningContext } from './observedTestDataPlanningContext.js';
 
-export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.9';
+export const CATALOG_CONTEXT_BUILDER_VERSION = 'qagent.catalog-context-builder.v1.10';
 export const DEFAULT_CONTEXT_LIMITS = Object.freeze({
   evidenceFetchLimit: 50,
   evidenceSelectedLimit: 24,
@@ -682,13 +682,33 @@ function observedPlanningFingerprintView(observedTestData) {
       selector: item.selector,
       valueType: item.valueType,
       successAvailable: Number(item.successCount || 0) > 0,
-    })).sort((a, b) => `${a.environmentId}|${a.selector}|${a.valueType}`.localeCompare(`${b.environmentId}|${b.selector}|${b.valueType}`)),
+    })).sort((a, b) =>
+      `${a.environmentId}|${a.target}|${a.selector}|${a.valueType}`
+        .localeCompare(
+          `${b.environmentId}|${b.target}|${b.selector}|${b.valueType}`,
+        )
+    ),
     samples: (observedTestData?.samples || []).map((item) => ({
       environmentId: item.environmentId,
       encoding: item.encoding,
       successAvailable: Number(item.successCount || 0) > 0,
-      selectors: (item.selectors || []).map((value) => ({ selector: value.selector, valueType: value.valueType })),
-    })).sort((a, b) => `${a.environmentId}|${a.encoding}|${JSON.stringify(a.selectors)}`.localeCompare(`${b.environmentId}|${b.encoding}|${JSON.stringify(b.selectors)}`)),
+      selectors: (item.selectors || []).map((value) => ({
+        target: value.target,
+        selector: value.selector,
+        valueType: value.valueType,
+        ...(value.target === 'PATH_PARAM'
+          ? {
+            segmentIndex: value.segmentIndex,
+            occurrence: value.occurrence,
+          }
+          : {}),
+      })),
+    })).sort((a, b) =>
+      `${a.environmentId}|${a.encoding}|${JSON.stringify(a.selectors)}`
+        .localeCompare(
+          `${b.environmentId}|${b.encoding}|${JSON.stringify(b.selectors)}`,
+        )
+    ),
   };
 }
 

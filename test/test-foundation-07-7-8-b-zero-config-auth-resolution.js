@@ -143,7 +143,7 @@ async function build(cp = controlPlane()) {
 
 // Core 07.7.8-B gate: no API Service, discovered runtime, one compatible Bearer profile in observed Environment.
 const matched = await build();
-assert.equal(matched.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.9');
+assert.equal(matched.diagnostics.builderVersion, 'qagent.catalog-context-builder.v1.10');
 assert.equal(matched.diagnostics.runtimeMapping.status, 'DISCOVERED');
 assert.equal(matched.diagnostics.runtimeMapping.runtimeSource, 'DISCOVERED_OBSERVATION');
 assert.equal(matched.diagnostics.auth.environmentScopeSource, 'OBSERVED_ENVIRONMENTS');
