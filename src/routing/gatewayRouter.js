@@ -201,6 +201,24 @@ export function resolveGatewayRoute(method, pathname) {
     if (segs.length === 7 && segs[4] === 'automation' && segs[5] === 'results' && normalizedMethod === 'GET') {
       return { name: 'consoleAutomationResultGet', params: { projectId: decodeURIComponent(segs[3]), resultSetId: decodeURIComponent(segs[6]) } };
     }
+    // 07.8-A Result Feedback & Test Evolution
+    // /v1/console/projects/:projectId/automation/results/:resultSetId/evolution
+    if (segs.length === 8 && segs[4] === 'automation' && segs[5] === 'results' && segs[7] === 'evolution' && normalizedMethod === 'GET') {
+      return { name: 'consoleResultEvolutionInspectionGet', params: { projectId: decodeURIComponent(segs[3]), resultSetId: decodeURIComponent(segs[6]) } };
+    }
+    // /v1/console/projects/:projectId/test-evolution/proposals
+    if (segs.length === 6 && segs[4] === 'test-evolution' && segs[5] === 'proposals' && normalizedMethod === 'POST') {
+      return { name: 'consoleEvolutionProposalPost', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/test-evolution/proposals/:proposalId[/approve|reject]
+    if (segs.length === 7 && segs[4] === 'test-evolution' && segs[5] === 'proposals' && normalizedMethod === 'GET') {
+      return { name: 'consoleEvolutionProposalGet', params: { projectId: decodeURIComponent(segs[3]), proposalId: decodeURIComponent(segs[6]) } };
+    }
+    if (segs.length === 8 && segs[4] === 'test-evolution' && segs[5] === 'proposals') {
+      const params = { projectId: decodeURIComponent(segs[3]), proposalId: decodeURIComponent(segs[6]) };
+      if (segs[7] === 'approve' && normalizedMethod === 'POST') return { name: 'consoleEvolutionApprovePost', params };
+      if (segs[7] === 'reject' && normalizedMethod === 'POST') return { name: 'consoleEvolutionRejectPost', params };
+    }
     // /v1/console/projects/:projectId/catalog/endpoints/:endpointId/automation/latest
     if (segs.length === 9 && segs[4] === 'catalog' && segs[5] === 'endpoints' && segs[7] === 'automation' && segs[8] === 'latest' && normalizedMethod === 'GET') {
       return { name: 'consoleEndpointAutomationLatestGet', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };

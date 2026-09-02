@@ -14,6 +14,10 @@
 		{
 			"binding": "RESULTS_SERVICE",
 			"service": "qagent-test-results"
+		},
+		{
+			"binding": "TEST_EVOLUTION_SERVICE",
+			"service": "qagent-test-evolution"
 		}
 	],
 	"queues": {
