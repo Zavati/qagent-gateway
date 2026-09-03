@@ -114,12 +114,13 @@ const model = { title: 'Hybrid', objective: 'Hybrid', assumptions: [], scenarios
 const planned = applyTestDataPlannerV1(model, built.context, { observedTestData: built.observedTestData });
 const bindings = planned.plansByScenarioId.happy_001.bindings;
 assert.equal(planned.diagnostics.strategy, 'HYBRID');
-assert.equal(planned.diagnostics.observedCount, 3);
-assert.equal(planned.diagnostics.generatedCount, 1);
-assert.equal(planned.diagnostics.observedRuntimePendingCount, 3);
+assert.equal(planned.diagnostics.defaultResolutionPolicy, 'OBSERVED_FIRST');
+assert.equal(planned.diagnostics.observedCount, 4);
+assert.equal(planned.diagnostics.generatedCount, 0);
+assert.equal(planned.diagnostics.observedRuntimePendingCount, 4);
 assert.equal(planned.diagnostics.unresolvedCount, 0);
 assert.deepEqual(bindings.map((item) => [item.selector, item.source]).sort(), [
-  ['$.comment', 'GENERATED'],
+  ['$.comment', 'OBSERVED'],
   ['$.duration.type', 'OBSERVED'],
   ['$.empNumber', 'OBSERVED'],
   ['$.leaveTypeId', 'OBSERVED'],
@@ -139,9 +140,9 @@ const specification = buildTestSpecificationV1({
   testDataPlans: runtimeReadyPlan.plansByScenarioId,
 });
 assert.doesNotThrow(() => validateTestSpecificationV1(specification, built.context));
-assert.equal(specification.scenarios[0].spec.testData.bindings.filter((item) => item.source === 'OBSERVED').length, 3);
+assert.equal(specification.scenarios[0].spec.testData.bindings.filter((item) => item.source === 'OBSERVED').length, 4);
 
-// A free-text observed field remains GENERATED under HYBRID; observed is not a blanket replay mode.
+// FIX-2: a safe free-text field with successful observed evidence now defaults to OBSERVED.
 const customSchemaContext = structuredClone(built.context);
 customSchemaContext.schemas[0].schema = { type: 'object', properties: { custom2: { type: 'string' } } };
 const customObserved = {
@@ -150,7 +151,7 @@ const customObserved = {
   samples: [{ environmentId: 'env_stg', encoding: 'JSON', selectors: [{ target: 'BODY', selector: '$.custom2', valueType: 'STRING' }], observationCount: 1, successCount: 1, clientErrorCount: 0, serverErrorCount: 0, lastSeenAt: '2026-08-31T01:00:00.000Z' }],
 };
 const customPlan = applyTestDataPlannerV1({ title: 'Custom', objective: 'Custom', assumptions: [], scenarios: [scenario('custom_001', { needsData: false })] }, customSchemaContext, { observedTestData: customObserved });
-assert.equal(customPlan.plansByScenarioId.custom_001.bindings[0].source, 'GENERATED');
+assert.equal(customPlan.plansByScenarioId.custom_001.bindings[0].source, 'OBSERVED');
 
 // Explicit QA configuration always wins over HYBRID auto-selection.
 const explicitContext = structuredClone(built.context);
@@ -170,8 +171,8 @@ assert.deepEqual(negative.output.scenarios[0].request.body, {});
 const twoEnvContext = structuredClone(built.context);
 twoEnvContext.environments.push({ environmentId: 'env_prod', name: 'PROD', observationCount: 1, successRatePct: 100, lastSeenAt: '2026-08-31T01:00:00.000Z' });
 const partialPlan = applyTestDataPlannerV1({ title: 'Partial', objective: 'Partial', assumptions: [], scenarios: [scenario('partial_001', { body: { leaveTypeId: 1 } })] }, twoEnvContext, { observedTestData: built.observedTestData });
-assert.equal(partialPlan.diagnostics.observedCoverageIncompleteCount, 3);
-assert.equal(partialPlan.diagnostics.unresolvedCount, 3);
+assert.equal(partialPlan.diagnostics.observedCoverageIncompleteCount, 4);
+assert.equal(partialPlan.diagnostics.unresolvedCount, 4);
 assert.match(partialPlan.output.scenarios[0].automationHints.reasons.join(' '), /não possui massa 2xx segura em todos os Environments/);
 
 console.log('Foundation 07.7.8-C2-C Hybrid Test Data Planner tests passed ✅');

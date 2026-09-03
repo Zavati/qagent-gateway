@@ -1,6 +1,6 @@
 import { isSensitiveTestDataSelector, sanitizeTestDataGeneratorConfig, scopeRank } from '../lib/testDataPolicy.js';
 
-export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.2.4';
+export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.3.0';
 export const TEST_DATA_BINDINGS_CONTRACT_VERSION = 'qagent.test-data-bindings.v1';
 
 const GENERIC_BODY_NEEDS_DATA = 'O formato do body é modelado, mas seus valores precisam ser fornecidos por massa de teste controlada.';
@@ -432,25 +432,6 @@ function baselineObservedSelectors(
       Number(item?.successCount || 0) > 0,
   );
 
-  const selectedSamples = [];
-
-  if (environmentIds.length) {
-    for (const environmentId of environmentIds) {
-      const sample = samples.find(
-        (item) =>
-          item?.environmentId === environmentId,
-      );
-
-      if (!sample) return [];
-
-      selectedSamples.push(sample);
-    }
-  } else if (samples.length) {
-    selectedSamples.push(samples[0]);
-  }
-
-  if (!selectedSamples.length) return [];
-
   /*
    * Rolling compatibility:
    * samples produzidos antes de C2-E não carregavam target porque o
@@ -467,6 +448,35 @@ function baselineObservedSelectors(
 
           return itemTarget === normalizedTarget;
         });
+
+  const selectedSamples = [];
+
+  if (environmentIds.length) {
+    for (const environmentId of environmentIds) {
+      /*
+       * FIX-2: select a successful sample that actually contains the target
+       * being planned. Picking the first sample for the Environment could
+       * choose BODY-only evidence while planning QUERY (or vice-versa),
+       * incorrectly hiding valid observed baseline material.
+       */
+      const sample = samples.find(
+        (item) =>
+          item?.environmentId === environmentId
+          && selectorsForTarget(item).length > 0,
+      );
+
+      if (!sample) return [];
+
+      selectedSamples.push(sample);
+    }
+  } else if (samples.length) {
+    const sample = samples.find(
+      (item) => selectorsForTarget(item).length > 0,
+    );
+    if (sample) selectedSamples.push(sample);
+  }
+
+  if (!selectedSamples.length) return [];
 
   let common = new Map(
     selectorsForTarget(
@@ -1278,21 +1288,18 @@ function classifySource(
     };
   }
 
-  const observedPreferred =
-    target === 'QUERY'
-    || target === 'PATH_PARAM'
-    || (
-      target === 'BODY'
-      && (
-        looksReferential(selector)
-        || looksEnumLike(selector, node)
-      )
-    );
-
-  if (
-    observedPreferred
-    && observed?.any
-  ) {
+  /*
+   * 07.7.8-C2 FIX-2 — Observed-First Test Data Resolution
+   *
+   * Once security and an explicit QA override have been handled, any
+   * positively observed 2xx value is the default source regardless of
+   * whether the field looks referential, enum-like or free-form.
+   *
+   * This keeps zero-config tests anchored to values the application has
+   * actually accepted. GENERATED remains the fallback when no observed
+   * material exists and still wins when explicitly configured by the QA.
+   */
+  if (observed?.any) {
     return {
       source: 'OBSERVED',
       securityMismatch: false,
@@ -1372,6 +1379,9 @@ export function applyTestDataPlannerV1(
 
     strategy:
       'HYBRID',
+
+    defaultResolutionPolicy:
+      'OBSERVED_FIRST',
 
     observedRuntimeEnabled:
       observedRuntimeEnabled === true,
@@ -1643,7 +1653,15 @@ export function applyTestDataPlannerV1(
           const item
           of baselineBodySelectors
         ) {
-          if (!candidates.has(item.selector)) {
+          if (candidates.has(item.selector)) {
+            const candidate =
+              candidates.get(item.selector);
+            candidate.observedSeed = true;
+            candidate.observedValueType =
+              candidate.observedValueType
+              || item.valueType
+              || null;
+          } else {
             candidates.set(
               item.selector,
               {
@@ -1715,6 +1733,21 @@ export function applyTestDataPlannerV1(
             'BODY',
             selector,
           );
+
+        /*
+         * A correlated successful request sample is also positive observed
+         * evidence. baselineObservedSelectors() only returns selectors that
+         * are present with the same value type across every observed
+         * Environment, so this is safe to treat as complete coverage.
+         */
+        if (candidate.observedSeed === true) {
+          observed.any = true;
+          observed.complete = true;
+          observed.valueType =
+            observed.valueType
+            || candidate.observedValueType
+            || null;
+        }
 
         if (explicit?.ambiguous) {
           unresolved.push({

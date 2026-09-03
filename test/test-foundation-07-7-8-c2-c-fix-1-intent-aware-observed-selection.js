@@ -82,7 +82,7 @@ function planOne(scenarioValue, contextValue = context, options = {}) {
   );
 }
 
-assert.equal(TEST_DATA_PLANNER_VERSION, 'qagent.test-data-planner.v1.2.4');
+assert.equal(TEST_DATA_PLANNER_VERSION, 'qagent.test-data-planner.v1.3.0');
 
 // Invalid reference: keep a valid observed baseline for unrelated fields, but never reuse
 // a successful leaveTypeId for the field whose intent is explicitly "non-existent".
@@ -287,7 +287,8 @@ const invalidFirstName = planEmployee(scenario('create_employee_invalid_firstNam
   needsData: false,
 }));
 assert.ok(invalidFirstName.diagnostics.intentTargets.includes('create_employee_invalid_firstName:BODY:$.firstName:INVALID_VALUE'));
-assert.equal(invalidFirstName.diagnostics.intentBlockedGeneratedCount, 1);
+assert.equal(invalidFirstName.diagnostics.intentBlockedObservedCount, 2);
+assert.equal(invalidFirstName.diagnostics.intentBlockedGeneratedCount, 0);
 assert.equal(invalidFirstName.plansByScenarioId.create_employee_invalid_firstName.bindings.some((item) => item.selector === '$.firstName'), false);
 assert.equal(invalidFirstName.output.scenarios[0].automationHints.needsData, true);
 
