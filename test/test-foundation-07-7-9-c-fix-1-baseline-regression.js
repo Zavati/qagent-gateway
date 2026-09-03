@@ -8,7 +8,7 @@ assert.doesNotMatch(repo, /INSERT INTO endpoint_test_data_bindings/);
 assert.match(repo, /scope_type AS scopeType/);
 
 const planner = await readFile(new URL('../src/intelligence/testDataPlanner.js', import.meta.url), 'utf8');
-assert.match(planner, /qagent\.test-data-planner\.v1\.2\.4/);
+assert.match(planner, /qagent\.test-data-planner\.v1\.3\.0/);
 assert.match(planner, /testDataPolicy\.js/);
 
 const context = await readFile(new URL('../src/intelligence/catalogContextBuilder.js', import.meta.url), 'utf8');
