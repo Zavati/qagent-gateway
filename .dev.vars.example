@@ -36,3 +36,6 @@ CATALOG_QUERY_TIMEOUT_MS=10000
 # Must match qagent-catalog CATALOG_QUERY_HMAC_SECRET. Never commit the real value.
 CATALOG_QUERY_HMAC_SECRET=
 
+
+# 07.8-B - must match qagent-test-generation-orchestrator. Never commit the real value.
+TEST_GENERATION_INTERNAL_HMAC_SECRET=

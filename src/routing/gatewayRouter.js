@@ -98,6 +98,25 @@ export function resolveGatewayRoute(method, pathname) {
     }
   }
 
+  // 07.8-B - internal shared Test Design generation use case (HMAC protected)
+  if (normalizedPath.startsWith('/internal/v1/test-design-generation/endpoints/')) {
+    const segs = normalizedPath.split('/').filter(Boolean);
+    if (segs.length === 6 && segs[0] === 'internal' && segs[1] === 'v1' && segs[2] === 'test-design-generation' && segs[3] === 'endpoints' && segs[5] === 'generate' && normalizedMethod === 'POST') {
+      return { name: 'internalEndpointTestDesignGenerationPost', params: { endpointId: decodeURIComponent(segs[4]) } };
+    }
+  }
+
+  // 07.8-B - Project Test Design Generation job reads
+  if (normalizedPath.startsWith('/v1/console/test-design-generation-jobs/')) {
+    const segs = normalizedPath.split('/').filter(Boolean);
+    if (segs.length === 5 && segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'test-design-generation-jobs' && segs[4] === 'items' && normalizedMethod === 'GET') {
+      return { name: 'consoleProjectTestDesignGenerationJobItemsList', params: { jobId: decodeURIComponent(segs[3]) } };
+    }
+    if (segs.length === 4 && segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'test-design-generation-jobs' && normalizedMethod === 'GET') {
+      return { name: 'consoleProjectTestDesignGenerationJobGet', params: { jobId: decodeURIComponent(segs[3]) } };
+    }
+  }
+
   if (normalizedPath.startsWith('/v1/console/projects/')) {
     const segs = normalizedPath.split('/').filter(Boolean);
     const isProjectBase = segs[0] === 'v1' && segs[1] === 'console' && segs[2] === 'projects';
@@ -115,6 +134,13 @@ export function resolveGatewayRoute(method, pathname) {
       if (name) return { name, params: { projectId } };
     }
 
+
+    // 07.8-B - create/list Project Test Design Generation jobs
+    if (segs.length === 5 && segs[4] === 'test-design-generation-jobs') {
+      const projectId = decodeURIComponent(segs[3]);
+      if (normalizedMethod === 'POST') return { name: 'consoleProjectTestDesignGenerationJobCreate', params: { projectId } };
+      if (normalizedMethod === 'GET') return { name: 'consoleProjectTestDesignGenerationJobsList', params: { projectId } };
+    }
 
     // Foundation 07.5.12-A - API Catalog read-only BFF
     if (segs.length === 6 && segs[4] === 'catalog' && segs[5] === 'summary' && normalizedMethod === 'GET') {

@@ -18,6 +18,10 @@
 		{
 			"binding": "TEST_EVOLUTION_SERVICE",
 			"service": "qagent-test-evolution"
+		},
+		{
+			"binding": "TEST_GENERATION_ORCHESTRATOR_SERVICE",
+			"service": "qagent-test-generation-orchestrator"
 		}
 	],
 	"queues": {
@@ -80,6 +84,8 @@
 		// Foundation 07.6.5-C - internal Test Registry persistence
 		"TEST_REGISTRY_TIMEOUT_MS": "10000",
 		"TEST_REGISTRY_PERSIST_RETRIES": "1",
+		// 07.8-B - Project Test Design Generation internal service auth
+		"TEST_GENERATION_INTERNAL_MAX_SKEW_SECONDS": "60",
 		// Foundation 07.7.3 - internal Runner Control HMAC clock skew
 		"RUNNER_CONTROL_MAX_SKEW_SECONDS": "60",
 		"RUNNER_LEASE_SECONDS": "60",

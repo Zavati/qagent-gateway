@@ -102,7 +102,8 @@
     "test:f07-7-8-a-fix-1-1": "node test/test-foundation-07-7-8-a-fix-1-1-html-attribute-csrf.js",
     "check:07.7.8-a-fix-1-1": "npm run test:f07-7-8-a && npm run test:f07-7-8-a-fix-1-1 && npm run test:router",
     "test:f07-7-8-a-fix-1-2": "node test/test-foundation-07-7-8-a-fix-1-2-session-confirmation.js",
-    "check:07.7.8-a-fix-1-2": "npm run check:07.7.8-a-fix-1-1 && npm run test:f07-7-8-a-fix-1-2"
+    "check:07.7.8-a-fix-1-2": "npm run check:07.7.8-a-fix-1-1 && npm run test:f07-7-8-a-fix-1-2",
+    "test:f07-8-b": "node test/test-foundation-07-8-b-project-test-design-generation.js"
   },
   "keywords": [],
   "author": "",

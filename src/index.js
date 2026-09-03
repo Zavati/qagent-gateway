@@ -303,6 +303,13 @@ import {
   listConsoleCatalogEndpointLifecycleHistory,
 } from './handlers/consoleCatalog.js';
 import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign } from './handlers/consoleIntelligence.js';
+import {
+  postConsoleProjectTestDesignGenerationJob,
+  getConsoleProjectTestDesignGenerationJob,
+  listConsoleProjectTestDesignGenerationJobItems,
+  listConsoleProjectTestDesignGenerationJobs,
+} from './handlers/consoleTestDesignGenerationJobs.js';
+import { postInternalEndpointTestDesignGeneration } from './handlers/internalTestDesignGeneration.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
 import { getConsoleMutationPolicies, putConsoleMutationPolicy } from './handlers/consoleMutationPolicies.js';
@@ -2069,6 +2076,11 @@ const gatewayRouteHandlers = {
   consoleIntelligenceTestDesignContextGet: async (req, env, _ctx, params) => json(await getConsoleTestDesignContext(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignGet: async (req, env, _ctx, params) => json(await getConsoleTestDesign(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignPost: async (req, env, _ctx, params) => json(await postConsoleTestDesign(req, env, params, { rateLimiter: ({ key, windowMs, max }) => rateLimitOrThrow({ key, windowMs, max }) }), { headers: corsHeaders(req, env) }),
+  consoleProjectTestDesignGenerationJobCreate: async (req, env, _ctx, params) => json(await postConsoleProjectTestDesignGenerationJob(req, env, params), { status: 202, headers: corsHeaders(req, env) }),
+  consoleProjectTestDesignGenerationJobGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestDesignGenerationJob(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleProjectTestDesignGenerationJobItemsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobItems(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleProjectTestDesignGenerationJobsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobs(req, env, params), { headers: corsHeaders(req, env) }),
+  internalEndpointTestDesignGenerationPost: async (req, env, _ctx, params) => json(await postInternalEndpointTestDesignGeneration(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunBundleGet: async (req, env, _ctx, params) => json(await getInternalRunnerRunBundle(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunClaimPost: async (req, env, _ctx, params) => json(await postInternalRunnerClaim(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunHeartbeatPost: async (req, env, _ctx, params) => json(await postInternalRunnerHeartbeat(req, env, params), { headers: corsHeaders(req, env) }),

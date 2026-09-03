@@ -53,6 +53,11 @@ expectRoute('GET', '/v1/console/projects/prj_123/catalog/endpoints/cep_789/lifec
 expectRoute('GET', '/v1/console/projects/prj_123/intelligence/endpoints/cep_789/test-design-context', 'consoleIntelligenceTestDesignContextGet', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('GET', '/v1/console/projects/prj_123/intelligence/endpoints/cep_789/test-design', 'consoleIntelligenceTestDesignGet', { projectId: 'prj_123', endpointId: 'cep_789' });
 expectRoute('POST', '/v1/console/projects/prj_123/intelligence/endpoints/cep_789/test-design', 'consoleIntelligenceTestDesignPost', { projectId: 'prj_123', endpointId: 'cep_789' });
+expectRoute('POST', '/v1/console/projects/prj_123/test-design-generation-jobs', 'consoleProjectTestDesignGenerationJobCreate', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/projects/prj_123/test-design-generation-jobs', 'consoleProjectTestDesignGenerationJobsList', { projectId: 'prj_123' });
+expectRoute('GET', '/v1/console/test-design-generation-jobs/tdjob_123', 'consoleProjectTestDesignGenerationJobGet', { jobId: 'tdjob_123' });
+expectRoute('GET', '/v1/console/test-design-generation-jobs/tdjob_123/items', 'consoleProjectTestDesignGenerationJobItemsList', { jobId: 'tdjob_123' });
+expectRoute('POST', '/internal/v1/test-design-generation/endpoints/cep_789/generate', 'internalEndpointTestDesignGenerationPost', { endpointId: 'cep_789' });
 expectRoute('GET', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesList', { projectId: 'prj_123' });
 expectRoute('POST', '/v1/console/projects/prj_123/api-services', 'consoleApiServicesCreate', { projectId: 'prj_123' });
 expectRoute('GET', '/v1/console/projects/prj_123/api-services/svc_789', 'consoleApiServiceGet', { projectId: 'prj_123', apiServiceId: 'svc_789' });

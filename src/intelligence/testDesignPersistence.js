@@ -98,6 +98,7 @@ export async function generateAndPersistCatalogTestDesignV1({
   projectId,
   endpointId,
   accountId = null,
+  generationRequestId = null,
   generateDesign = generateCatalogTestDesignV1,
   registryAppend = appendTestDesignVersion,
   generationRequestIdFactory = createGenerationRequestId,
@@ -116,7 +117,7 @@ export async function generateAndPersistCatalogTestDesignV1({
     projectId,
     endpointId,
     generationResult,
-    generationRequestId: generationRequestIdFactory(),
+    generationRequestId: generationRequestId || generationRequestIdFactory(),
     registryAppend,
   });
 }
