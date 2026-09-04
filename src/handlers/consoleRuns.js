@@ -4,7 +4,9 @@ import {
   normalizeIdempotencyKey,
   normalizeRunCreateInput,
 } from '../lib/runContracts.js';
+import { RUN_BATCH_CREATE_CONTRACT_VERSION, normalizeRunBatchCreateInput } from '../lib/runBatchContracts.js';
 import { createRunV1, getRunV1 } from '../services/runService.js';
+import { createRunBatchV1 } from '../services/runBatchService.js';
 
 async function readJson(req, maxBytes = 24_000) {
   const buffer = await req.arrayBuffer();
@@ -58,24 +60,34 @@ export async function postConsoleRun(
     requireTenant = requireConsoleTenant,
     getProject = getOrganizationProject,
     createRun = createRunV1,
+    createRunBatch = createRunBatchV1,
   } = {},
 ) {
   const tenant = await requireTenant(req, env);
   assertRunWriteAccess(tenant);
   await getProject(env, tenant.organizationId, projectId);
 
-  const input = normalizeRunCreateInput(await readJson(req));
+  const body = await readJson(req);
   const idempotencyKey = normalizeIdempotencyKey(req.headers.get('Idempotency-Key'));
-
-  const result = await createRun({
+  const common = {
     env,
     organizationId: tenant.organizationId,
     projectId,
     userId: tenant.user?.userId || null,
-    input,
     idempotencyKey,
-  });
+  };
 
+  // 07.7.8-D FIX-1.1 - Keep /runs as the stable execution boundary.
+  // A batch contract fans mutation scenarios out into isolated child Runs, while
+  // the original qagent.run-create.v1 contract preserves the single-Run API.
+  if (body?.contractVersion === RUN_BATCH_CREATE_CONTRACT_VERSION) {
+    const input = normalizeRunBatchCreateInput(body);
+    const result = await createRunBatch({ ...common, input });
+    return { status: 'ok', data: result };
+  }
+
+  const input = normalizeRunCreateInput(body);
+  const result = await createRun({ ...common, input });
   return { status: 'ok', data: result };
 }
 

@@ -20,7 +20,9 @@ assert.equal(result.executionKind,'MUTATION_FANOUT');
 assert.equal(result.runCount,3);
 assert.equal(result.concurrency,2);
 assert.equal(calls.length,3);
-assert.deepEqual(calls.map((x)=>x.input.scenarioIds),[['test_a'],['test_b'],['test_c']]);
+assert.deepEqual(result.runs.map((x)=>x.run.scenarioIds),[['test_a'],['test_b'],['test_c']]);
+assert.deepEqual(calls.map((x)=>x.input.scenarioIds[0]).sort(),['test_a','test_b','test_c']);
+assert.ok(calls.every((x)=>x.input.scenarioIds.length===1));
 assert.ok(calls.every((x)=>x.idempotencyKey.startsWith('runbatch:')));
 
 const getArtifact={specification:{scenarios:[baseScenario('test_a','GET'),baseScenario('test_b','GET')]}};
