@@ -2,6 +2,7 @@ import {
   RUN_CONTRACT_VERSION,
   fingerprintRunCreateInput,
 } from '../lib/runContracts.js';
+import { MUTATION_METHODS } from '../lib/mutationContracts.js';
 import {
   createRunArtifacts,
   getRun,
@@ -27,6 +28,38 @@ function runError(message, code, status = 409, publicDetails = null) {
 
 function isUniqueConflict(error) {
   return String(error?.message || '').includes('UNIQUE constraint failed');
+}
+
+function executionPlanScenarios(executionPlan) {
+  const plan = executionPlan?.plan || executionPlan;
+  return Array.isArray(plan?.scenarios) ? plan.scenarios : [];
+}
+
+function scenarioMethod(scenario) {
+  return String(
+    scenario?.spec?.target?.method
+    || scenario?.target?.method
+    || '',
+  ).toUpperCase();
+}
+
+function assertMutationRunIsolation(executionPlan) {
+  const scenarios = executionPlanScenarios(executionPlan);
+  const mutationScenarios = scenarios.filter((scenario) => MUTATION_METHODS.includes(scenarioMethod(scenario)));
+
+  if (!mutationScenarios.length) return;
+  if (scenarios.length === 1 && mutationScenarios.length === 1) return;
+
+  runError(
+    'Business mutation exige um único cenário por Run. Para executar múltiplos cenários mutáveis, utilize uma Suite Run.',
+    'RUN_MUTATION_REQUIRES_SINGLE_SCENARIO',
+    409,
+    {
+      scenarioCount: scenarios.length,
+      mutationScenarioCount: mutationScenarios.length,
+      methods: [...new Set(mutationScenarios.map(scenarioMethod))].sort(),
+    },
+  );
 }
 
 function safeRunEnvelope(bundle, { idempotentReplay = false } = {}) {
@@ -215,6 +248,7 @@ export async function createRunV1({
     }
     let bundle = await loadBundle(env, organizationId, projectId, existing.runId);
     assertBundleComplete(bundle);
+    assertMutationRunIsolation(bundle.executionPlan);
     log('run_idempotent_replay', {
       runId: existing.runId,
       organizationId,
@@ -252,6 +286,11 @@ export async function createRunV1({
     runtimeSnapshotId,
     createdAt: now,
   });
+
+  // Direct Run is intentionally a single lifecycle. Mutations must therefore
+  // be isolated one scenario per Run. Multi-scenario mutation fan-out belongs
+  // to Suite orchestration, which creates MUTATION_SINGLE child Runs.
+  assertMutationRunIsolation(materialized.executionPlan);
 
   const run = {
     contractVersion: RUN_CONTRACT_VERSION,
@@ -292,6 +331,7 @@ export async function createRunV1({
     }
     bundle = await loadBundle(env, organizationId, projectId, replay.runId);
     assertBundleComplete(bundle);
+    assertMutationRunIsolation(bundle.executionPlan);
     bundle = await dispatchRun({ env, bundle });
     assertBundleComplete(bundle);
     return safeRunEnvelope(bundle, { idempotentReplay: true });
