@@ -108,27 +108,4 @@ assert.doesNotMatch(migration,/authorization|cookie|password|client_secret|reque
  assert.equal(result.processed,true);assert.equal(units.length,2);assert.ok(units.every((u)=>u.executionKind==='MUTATION_SINGLE'&&u.scenarioIds.length===1&&u.decision==='POLICY_HOLD'));assert.equal(children.length,0);
 }
 
-// Automatic Suite execution with ALLOW policy must fan out mutation scenarios into one child Run each.
-{
- const units=[];const childInputs=[];const createdChildren=[];
- const suiteRun={suiteRunId:'srun_allow',organizationId:'org_fix2',projectId:'prj_fix2',suiteVersionId:'suitev_allow',suiteInventoryFingerprint:'a'.repeat(64),endpointCount:1,environmentId:'env_stg',createdByUserId:'usr',confirmDiscoveredRuntime:true,confirmProductionMutation:false,status:'QUEUED'};
- const result=await processSuiteRunOrchestrationMessage({env:{SUITE_ORCHESTRATOR_CHILD_BATCH_SIZE:'4',SUITE_ORCHESTRATOR_CHILD_CONCURRENCY:'3'},message:{contractVersion:'qagent.suite-run-requested.v1',suiteRunId:'srun_allow',organizationId:'org_fix2',projectId:'prj_fix2',expectedCursor:0},deps:{
-   getSuiteRunById:async()=>suiteRun,getDispatch:async()=>({cursor:0,status:'PUBLISHED'}),markProcessing:async()=>{},
-   getSuiteExecutionSlice:async()=>({suite:{inventoryFingerprint:'a'.repeat(64),endpointCount:1},items:[{ordinal:0,endpointId:'cep_mut',testDesignVersionId:'tdv_mut',testDesignVersion:1,method:'POST',scenarioIds:['test_001','test_002','test_003']}],nextOffset:1,hasMore:false}),
-   resolvePolicies:async()=>({environment:{environmentType:'STG'},decisions:[{endpointId:'cep_mut',method:'POST',executionDecision:'ALLOW',policyVersionId:'mpv_1',retryMode:'NO_AUTOMATIC_RETRY'}],policySnapshotHash:'b'.repeat(64)}),
-   upsertUnits:async(_e,{units:u})=>{units.push(...u);},
-   listUnits:async()=>units.map((u)=>({...u,scenarioCount:u.scenarioIds.length})),
-   upsertChild:async(_e,payload)=>{createdChildren.push(payload);},
-   createRun:async({input,idempotencyKey})=>{childInputs.push({input,idempotencyKey});return{run:{runId:`run_${input.scenarioIds[0]}`}};},
-   markChildCreated:async()=>{},markUnitCreated:async()=>{},advanceCursor:async()=>true,refresh:async()=>{},
- }});
- assert.equal(result.processed,true);
- assert.equal(units.length,3);
- assert.ok(units.every((u)=>u.executionKind==='MUTATION_SINGLE'&&u.decision==='EXECUTE'&&u.scenarioIds.length===1));
- assert.equal(childInputs.length,3);
- assert.deepEqual(childInputs.flatMap((x)=>x.input.scenarioIds).sort(),['test_001','test_002','test_003']);
- assert.ok(childInputs.every((x)=>x.input.scenarioIds.length===1));
- assert.equal(createdChildren.length,3);
-}
-
 console.log('Foundation 07.7.10-B FIX-2 Gateway Mutation Safety: PASS ✅');

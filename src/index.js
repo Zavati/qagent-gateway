@@ -311,6 +311,7 @@ import {
 } from './handlers/consoleTestDesignGenerationJobs.js';
 import { postInternalEndpointTestDesignGeneration } from './handlers/internalTestDesignGeneration.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
+import { postConsoleRunBatch } from './handlers/consoleRunBatches.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
 import { getConsoleMutationPolicies, putConsoleMutationPolicy } from './handlers/consoleMutationPolicies.js';
 import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
@@ -2101,6 +2102,7 @@ const gatewayRouteHandlers = {
   internalRunnerRunRejectedPost: async (req, env, _ctx, params) => json(await postInternalRunnerRejected(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunReceivedPost: async (req, env, _ctx, params) => json(await postInternalRunnerReceived(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunsCreate: async (req, env, _ctx, params) => json(await postConsoleRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleRunBatchesCreate: async (req, env, _ctx, params) => json(await postConsoleRunBatch(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleMutationPoliciesList: async (req, env, _ctx, params) => json(await getConsoleMutationPolicies(req, env, params), { headers: corsHeaders(req, env) }),
   consoleMutationPolicyPut: async (req, env, _ctx, params) => json(await putConsoleMutationPolicy(req, env, params), { headers: corsHeaders(req, env) }),
   consoleSuiteRunsCreate: async (req, env, _ctx, params) => json(await postConsoleSuiteRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),

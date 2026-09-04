@@ -272,6 +272,12 @@ export function resolveGatewayRoute(method, pathname) {
     }
 
     // Foundation 07.7.2 - Run Contract + immutable Execution Plan foundation
+    // 07.7.8-D FIX-1 - Manual multi-scenario execution fan-out
+    // /v1/console/projects/:projectId/runs/batch
+    if (segs.length === 6 && segs[4] === 'runs' && segs[5] === 'batch' && normalizedMethod === 'POST') {
+      return { name: 'consoleRunBatchesCreate', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+
     // /v1/console/projects/:projectId/runs
     if (segs.length === 5 && segs[4] === 'runs') {
       const projectId = decodeURIComponent(segs[3]);
