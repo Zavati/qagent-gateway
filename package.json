@@ -103,7 +103,10 @@
     "check:07.7.8-a-fix-1-1": "npm run test:f07-7-8-a && npm run test:f07-7-8-a-fix-1-1 && npm run test:router",
     "test:f07-7-8-a-fix-1-2": "node test/test-foundation-07-7-8-a-fix-1-2-session-confirmation.js",
     "check:07.7.8-a-fix-1-2": "npm run check:07.7.8-a-fix-1-1 && npm run test:f07-7-8-a-fix-1-2",
-    "test:f07-8-b": "node test/test-foundation-07-8-b-project-test-design-generation.js"
+    "test:f07-8-b": "node test/test-foundation-07-8-b-project-test-design-generation.js",
+    "test:f08-1-ai": "node test/test-foundation-08-1-test-evolution-ai.js",
+    "test:f08-1-queue": "node test/test-foundation-08-1-test-evolution-queue.js",
+    "check:08.1": "npm run test:f08-1-ai && npm run test:f08-1-queue && npm run test:f07-6-1 && npm run test:f07-6-3-c && npm run test:f07-7-8-fix-1 && npm run test:router"
   },
   "keywords": [],
   "author": "",

@@ -1471,9 +1471,10 @@ export function validateTestDesignModelOutputV1(output, context) {
 
     const hints = scenario.automationHints ?? {};
     assertPlainObject(hints, `${path}.automationHints`);
-    assertKnownKeys(hints, new Set(['needsData', 'reviewRequired', 'reasons']), `${path}.automationHints`);
+    assertKnownKeys(hints, new Set(['needsData', 'reviewRequired', 'learning', 'reasons']), `${path}.automationHints`);
     if ('needsData' in hints && typeof hints.needsData !== 'boolean') fail('needsData deve ser boolean.', `${path}.automationHints.needsData`);
     if ('reviewRequired' in hints && typeof hints.reviewRequired !== 'boolean') fail('reviewRequired deve ser boolean.', `${path}.automationHints.reviewRequired`);
+    if ('learning' in hints && typeof hints.learning !== 'boolean') fail('learning deve ser boolean.', `${path}.automationHints.learning`);
     assertStringArray(hints.reasons ?? [], `${path}.automationHints.reasons`, { maxItems: 10, maxLength: 500 });
   });
 
@@ -1486,6 +1487,7 @@ function computeAutomationReadiness(scenario, context) {
   const hintReasons = scenario.automationHints?.reasons || [];
   const reviewRequired = scenario.automationHints?.reviewRequired === true;
   const needsData = scenario.automationHints?.needsData === true;
+  const learning = scenario.automationHints?.learning === true;
   const needsAuth = scenario.authRequirement === 'REQUIRED' && !runtime.defaultAuthProfileRef;
   const needsEnvironment = !runtime.apiServiceKey;
   const assumed = scenario.grounding?.level === 'ASSUMED';
@@ -1497,12 +1499,17 @@ function computeAutomationReadiness(scenario, context) {
   if (needsEnvironment) blockers.push('Nenhum API Service de runtime configurado ou runtime target seguro descoberto foi resolvido para o endpoint.');
 
   const uniqueBlockers = [...new Set(blockers)].slice(0, 10);
-  if (reviewRequired) return { readiness: 'REVIEW_REQUIRED', blockers: uniqueBlockers };
-  if (needsData) return { readiness: 'NEEDS_DATA', blockers: uniqueBlockers };
-  if (assumed) return { readiness: 'REVIEW_REQUIRED', blockers: uniqueBlockers };
-  if (needsAuth) return { readiness: 'NEEDS_AUTH', blockers: uniqueBlockers };
-  if (needsEnvironment) return { readiness: 'NEEDS_ENVIRONMENT', blockers: uniqueBlockers };
-  return { readiness: 'READY', blockers: [] };
+  let readiness = 'READY';
+  if (reviewRequired) readiness = 'REVIEW_REQUIRED';
+  else if (needsData) readiness = 'NEEDS_DATA';
+  else if (assumed) readiness = 'REVIEW_REQUIRED';
+  else if (needsAuth) readiness = 'NEEDS_AUTH';
+  else if (needsEnvironment) readiness = 'NEEDS_ENVIRONMENT';
+  return {
+    readiness,
+    blockers: readiness === 'READY' ? [] : uniqueBlockers,
+    evolutionState: readiness === 'READY' ? (learning ? 'LEARNING' : 'STABLE') : 'BLOCKED',
+  };
 }
 
 function buildSummary(scenarios) {
@@ -1677,6 +1684,7 @@ export function validateTestSpecificationV1(specification, context) {
     validateGrounding(scenario.grounding, `${path}.grounding`, refs);
     assertPlainObject(scenario.automation, `${path}.automation`);
     assertEnum(scenario.automation.readiness, AUTOMATION_READINESS_LEVELS, `${path}.automation.readiness`);
+    if (scenario.automation.evolutionState != null) assertEnum(scenario.automation.evolutionState, ['STABLE', 'LEARNING', 'BLOCKED'], `${path}.automation.evolutionState`);
     assertStringArray(scenario.automation.blockers ?? [], `${path}.automation.blockers`, { maxItems: 10, maxLength: 500 });
 
     assertPlainObject(scenario.spec, `${path}.spec`);
@@ -1863,6 +1871,7 @@ export const TEST_DESIGN_MODEL_OUTPUT_JSON_SCHEMA_V1 = Object.freeze({
             properties: {
               needsData: { type: 'boolean' },
               reviewRequired: { type: 'boolean' },
+              learning: { type: 'boolean' },
               reasons: { type: 'array', maxItems: 10, items: { type: 'string', maxLength: 500 } },
             },
           },

@@ -232,6 +232,11 @@ export function resolveGatewayRoute(method, pathname) {
     if (segs.length === 8 && segs[4] === 'automation' && segs[5] === 'results' && segs[7] === 'evolution' && normalizedMethod === 'GET') {
       return { name: 'consoleResultEvolutionInspectionGet', params: { projectId: decodeURIComponent(segs[3]), resultSetId: decodeURIComponent(segs[6]) } };
     }
+    // /v1/console/projects/:projectId/test-evolution/policy
+    if (segs.length === 6 && segs[4] === 'test-evolution' && segs[5] === 'policy') {
+      if (normalizedMethod === 'GET') return { name: 'consoleEvolutionPolicyGet', params: { projectId: decodeURIComponent(segs[3]) } };
+      if (normalizedMethod === 'PUT') return { name: 'consoleEvolutionPolicyPut', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
     // /v1/console/projects/:projectId/test-evolution/proposals
     if (segs.length === 6 && segs[4] === 'test-evolution' && segs[5] === 'proposals' && normalizedMethod === 'POST') {
       return { name: 'consoleEvolutionProposalPost', params: { projectId: decodeURIComponent(segs[3]) } };
@@ -244,6 +249,7 @@ export function resolveGatewayRoute(method, pathname) {
       const params = { projectId: decodeURIComponent(segs[3]), proposalId: decodeURIComponent(segs[6]) };
       if (segs[7] === 'approve' && normalizedMethod === 'POST') return { name: 'consoleEvolutionApprovePost', params };
       if (segs[7] === 'reject' && normalizedMethod === 'POST') return { name: 'consoleEvolutionRejectPost', params };
+      if (segs[7] === 'analyze' && normalizedMethod === 'POST') return { name: 'consoleEvolutionAnalyzePost', params };
     }
     // /v1/console/projects/:projectId/catalog/endpoints/:endpointId/automation/latest
     if (segs.length === 9 && segs[4] === 'catalog' && segs[5] === 'endpoints' && segs[7] === 'automation' && segs[8] === 'latest' && normalizedMethod === 'GET') {

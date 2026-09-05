@@ -146,7 +146,7 @@ assert.equal(serializedSanitized.includes('fake-token'), false);
 assert.equal(serializedSanitized.includes('fake-client-secret'), false);
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 4 });
-assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6.2');
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6.3');
 assert.match(prompt.systemPrompt, /NÃO podem aparecer no request/i);
 assert.match(prompt.systemPrompt, /Nunca substitua um secret proibido/i);
 assert.match(prompt.systemPrompt, /automationHints\.needsData=true/);

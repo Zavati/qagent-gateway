@@ -3,7 +3,7 @@ import {
   TEST_DESIGN_CONTRACT_VERSION,
 } from './testDesignContract.js';
 
-export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v6.2';
+export const TEST_DESIGN_PROMPT_VERSION = 'qagent.test-design-prompt.v6.3';
 export const TEST_DESIGN_REPAIR_PROMPT_VERSION = 'qagent.test-design-repair-prompt.v1.1';
 
 function collectAllowedRefs(context) {
@@ -54,7 +54,7 @@ REGRAS DE SEGURANÇA E AUTORIDADE:
 - Se context.runtime.authObservation.status=OPTIONAL, existe sucesso 2xx observado sem autenticação. Para cenários funcionais/contrato grounded nesse caminho público, use authRequirement NONE. Use REQUIRED apenas quando o cenário estiver explicitamente grounded em evidência autenticada ou testar comportamento autenticado; nunca transforme a mera presença de um Auth Profile em prova de que auth é obrigatória.
 - Se context.runtime.authObservation.status=MIXED, não assuma uma política única de autenticação; trate como revisão.
 - Se autenticação não puder ser provada pelo contexto, prefira authRequirement NONE ou trate a necessidade como hipótese/revisão; não invente credenciais.
-- Automation Readiness é calculada pelo QAgent. Você fornece apenas automationHints.
+- Automation Readiness é calculada pelo QAgent. Você fornece apenas automationHints. Use learning=true somente quando o cenário pode ser executado com segurança, mas ainda precisa aprender detalhes observáveis da resposta; learning não substitui needsData/reviewRequired.
 - Retorne SOMENTE JSON válido. Sem markdown, comentários ou texto antes/depois.
 
 QUALIDADE:
@@ -66,7 +66,7 @@ QUALIDADE:
 - Só use JSON_PATH_EQUALS quando o valor esperado estiver explicitamente sustentado por const/enum do schema/contexto; caso contrário prefira JSON_PATH_EXISTS ou marque o cenário como hipótese que precisa de dados.
 - Não invente query params, path params, headers ou request body que não estejam modelados pelo contexto. Se faltarem dados, use automationHints.needsData=true e explique o motivo.
 - Para GET/HEAD sem request schema, não invente body.
-- Não trate 4xx/5xx não observados como OBSERVED. Se forem apenas hipótese, use INFERRED/ASSUMED e automationHints.reviewRequired=true.
+- Não trate 4xx/5xx não observados como OBSERVED. Para 5xx ou erro sem suporte semântico, use INFERRED/ASSUMED e automationHints.reviewRequired=true. Para um 4xx de validação (exceto 401/403) cujo cenário seja executável e defensável pelo request/schema/contexto, use grounding INFERRED, automationHints.learning=true e reviewRequired=false: o QAgent pode executar uma assertion segura de STATUS e aprender detalhes reais da resposta via Test Evolution.
 - Não gere cenário de autenticação/401/403 sem sinal de auth no contexto; se ainda for uma hipótese de valor, marque reviewRequired=true.
 - A DSL v1 ainda não possui assertion de latência. Não descreva um cenário como validando limite de performance/latência se nenhuma assertion puder realmente verificar esse objetivo.
 - O HTTP method e o path do target são system-owned e ficam fixos no endpoint observado. Não gere cenários cuja execução dependa de usar método inválido/não permitido, caminho/rota inválida ou outro endpoint; qagent.api-test-dsl.v1 ainda não suporta target mutation.

@@ -269,7 +269,7 @@ assert.ok(executableSpec.scenarios[0].automation.blockers.some((reason) => /targ
 assert.ok(executableSpec.scenarios[2].automation.blockers.some((reason) => /fault injection/i.test(reason)));
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 8 });
-assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6.2');
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6.3');
 assert.match(prompt.systemPrompt, /target mutation/i);
 assert.match(prompt.systemPrompt, /fault injection/i);
 assert.match(prompt.systemPrompt, /JSON_PATH_EXISTS prova SOMENTE/i);
@@ -503,3 +503,35 @@ assert.equal(serviceResult.specification.summary.byReadiness.REVIEW_REQUIRED, 4)
 assert.equal(JSON.stringify(serviceResult).includes('hidden'), false);
 
 console.log('Foundation 07.6.3-C Semantic Grounding Guard tests passed ✅');
+
+// Test Evolution v2: a defensible unobserved validation 4xx may execute as READY+LEARNING.
+// Readiness answers "can this run?"; evolutionState answers "has the response behavior been learned?".
+const learningContext = {
+  ...context,
+  runtime: { ...context.runtime, apiServiceKey: 'api_guard_runtime' },
+};
+const learningOutput = {
+  title: 'Learning validation response',
+  objective: 'Execute a grounded validation scenario once so Test Evolution can learn response details.',
+  assumptions: [],
+  scenarios: [baseScenario('LEARNING_400_001', {
+    title: 'Validation behavior not yet observed',
+    objective: 'Confirm a validation rejection while the exact response body is still unknown.',
+    category: 'STATUS_BEHAVIOR',
+    confidence: 'MEDIUM',
+    grounding: { level: 'INFERRED', rationale: ['Validation intent is executable but response detail is not yet observed.'], evidenceRefs: [], schemaRefs: [] },
+    assertions: [{ type: 'STATUS', expectedStatusCodes: [422] }],
+  })],
+};
+const learningGuard = applySemanticGroundingGuardV1(learningOutput, learningContext);
+assert.equal(learningGuard.output.scenarios[0].automationHints.learning, true);
+assert.equal(learningGuard.output.scenarios[0].automationHints.reviewRequired, false);
+const learningSpec = buildTestSpecificationV1({
+  context: learningContext,
+  modelOutput: learningGuard.output,
+  generation: { provider: 'openai', model: 'gpt-4o-mini', generatedAt: '2026-09-04T23:00:00.000Z', contextFingerprint: 'e'.repeat(64) },
+});
+assert.equal(learningSpec.scenarios[0].automation.readiness, 'READY');
+assert.equal(learningSpec.scenarios[0].automation.evolutionState, 'LEARNING');
+assert.deepEqual(learningSpec.scenarios[0].spec.assertions, [{ type: 'STATUS', expectedStatusCodes: [422] }]);
+assert.doesNotThrow(() => validateTestSpecificationV1(learningSpec, learningContext));

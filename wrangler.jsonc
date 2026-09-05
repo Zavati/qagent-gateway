@@ -43,6 +43,13 @@
 				"max_retries": 5
 			},
 			{
+				"queue": "qagent-test-evolution",
+				"max_batch_size": 5,
+				"max_batch_timeout": 2,
+				"max_retries": 5,
+				"max_concurrency": 2
+			},
+			{
 				"queue": "qagent-run-dlq",
 				"max_batch_size": 10,
 				"max_batch_timeout": 5,
@@ -61,6 +68,8 @@
 		"AI_CREDENTIALS_ACTIVE_KEY_VERSION": "v1",
 		"GENERATE_TESTS_MODEL": "gpt-4o-mini",
 		"AUTOFILL_MODEL": "gpt-4o-mini",
+		"TEST_EVOLUTION_MODEL": "gpt-4o-mini",
+		"TEST_EVOLUTION_AI_TIMEOUT_MS": "60000",
 		"OPENAI_TIMEOUT_MS": "90000",
 		// Rate limit simples (por token): 20 req / 60s
 		"RATE_LIMIT_WINDOW_MS": "90000",

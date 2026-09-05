@@ -1,4 +1,4 @@
-export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.4';
+export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.5';
 
 const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
 const CONFIDENCE_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2 });
@@ -285,7 +285,25 @@ function markNeedsData(scenario, reason) {
 
 function markReview(scenario, reason) {
   scenario.automationHints.reviewRequired = true;
+  scenario.automationHints.learning = false;
   addHintReason(scenario, reason);
+}
+
+function canLearnUnobservedStatus(scenario, statusCode) {
+  if (!Number.isInteger(statusCode) || statusCode < 400 || statusCode >= 500 || HTTP_AUTH_STATUSES.has(statusCode)) return false;
+  if (!['NEGATIVE', 'BOUNDARY', 'STATUS_BEHAVIOR', 'DATA_VARIATION'].includes(String(scenario?.category || '').toUpperCase())) return false;
+  if (scenario?.grounding?.level === 'ASSUMED') return false;
+  if (scenario?.automationHints?.needsData === true) return false;
+  return true;
+}
+
+function markLearning(scenario, reason) {
+  scenario.automationHints.learning = true;
+  // A deterministic learning candidate is executable; later semantic checks may still call markReview and block it.
+  scenario.automationHints.reviewRequired = false;
+  addHintReason(scenario, reason);
+  if (scenario.grounding?.level === 'OBSERVED') downgradeGrounding(scenario, 'INFERRED');
+  capConfidence(scenario, 'MEDIUM');
 }
 
 function requestPlaceholderNames(path) {
@@ -319,6 +337,7 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     confidence: scenario.confidence,
     needsData: scenario.automationHints.needsData === true,
     reviewRequired: scenario.automationHints.reviewRequired === true,
+    learning: scenario.automationHints.learning === true,
   };
   const statuses = expectedStatuses(scenario);
   const responseTracks = relevantResponseTracks(knowledge, statuses);
@@ -339,15 +358,26 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     }
 
     const reason = `O status HTTP ${statusCode} não foi observado nas evidências selecionadas para este endpoint.`;
-    if (scenario.grounding.level === 'OBSERVED') markInference(scenario, reason);
-    markReview(scenario, reason);
-    addIssue({
-      code: 'SEMANTIC_STATUS_UNOBSERVED',
-      path: `modelOutput.scenarios[${index}].assertions`,
-      severity: 'REVIEW',
-      reason,
-      action: 'REVIEW_REQUIRED',
-    });
+    if (canLearnUnobservedStatus(scenario, statusCode)) {
+      markLearning(scenario, `${reason} O cenário será executado em modo LEARNING para capturar comportamento real antes de promover novas expectativas.`);
+      addIssue({
+        code: 'SEMANTIC_STATUS_LEARNING',
+        path: `modelOutput.scenarios[${index}].assertions`,
+        severity: 'INFO',
+        reason,
+        action: 'LEARNING',
+      });
+    } else {
+      if (scenario.grounding.level === 'OBSERVED') markInference(scenario, reason);
+      markReview(scenario, reason);
+      addIssue({
+        code: 'SEMANTIC_STATUS_UNOBSERVED',
+        path: `modelOutput.scenarios[${index}].assertions`,
+        severity: 'REVIEW',
+        reason,
+        action: 'REVIEW_REQUIRED',
+      });
+    }
   }
 
   for (let assertionIndex = 0; assertionIndex < (scenario.assertions || []).length; assertionIndex += 1) {
@@ -686,6 +716,7 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     confidence: scenario.confidence,
     needsData: scenario.automationHints.needsData === true,
     reviewRequired: scenario.automationHints.reviewRequired === true,
+    learning: scenario.automationHints.learning === true,
   };
   if (JSON.stringify(before) !== JSON.stringify(after) || scenarioIssues.some((item) => item.action === 'ADD_EVIDENCE_REF')) {
     mutations.push({ scenarioId, before, after, issueCodes: unique(scenarioIssues.map((item) => item.code)) });

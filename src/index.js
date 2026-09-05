@@ -316,8 +316,9 @@ import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuite
 import { getConsoleMutationPolicies, putConsoleMutationPolicy } from './handlers/consoleMutationPolicies.js';
 import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
 import { handleRunDlqQueue } from './handlers/runDlqQueue.js';
+import { handleTestEvolutionQueue } from './handlers/testEvolutionQueue.js';
 import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest, getConsoleProjectTestInventory, postConsoleMaterializeAutoReadySuite, getConsoleLatestAutoReadySuite } from './handlers/consoleAutomation.js';
-import { getConsoleResultEvolutionInspection, postConsoleEvolutionProposal, getConsoleEvolutionProposal, postConsoleEvolutionApprove, postConsoleEvolutionReject } from './handlers/consoleTestEvolution.js';
+import { getConsoleResultEvolutionInspection, postConsoleEvolutionProposal, getConsoleEvolutionProposal, postConsoleEvolutionApprove, postConsoleEvolutionReject, getConsoleEvolutionPolicy, putConsoleEvolutionPolicy, postConsoleEvolutionAnalyze } from './handlers/consoleTestEvolution.js';
 import {
   getInternalRunnerRunBundle,
   postInternalRunnerClaim,
@@ -2119,6 +2120,9 @@ const gatewayRouteHandlers = {
   consoleEvolutionProposalGet: async (req, env, _ctx, params) => json(await getConsoleEvolutionProposal(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEvolutionApprovePost: async (req, env, _ctx, params) => json(await postConsoleEvolutionApprove(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEvolutionRejectPost: async (req, env, _ctx, params) => json(await postConsoleEvolutionReject(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEvolutionPolicyGet: async (req, env, _ctx, params) => json(await getConsoleEvolutionPolicy(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEvolutionPolicyPut: async (req, env, _ctx, params) => json(await putConsoleEvolutionPolicy(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEvolutionAnalyzePost: async (req, env, _ctx, params) => json(await postConsoleEvolutionAnalyze(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEndpointAutomationLatestGet: async (req, env, _ctx, params) => json(await getConsoleEndpointAutomationLatest(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesList: async (req, env, _ctx, params) => json(await listConsoleApiServices(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesCreate: async (req, env, _ctx, params) => json(await createConsoleApiService(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
@@ -2283,7 +2287,9 @@ Em caso de dúvidas, entre em contato pelo e-mail:
     }
   },
   async queue(batch, env, ctx) {
-    if (String(batch?.queue || '') === 'qagent-run-dlq') return handleRunDlqQueue(batch, env, ctx);
+    const queueName=String(batch?.queue||'');
+    if (queueName === 'qagent-run-dlq') return handleRunDlqQueue(batch, env, ctx);
+    if (queueName === 'qagent-test-evolution') return handleTestEvolutionQueue(batch, env, ctx);
     return handleSuiteRunQueue(batch, env, ctx);
   },
 };
