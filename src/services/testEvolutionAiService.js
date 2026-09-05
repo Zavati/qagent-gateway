@@ -41,6 +41,7 @@ You receive:
 - the current sanitized execution result;
 - up to 5 recent executions of the SAME scenario;
 - up to 5 bounded observed endpoint samples/evidence;
+- up to 5 successful request execution evidence items from this endpoint;
 - up to 3 Test Design versions.
 
 Rules:
@@ -49,11 +50,12 @@ Rules:
 3. A test failure is NOT evidence that the test should be changed.
 4. If a negative/validation scenario historically returns 4xx and now returns 2xx, prefer APPLICATION_BUG_SUSPECTED.
 5. HTTP 5xx, auth failures inconsistent with scenario intent, runtime/network failures, or weak/conflicting evidence must NOT be auto-healed.
-6. TEST_DATA_DRIFT means the expectation should normally stay unchanged.
+6. TEST_DATA_DRIFT means the response expectation normally stays unchanged, but if currentTest.candidateChanges contains only TEST_DATA_BINDING request repairs, you MAY choose TEST_DATA_DRIFT + EVOLVE_TEST when execution evidence proves QAgent generated an invalid request and successful observed request samples support the proposed valueType/generatorKind and, when present, the bounded generatorConfig safe envelope.
 7. EXPECTED_BEHAVIOR_LEARNED is for behavior that matches scenario intent and is supported by execution/observed evidence, where the test expectation simply lacked the real product behavior. A candidate ADD_JSON_PATH_EQUALS_ASSERTION on a LEARNING scenario strengthens the test; approve it only when the observed literal is semantically stable and appropriate to assert.
 8. Changing an existing JSON_PATH_EQUALS literal is more dangerous than adding a learned assertion and normally requires review. EXPECTATION_DRIFT is a plausible product contract change that still deserves human review unless risk is clearly low; do not call it learned behavior just to make a test pass.
 9. If evidence is insufficient or ambiguous, choose INCONCLUSIVE + REVIEW_REQUIRED.
-10. Never include secrets, raw credentials, or new request data in the output.
+10. When the response explicitly identifies invalid request parameters and the candidate change repairs GENERATED Test Data using successful request evidence, prefer TEST_DATA_DRIFT over changing STATUS expectations.
+11. Never include secrets, raw credentials, or new request data in the output.
 
 Return ONLY JSON with this exact shape:
 {
@@ -67,7 +69,7 @@ Return ONLY JSON with this exact shape:
 Decision guidance:
 - EXPECTED_BEHAVIOR_LEARNED -> EVOLVE_TEST only when evidence supports the scenario intent.
 - APPLICATION_BUG_SUSPECTED -> KEEP_TEST.
-- TEST_DATA_DRIFT -> KEEP_TEST.
+- TEST_DATA_DRIFT -> EVOLVE_TEST only for bounded TEST_DATA_BINDING request repairs supported by successful evidence. A generatorConfig safe envelope is evidence-derived and must never be widened or invented by the model; otherwise KEEP_TEST or REVIEW_REQUIRED.
 - RUNTIME_FAILURE -> KEEP_TEST.
 - INCONCLUSIVE -> REVIEW_REQUIRED.
 - EXPECTATION_DRIFT -> usually REVIEW_REQUIRED.`;

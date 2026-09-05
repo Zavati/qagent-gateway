@@ -110,6 +110,16 @@ assert.deepEqual(
 );
 assert.deepEqual(sanitizeTestDataGeneratorConfig('EMAIL', { arbitrary: 'must-not-survive' }, { valueType: 'STRING', selectorPath: '$.email' }), {});
 
+assert.deepEqual(
+  sanitizeTestDataGeneratorConfig('INTEGER', { schema: { type: 'integer', minimum: 1, maximum: 100, example: 42 } }, { valueType: 'INTEGER', selectorPath: '$' }),
+  { schema: { type: 'integer', minimum: 1, maximum: 100 } },
+);
+assert.deepEqual(
+  sanitizeTestDataGeneratorConfig('NUMBER', { schema: { type: 'number', minimum: 0, maximum: 50.5, enum: [10, 20.5] } }, { valueType: 'NUMBER', selectorPath: '$' }),
+  { schema: { type: 'number', minimum: 0, maximum: 50.5, enum: [10, 20.5] } },
+);
+assert.deepEqual(sanitizeTestDataGeneratorConfig('INTEGER', { schema: { type: 'string', minimum: 1, maximum: 100 } }, { valueType: 'INTEGER', selectorPath: '$' }), {});
+
 
 // Missing pathParams are still discovered from the canonical path template.
 const pathContext = structuredClone(context);

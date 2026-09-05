@@ -105,9 +105,51 @@ export function sanitizeTestDataGeneratorSchema(node, selectorPath = '$', depth 
 export function sanitizeTestDataGeneratorConfig(kind, config, { valueType = 'STRING', selectorPath = '$' } = {}) {
   const normalizedKind = String(kind || 'AUTO').trim().toUpperCase();
   const normalizedValueType = String(valueType || 'STRING').trim().toUpperCase();
-  if (normalizedKind !== 'JSON_SCHEMA' && !(normalizedKind === 'AUTO' && normalizedValueType === 'JSON')) return {};
-  const schema = sanitizeTestDataGeneratorSchema(plain(config) ? config.schema : null, selectorPath);
-  return Object.keys(schema).length ? { schema } : {};
+  const rawSchema = plain(config) ? config.schema : null;
+
+  if (normalizedKind === 'JSON_SCHEMA' || (normalizedKind === 'AUTO' && normalizedValueType === 'JSON')) {
+    const schema = sanitizeTestDataGeneratorSchema(rawSchema, selectorPath);
+    return Object.keys(schema).length ? { schema } : {};
+  }
+
+  // Scalar generators may carry only structural constraints. This is used by
+  // Request-Aware Test Evolution to keep GENERATED data inside a known-safe
+  // envelope without persisting example payloads or arbitrary generator data.
+  const scalarKinds = new Map([
+    ['TEXT', 'STRING'],
+    ['NUMBER', 'NUMBER'],
+    ['INTEGER', 'INTEGER'],
+    ['BOOLEAN', 'BOOLEAN'],
+  ]);
+  if (scalarKinds.get(normalizedKind) !== normalizedValueType) return {};
+
+  const schema = sanitizeTestDataGeneratorSchema(rawSchema, selectorPath);
+  const expectedType = normalizedValueType.toLowerCase();
+  if (schema.type && schema.type !== expectedType) return {};
+
+  const bounded = { type: expectedType };
+  if (normalizedValueType === 'STRING') {
+    if (Number.isInteger(schema.minLength)) bounded.minLength = schema.minLength;
+    if (Number.isInteger(schema.maxLength)) bounded.maxLength = schema.maxLength;
+  }
+  if (normalizedValueType === 'NUMBER' || normalizedValueType === 'INTEGER') {
+    if (typeof schema.minimum === 'number' && Number.isFinite(schema.minimum)) bounded.minimum = schema.minimum;
+    if (typeof schema.maximum === 'number' && Number.isFinite(schema.maximum)) bounded.maximum = schema.maximum;
+    if (bounded.minimum != null && bounded.maximum != null && bounded.minimum > bounded.maximum) return {};
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length) {
+    const values = schema.enum.filter((value) => {
+      if (normalizedValueType === 'STRING') return typeof value === 'string';
+      if (normalizedValueType === 'BOOLEAN') return typeof value === 'boolean';
+      if (normalizedValueType === 'INTEGER') return Number.isInteger(value);
+      if (normalizedValueType === 'NUMBER') return typeof value === 'number' && Number.isFinite(value);
+      return false;
+    });
+    if (values.length) bounded.enum = values;
+  }
+
+  const hasConstraint = Object.keys(bounded).some((key) => key !== 'type');
+  return hasConstraint ? { schema: bounded } : {};
 }
 
 export function assertTestDataSourceSecurity(target, selector, sourceType, fail) {
