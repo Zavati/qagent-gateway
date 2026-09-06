@@ -7,7 +7,7 @@ import {
   assessEvolutionProposal,
 } from '../services/testEvolutionClient.js';
 import { assessTestEvolutionWithAi } from '../services/testEvolutionAiService.js';
-import { createRunV1 } from '../services/runService.js';
+import { createEvolutionRerunV1 } from '../services/evolutionRerunService.js';
 import { getRunByRunId } from '../repositories/runRepository.js';
 
 const CONTRACT='qagent.test-evolution-result-trigger.v1';
@@ -23,9 +23,23 @@ function retryable(error){if(error?.retryable===true)return true;const status=Nu
 async function createRerun(env,trigger,proposalId,result){
   const rec=result?.rerun;if(!rec?.requested)return null;
   try{
-    const created=await createRunV1({env,organizationId:trigger.organizationId,projectId:trigger.projectId,userId:null,input:{contractVersion:'qagent.run-create.v1',testDesignVersionId:rec.testDesignVersionId,environmentId:rec.environmentId,scenarioIds:[rec.scenarioId],confirmDiscoveredRuntime:false},idempotencyKey:`test-evolution-rerun:${proposalId}:${rec.testDesignVersionId}`});
-    return {status:'CREATED',runId:created?.run?.runId||null};
-  }catch(error){log('test_evolution_auto_rerun_create_failed',{proposalId,resultSetId:trigger.resultSetId,scenarioId:rec.scenarioId,code:error?.code||null});return {status:'CREATE_FAILED',errorCode:error?.code||'EVOLUTION_RERUN_CREATE_FAILED'};}
+    const created=await createEvolutionRerunV1({
+      env,
+      organizationId:trigger.organizationId,
+      projectId:trigger.projectId,
+      userId:null,
+      sourceRunId:rec.sourceRunId||result?.proposal?.source?.runId||trigger.runId||null,
+      testDesignVersionId:rec.testDesignVersionId,
+      environmentId:rec.environmentId,
+      scenarioId:rec.scenarioId,
+      idempotencyKey:`test-evolution-rerun:${proposalId}:${rec.testDesignVersionId}`,
+    });
+    return {
+      status:'CREATED',
+      runId:created?.run?.runId||null,
+      runtimeReuse:created?.evolutionRuntimeReuse||null,
+    };
+  }catch(error){log('test_evolution_auto_rerun_create_failed',{proposalId,resultSetId:trigger.resultSetId,scenarioId:rec.scenarioId,sourceRunId:rec.sourceRunId||trigger.runId||null,code:error?.code||null});return {status:'CREATE_FAILED',errorCode:error?.code||'EVOLUTION_RERUN_CREATE_FAILED'};}
 }
 async function processEligibleScenario(env,trigger,scope,policy,organization,scenario){
   let proposal=await createEvolutionProposal({...scope,input:{resultSetId:trigger.resultSetId,scenarioResultId:scenario.scenarioResultId}});
@@ -35,7 +49,7 @@ async function processEligibleScenario(env,trigger,scope,policy,organization,sce
     if(wasAutoApplied&&proposal.status==='APPLIED'&&proposal.result?.testDesignVersionId&&policy?.autoRerun&&Number(policy?.maxEvolutionDepth||0)>=1){
       const context=await getEvolutionProposalContext({...scope,proposalId:proposal.proposalId});
       const method=String(context?.currentExecution?.http?.method||'').toUpperCase();
-      if(['GET','HEAD','OPTIONS'].includes(method))rerun=await createRerun(env,trigger,proposal.proposalId,{rerun:{requested:true,testDesignVersionId:proposal.result.testDesignVersionId,environmentId:context?.source?.environmentId,scenarioId:proposal.source?.scenarioId}});
+      if(['GET','HEAD','OPTIONS'].includes(method))rerun=await createRerun(env,trigger,proposal.proposalId,{proposal,rerun:{requested:true,testDesignVersionId:proposal.result.testDesignVersionId,environmentId:context?.source?.environmentId,scenarioId:proposal.source?.scenarioId,sourceRunId:proposal.source?.runId||trigger.runId||null}});
     }
     log('test_evolution_trigger_idempotent',{resultSetId:trigger.resultSetId,scenarioId:scenario.scenarioId,proposalId:proposal.proposalId,status:proposal.status,assessmentId:proposal.assessment.assessmentId,autoAction:proposal.assessment.autoAction||null,rerunStatus:rerun?.status||null});return;
   }

@@ -106,7 +106,9 @@
     "test:f07-8-b": "node test/test-foundation-07-8-b-project-test-design-generation.js",
     "test:f08-1-ai": "node test/test-foundation-08-1-test-evolution-ai.js",
     "test:f08-1-queue": "node test/test-foundation-08-1-test-evolution-queue.js",
-    "check:08.1": "npm run test:f08-1-ai && npm run test:f08-1-queue && npm run test:f07-6-1 && npm run test:f07-6-3-c && npm run test:f07-7-8-fix-1 && npm run test:router"
+    "check:08.1": "npm run test:f08-1-ai && npm run test:f08-1-queue && npm run test:f07-6-1 && npm run test:f07-6-3-c && npm run test:f07-7-8-fix-1 && npm run test:router",
+    "test:f08-1-1-fix-3": "node test/test-foundation-08-1-1-fix-3-evolution-runtime-reuse.js",
+    "check:08.1.1-fix-3": "npm run check:08.1 && npm run test:f08-1-1-fix-3"
   },
   "keywords": [],
   "author": "",

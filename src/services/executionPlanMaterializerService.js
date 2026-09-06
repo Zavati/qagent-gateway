@@ -236,12 +236,15 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
   confirmDiscoveredRuntime = false,
   loadEndpoint = getCatalogEndpointForTestDesign,
   loadEvidence = getCatalogEvidenceForTestDesign,
+  confirmedRuntimeReuse = null,
 } = {}) {
   const referencedServiceKeys = uniqueStrings(selectedScenarios.map((scenario) => scenario?.spec?.target?.apiServiceKey));
   const apiServices = {};
   let resolutionSource = 'EXPLICIT_CONFIG';
   let resolutionConfidence = 'CONFIRMED';
   let discoveredCandidate = null;
+  let reuseMetadata = null;
+  let reusedDiscoveredTargetCount = 0;
 
   for (const serviceKey of referencedServiceKeys) {
     const runtimeService = runtimeConfig?.apiServices?.[serviceKey];
@@ -262,6 +265,49 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
         409,
         { serviceKey },
       );
+    }
+
+    const reusableService = confirmedRuntimeReuse?.apiServices?.[serviceKey] || null;
+    if (reusableService?.baseUrl) {
+      if (
+        confirmedRuntimeReuse?.kind !== 'EVOLUTION_CONFIRMED_RUNTIME_REUSE'
+        || confirmedRuntimeReuse?.contractVersion !== 'qagent.evolution-runtime-reuse.v1'
+        || confirmedRuntimeReuse?.organizationId !== organizationId
+        || confirmedRuntimeReuse?.projectId !== projectId
+        || confirmedRuntimeReuse?.environmentId !== environmentId
+        || confirmedRuntimeReuse?.sourceEndpointId !== artifact.endpointId
+        || confirmedRuntimeReuse?.resolutionSource !== 'DISCOVERED_OBSERVATION'
+      ) {
+        runError(
+          'Runtime reuse interno não corresponde ao escopo do novo Run.',
+          'RUN_EVOLUTION_RUNTIME_REUSE_SCOPE_MISMATCH',
+          409,
+          { serviceKey },
+        );
+      }
+      reusedDiscoveredTargetCount += 1;
+      if (reusedDiscoveredTargetCount > 1) {
+        runError(
+          'Rerun de evolução com múltiplos targets descobertos ainda não é suportado.',
+          'RUN_EVOLUTION_RUNTIME_REUSE_MULTIPLE_TARGETS_UNSUPPORTED',
+          409,
+        );
+      }
+      apiServices[serviceKey] = {
+        apiServiceId: reusableService.apiServiceId || null,
+        name: reusableService.name || `Reused ${serviceKey}`,
+        serviceKey,
+        baseUrl: reusableService.baseUrl,
+      };
+      resolutionSource = 'DISCOVERED_OBSERVATION';
+      resolutionConfidence = confirmedRuntimeReuse.resolutionConfidence || 'HIGH';
+      reuseMetadata = {
+        contractVersion: 'qagent.evolution-runtime-reuse.v1',
+        kind: 'EVOLUTION_CONFIRMED_RUNTIME_REUSE',
+        sourceRunId: confirmedRuntimeReuse.sourceRunId,
+        sourceRuntimeSnapshotId: confirmedRuntimeReuse.sourceRuntimeSnapshotId,
+      };
+      continue;
     }
 
     if (resolutionSource === 'DISCOVERED_OBSERVATION' && discoveredCandidate?.serviceKey !== serviceKey) {
@@ -408,6 +454,7 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
       source: resolutionSource,
       confidence: resolutionConfidence,
       requiresExecutionConfirmation: false,
+      ...(reuseMetadata ? { reuse: reuseMetadata } : {}),
     },
   };
 }
@@ -524,6 +571,7 @@ export async function materializeExecutionPlanV1({
   environmentId,
   requestedScenarioIds = null,
   confirmDiscoveredRuntime = false,
+  confirmedRuntimeReuse = null,
   runId,
   executionPlanId,
   runtimeSnapshotId,
@@ -552,6 +600,7 @@ export async function materializeExecutionPlanV1({
     confirmDiscoveredRuntime,
     loadEndpoint,
     loadEvidence,
+    confirmedRuntimeReuse,
   });
 
   const requiresObservedTestData = selectedScenarios.some((scenario) =>

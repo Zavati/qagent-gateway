@@ -12,7 +12,7 @@ import {
   assessEvolutionProposal,
 } from '../services/testEvolutionClient.js';
 import { assessTestEvolutionWithAi } from '../services/testEvolutionAiService.js';
-import { createRunV1 } from '../services/runService.js';
+import { createEvolutionRerunV1 } from '../services/evolutionRerunService.js';
 
 async function auth(req,env,projectId,deps={}){
   const t=await (deps.requireTenant||requireConsoleTenant)(req,env);
@@ -78,18 +78,15 @@ async function maybeCreateEvolutionRerun({env,tenant,projectId,proposalId,result
     run:null,
   };
   try{
-    const created=await (deps.createRun||createRunV1)({
+    const created=await (deps.createEvolutionRerun||createEvolutionRerunV1)({
       env,
       organizationId:tenant.organizationId,
       projectId,
       userId:actor(tenant),
-      input:{
-        contractVersion:'qagent.run-create.v1',
-        testDesignVersionId:recommendation.testDesignVersionId,
-        environmentId:recommendation.environmentId,
-        scenarioIds:[recommendation.scenarioId],
-        confirmDiscoveredRuntime:false,
-      },
+      sourceRunId:recommendation.sourceRunId||result?.proposal?.source?.runId||null,
+      testDesignVersionId:recommendation.testDesignVersionId,
+      environmentId:recommendation.environmentId,
+      scenarioId:recommendation.scenarioId,
       idempotencyKey:`test-evolution-rerun:${proposalId}:${recommendation.testDesignVersionId}`,
     });
     return {
@@ -101,6 +98,7 @@ async function maybeCreateEvolutionRerun({env,tenant,projectId,proposalId,result
         status:created.run.status,
         testDesignVersionId:recommendation.testDesignVersionId,
         scenarioId:recommendation.scenarioId,
+        runtimeReuse:created?.evolutionRuntimeReuse||null,
       }:null,
     };
   }catch(error){

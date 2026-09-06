@@ -197,6 +197,7 @@ export async function createRunV1({
   userId = null,
   input,
   idempotencyKey,
+  runtimeReuse = null,
   deps = {},
 } = {}) {
   const log = logger(env);
@@ -247,6 +248,7 @@ export async function createRunV1({
     environmentId: input.environmentId,
     requestedScenarioIds: input.scenarioIds,
     confirmDiscoveredRuntime: input.confirmDiscoveredRuntime === true,
+    confirmedRuntimeReuse: runtimeReuse,
     runId,
     executionPlanId,
     runtimeSnapshotId,
