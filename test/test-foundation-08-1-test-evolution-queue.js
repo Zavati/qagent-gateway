@@ -10,7 +10,8 @@ function fakeMessage(body) {
   };
 }
 
-// A result emitted by the bounded auto-rerun must never start another automatic evolution chain.
+// 08.1.2: a bounded auto-rerun must not start a second evolution chain.
+// Instead, its Result Set is verified and attributed to the proposal that created the rerun.
 const rerunMessage = fakeMessage({
   contractVersion: 'qagent.test-evolution-result-trigger.v1',
   organizationId: 'org_123',
@@ -33,9 +34,20 @@ const db = {
     };
   },
 };
-await handleTestEvolutionQueue({ queue: 'qagent-test-evolution', messages: [rerunMessage] }, { QAGENT_DB: db });
+let verificationRequest=null;
+const evolutionService={
+  async fetch(req){
+    verificationRequest={url:req.url,body:JSON.parse(await req.text()),organizationId:req.headers.get('X-QAgent-Organization-Id'),projectId:req.headers.get('X-QAgent-Project-Id')};
+    return Response.json({status:'ok',data:{contractVersion:'qagent.test-evolution-outcome-verification.v1',proposalId:'tep_1',outcome:'RECOVERED_BY_EVOLUTION',recoveryConfirmed:true,reasonCode:'EVOLVED_RERUN_PASSED'}});
+  },
+};
+await handleTestEvolutionQueue({ queue: 'qagent-test-evolution', messages: [rerunMessage] }, { QAGENT_DB: db, TEST_EVOLUTION_SERVICE:evolutionService });
 assert.equal(rerunMessage.acked, true);
 assert.equal(rerunMessage.retried, false);
+assert.match(verificationRequest.url,/\/test-evolution-proposals\/tep_1\/verify-outcome$/);
+assert.deepEqual(verificationRequest.body,{rerunRunId:'run_123',rerunResultSetId:`rset_${'a'.repeat(64)}`});
+assert.equal(verificationRequest.organizationId,'org_123');
+assert.equal(verificationRequest.projectId,'prj_123');
 
 // Invalid trigger is fail-closed and acknowledged instead of poisoning the queue.
 const invalid = fakeMessage({ contractVersion: 'wrong' });
@@ -43,4 +55,4 @@ await handleTestEvolutionQueue({ queue: 'qagent-test-evolution', messages: [inva
 assert.equal(invalid.acked, true);
 assert.equal(invalid.retried, false);
 
-console.log('Foundation 08.1 Test Evolution queue bounded rerun: PASS');
+console.log('Foundation 08.1/08.1.2 Test Evolution queue bounded recovery attribution: PASS');

@@ -250,6 +250,7 @@ export function resolveGatewayRoute(method, pathname) {
       if (segs[7] === 'approve' && normalizedMethod === 'POST') return { name: 'consoleEvolutionApprovePost', params };
       if (segs[7] === 'reject' && normalizedMethod === 'POST') return { name: 'consoleEvolutionRejectPost', params };
       if (segs[7] === 'analyze' && normalizedMethod === 'POST') return { name: 'consoleEvolutionAnalyzePost', params };
+      if (segs[7] === 'verify-outcome' && normalizedMethod === 'POST') return { name: 'consoleEvolutionVerifyOutcomePost', params };
     }
     // /v1/console/projects/:projectId/catalog/endpoints/:endpointId/automation/latest
     if (segs.length === 9 && segs[4] === 'catalog' && segs[5] === 'endpoints' && segs[7] === 'automation' && segs[8] === 'latest' && normalizedMethod === 'GET') {

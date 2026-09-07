@@ -10,9 +10,11 @@ import {
   updateEvolutionPolicy,
   getEvolutionProposalContext,
   assessEvolutionProposal,
+  verifyEvolutionOutcome,
 } from '../services/testEvolutionClient.js';
 import { assessTestEvolutionWithAi } from '../services/testEvolutionAiService.js';
 import { createEvolutionRerunV1 } from '../services/evolutionRerunService.js';
+import { getRun } from '../repositories/runRepository.js';
 
 async function auth(req,env,projectId,deps={}){
   const t=await (deps.requireTenant||requireConsoleTenant)(req,env);
@@ -139,4 +141,17 @@ export async function postConsoleEvolutionAnalyze(req,env,{projectId,proposalId}
       rerun,
     },
   };
+}
+
+export async function postConsoleEvolutionVerifyOutcome(req,env,{projectId,proposalId},deps={}){
+  const t=await auth(req,env,projectId,deps);
+  const input=await read(req);
+  const rerunRunId=String(input?.rerunRunId||'').trim();
+  if(!rerunRunId){const e=new Error('rerunRunId é obrigatório para verificação manual.');e.status=400;e.code='TEST_EVOLUTION_OUTCOME_RUN_REQUIRED';throw e;}
+  const run=await (deps.getRun||getRun)(env,t.organizationId,projectId,rerunRunId);
+  if(!run){const e=new Error('Rerun não encontrado.');e.status=404;e.code='TEST_EVOLUTION_OUTCOME_RUN_NOT_FOUND';throw e;}
+  if(!String(run.idempotencyKey||'').startsWith(`test-evolution-rerun:${proposalId}:`)){const e=new Error('Run não pertence ao bounded rerun desta evolução.');e.status=409;e.code='TEST_EVOLUTION_OUTCOME_RUN_NOT_LINKED';throw e;}
+  return {status:'ok',data:await (deps.verifyOutcome||verifyEvolutionOutcome)({
+    env,organizationId:t.organizationId,projectId,userId:actor(t),proposalId,input:{...input,rerunRunId},
+  })};
 }

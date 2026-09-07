@@ -5,6 +5,7 @@ import {
   getEvolutionPolicy,
   getEvolutionProposalContext,
   assessEvolutionProposal,
+  verifyEvolutionOutcome,
 } from '../services/testEvolutionClient.js';
 import { assessTestEvolutionWithAi } from '../services/testEvolutionAiService.js';
 import { createEvolutionRerunV1 } from '../services/evolutionRerunService.js';
@@ -20,6 +21,14 @@ function normalize(body){
   return scenarioIds.length?{organizationId:body.organizationId,projectId:body.projectId,resultSetId:body.resultSetId,runId:validId(body.runId,'run_')?body.runId:null,scenarioIds}:null;
 }
 function retryable(error){if(error?.retryable===true)return true;const status=Number(error?.status||0);return status>=500||status===429;}
+function parseEvolutionRerunKey(value){
+  const text=String(value||'');
+  const parts=text.split(':');
+  if(parts.length!==3||parts[0]!=='test-evolution-rerun')return null;
+  const proposalId=parts[1];const testDesignVersionId=parts[2];
+  if(!proposalId.startsWith('tep_')||!testDesignVersionId.startsWith('tdv_'))return null;
+  return {proposalId,testDesignVersionId};
+}
 async function createRerun(env,trigger,proposalId,result){
   const rec=result?.rerun;if(!rec?.requested)return null;
   try{
@@ -60,12 +69,20 @@ async function processEligibleScenario(env,trigger,scope,policy,organization,sce
   log('test_evolution_trigger_processed',{resultSetId:trigger.resultSetId,scenarioId:scenario.scenarioId,proposalId:proposal.proposalId,classification:result?.assessment?.classification||null,decision:result?.assessment?.decision||null,confidence:result?.assessment?.confidence??null,riskScore:result?.assessment?.risk?.score??null,riskLevel:result?.assessment?.risk?.level||null,autoAction:result?.assessment?.autoAction||null,autoApplied:Boolean(result?.autoApplied),rerunStatus:rerun?.status||null});
 }
 async function processTrigger(env,trigger){
-  const sourceRun=await getRunByRunId(env,trigger.runId).catch(()=>null);
-  if(String(sourceRun?.idempotencyKey||'').startsWith('test-evolution-rerun:')){
-    log('test_evolution_trigger_skipped',{resultSetId:trigger.resultSetId,runId:trigger.runId,reason:'BOUNDED_RERUN_DEPTH_REACHED'});
+  let sourceRun;
+  try{sourceRun=await getRunByRunId(env,trigger.runId);}catch(error){error.retryable=true;error.status=Number(error?.status||503);throw error;}
+  if(!sourceRun){log('test_evolution_trigger_skipped',{resultSetId:trigger.resultSetId,runId:trigger.runId,reason:'RUN_METADATA_NOT_FOUND'});return;}
+  if(sourceRun.organizationId!==trigger.organizationId||sourceRun.projectId!==trigger.projectId){log('test_evolution_trigger_skipped',{resultSetId:trigger.resultSetId,runId:trigger.runId,reason:'RUN_SCOPE_MISMATCH'});return;}
+  const rerunLink=parseEvolutionRerunKey(sourceRun?.idempotencyKey);
+  const scope={env,organizationId:trigger.organizationId,projectId:trigger.projectId,userId:null};
+  if(rerunLink){
+    const verification=await verifyEvolutionOutcome({...scope,proposalId:rerunLink.proposalId,input:{rerunRunId:trigger.runId,rerunResultSetId:trigger.resultSetId}});
+    log('test_evolution_outcome_verified',{
+      proposalId:rerunLink.proposalId,resultSetId:trigger.resultSetId,runId:trigger.runId,
+      outcome:verification?.outcome||null,recoveryConfirmed:Boolean(verification?.recoveryConfirmed),reasonCode:verification?.reasonCode||null,
+    });
     return;
   }
-  const scope={env,organizationId:trigger.organizationId,projectId:trigger.projectId,userId:null};
   const policy=await getEvolutionPolicy(scope);if(policy?.mode==='OFF'){log('test_evolution_trigger_skipped',{resultSetId:trigger.resultSetId,reason:'PROJECT_MODE_OFF'});return;}
   const inspection=await inspectResultEvolution({...scope,resultSetId:trigger.resultSetId});
   const wanted=new Set(trigger.scenarioIds);const eligible=(inspection?.scenarios||[]).filter((scenario)=>wanted.has(scenario.scenarioId)&&scenario.eligible);

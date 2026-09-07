@@ -437,3 +437,7 @@ Run creation now publishes the immutable Run references to Cloudflare Queue `qag
 ## Foundation 07.7.10-B FIX-1
 
 Corrects Suite Run INSERT SQL arity and adds a real SQLite repository regression test. No migration change.
+
+## 08.1.2 — Evolution Outcome Verification & Recovery Attribution
+
+Bounded Test Evolution rerun Result triggers are no longer merely discarded for depth control: Gateway links them back to the originating Proposal and asks Test Evolution to persist the recovery verdict, without starting a second evolution chain. Authenticated backfill is available at `POST /v1/console/projects/:projectId/test-evolution/proposals/:proposalId/verify-outcome` with `rerunRunId`.

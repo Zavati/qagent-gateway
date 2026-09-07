@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -108,7 +108,9 @@
     "test:f08-1-queue": "node test/test-foundation-08-1-test-evolution-queue.js",
     "check:08.1": "npm run test:f08-1-ai && npm run test:f08-1-queue && npm run test:f07-6-1 && npm run test:f07-6-3-c && npm run test:f07-7-8-fix-1 && npm run test:router",
     "test:f08-1-1-fix-3": "node test/test-foundation-08-1-1-fix-3-evolution-runtime-reuse.js",
-    "check:08.1.1-fix-3": "npm run check:08.1 && npm run test:f08-1-1-fix-3"
+    "check:08.1.1-fix-3": "npm run check:08.1 && npm run test:f08-1-1-fix-3",
+    "test:f08-1-2": "node test/test-foundation-08-1-2-evolution-outcome-attribution.js",
+    "check:08.1.2": "npm run check:08.1.1-fix-3 && npm run test:f08-1-2"
   },
   "keywords": [],
   "author": "",

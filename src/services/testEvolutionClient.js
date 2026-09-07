@@ -12,3 +12,5 @@ export const getEvolutionPolicy=(x)=>call({...x,path:`/internal/v1/projects/${en
 export const updateEvolutionPolicy=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-policy`,method:'PUT',body:x.input});
 export const getEvolutionProposalContext=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/${encodeURIComponent(x.proposalId)}/context`});
 export const assessEvolutionProposal=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/${encodeURIComponent(x.proposalId)}/assess`,method:'POST',body:x.input});
+
+export const verifyEvolutionOutcome=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/${encodeURIComponent(x.proposalId)}/verify-outcome`,method:'POST',body:x.input});

@@ -318,7 +318,7 @@ import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
 import { handleRunDlqQueue } from './handlers/runDlqQueue.js';
 import { handleTestEvolutionQueue } from './handlers/testEvolutionQueue.js';
 import { getConsoleAutomationSummary, listConsoleAutomationResults, getConsoleAutomationResult, getConsoleEndpointAutomationLatest, getConsoleProjectTestInventory, postConsoleMaterializeAutoReadySuite, getConsoleLatestAutoReadySuite } from './handlers/consoleAutomation.js';
-import { getConsoleResultEvolutionInspection, postConsoleEvolutionProposal, getConsoleEvolutionProposal, postConsoleEvolutionApprove, postConsoleEvolutionReject, getConsoleEvolutionPolicy, putConsoleEvolutionPolicy, postConsoleEvolutionAnalyze } from './handlers/consoleTestEvolution.js';
+import { getConsoleResultEvolutionInspection, postConsoleEvolutionProposal, getConsoleEvolutionProposal, postConsoleEvolutionApprove, postConsoleEvolutionReject, getConsoleEvolutionPolicy, putConsoleEvolutionPolicy, postConsoleEvolutionAnalyze, postConsoleEvolutionVerifyOutcome } from './handlers/consoleTestEvolution.js';
 import {
   getInternalRunnerRunBundle,
   postInternalRunnerClaim,
@@ -2123,6 +2123,7 @@ const gatewayRouteHandlers = {
   consoleEvolutionPolicyGet: async (req, env, _ctx, params) => json(await getConsoleEvolutionPolicy(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEvolutionPolicyPut: async (req, env, _ctx, params) => json(await putConsoleEvolutionPolicy(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEvolutionAnalyzePost: async (req, env, _ctx, params) => json(await postConsoleEvolutionAnalyze(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleEvolutionVerifyOutcomePost: async (req, env, _ctx, params) => json(await postConsoleEvolutionVerifyOutcome(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEndpointAutomationLatestGet: async (req, env, _ctx, params) => json(await getConsoleEndpointAutomationLatest(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesList: async (req, env, _ctx, params) => json(await listConsoleApiServices(req, env, params), { headers: corsHeaders(req, env) }),
   consoleApiServicesCreate: async (req, env, _ctx, params) => json(await createConsoleApiService(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
