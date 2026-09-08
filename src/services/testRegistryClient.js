@@ -490,6 +490,21 @@ function validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissi
   if (allowMissing && body?.status === 'ok' && data?.exists === false) return data;
   const suite = data?.suite;
   const version = data?.version;
+  const snapshot = data?.snapshot;
+  const snapshotValid = snapshot == null || Boolean(
+    snapshot.contractVersion === 'qagent.evolution-aware-regression-snapshot.v1'
+    && ['NOT_MATERIALIZED', 'CURRENT', 'OUTDATED'].includes(snapshot.state)
+    && (snapshot.outdatedReason == null || typeof snapshot.outdatedReason === 'string')
+    && Number.isInteger(snapshot.changedTestDesignCount)
+    && Number.isInteger(snapshot.evolvedTestDesignCount)
+    && Number.isInteger(snapshot.versionChangedTestDesignCount)
+    && Number.isInteger(snapshot.addedTestDesignCount)
+    && Number.isInteger(snapshot.removedTestDesignCount)
+    && Number.isInteger(snapshot.noLongerReadyTestDesignCount)
+    && typeof snapshot.changesIncluded === 'boolean'
+    && typeof snapshot.changesTruncated === 'boolean'
+    && Array.isArray(snapshot.changes)
+  );
   const valid = Boolean(
     body?.status === 'ok'
     && suite && version
@@ -504,6 +519,7 @@ function validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissi
     && typeof version.suiteVersionId === 'string'
     && Number.isInteger(version.version)
     && Array.isArray(version.selection)
+    && snapshotValid
   );
   if (!valid) {
     throw new TestRegistryClientError('Test Registry returned an invalid Auto Suite response.', {
@@ -590,7 +606,7 @@ export async function materializeAutoReadySuite({ env, organizationId, projectId
 export async function getLatestAutoReadySuite({ env, organizationId, projectId, fetchImpl = null } = {}) {
   const body = await requestTestRegistryProjectResource({
     env, organizationId, projectId, fetchImpl,
-    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/latest?view=compact`,
+    path: `/v1/test-registry/projects/${encodeURIComponent(projectId)}/suites/auto-ready/latest?view=compact&snapshot=1`,
   });
   return validateAutoSuiteEnvelope(body, { organizationId, projectId, allowMissing: true });
 }
