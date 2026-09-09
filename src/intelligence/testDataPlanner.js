@@ -909,6 +909,15 @@ function deleteBodySelector(
   ];
 }
 
+const TEST_DATA_PROVENANCE_ORIGINS = new Set(['USER_DEFINED', 'AI_GENERATED', 'SYSTEM_DERIVED', 'OBSERVED', 'RESULT_EVOLUTION', 'LEGACY_UNKNOWN']);
+function bindingProvenanceOrigin(explicit, source) {
+  const explicitOrigin = String(explicit?.origin || '').trim().toUpperCase();
+  if (TEST_DATA_PROVENANCE_ORIGINS.has(explicitOrigin)) return explicitOrigin;
+  if (source === 'OBSERVED') return 'OBSERVED';
+  if (source === 'GENERATED') return 'SYSTEM_DERIVED';
+  return 'LEGACY_UNKNOWN';
+}
+
 function bindingDescriptor({
   target,
   selector,
@@ -923,6 +932,7 @@ function bindingDescriptor({
     target,
     selector,
     source,
+    provenance: { origin: bindingProvenanceOrigin(explicit, source) },
     valueType:
       explicit?.valueType
       || observedValueType

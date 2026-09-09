@@ -834,6 +834,7 @@ export async function buildCatalogTestDesignContextV1({
         target: nullableString(binding?.target),
         selector: nullableString(binding?.selector),
         sourceType: nullableString(binding?.sourceType),
+        origin: nullableString(binding?.origin) || 'LEGACY_UNKNOWN',
         valueType: nullableString(binding?.valueType),
         generatorKind: nullableString(binding?.generatorKind),
         generatorConfig: binding?.sourceType === 'GENERATED' && isContextSafeJson(binding?.generatorConfig || {})

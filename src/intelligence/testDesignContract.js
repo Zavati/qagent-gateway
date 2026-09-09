@@ -925,6 +925,7 @@ export function validateCatalogTestDesignContextV1(context) {
       'target',
       'selector',
       'sourceType',
+      'origin',
       'valueType',
       'generatorKind',
       'generatorConfig',
@@ -987,6 +988,12 @@ export function validateCatalogTestDesignContextV1(context) {
       binding.sourceType,
       ['GENERATED', 'FIXED', 'SECRET'],
       `${path}.sourceType`,
+    );
+
+    assertEnum(
+      binding.origin || 'LEGACY_UNKNOWN',
+      ['USER_DEFINED', 'AI_GENERATED', 'SYSTEM_DERIVED', 'LEGACY_UNKNOWN'],
+      `${path}.origin`,
     );
 
     if (
@@ -1542,12 +1549,17 @@ function validateTestDataBindingsV1(testData, path) {
   bindings.forEach((binding, index) => {
     const bPath = `${path}.bindings[${index}]`;
     assertPlainObject(binding, bPath);
-    assertKnownKeys(binding, new Set(['target', 'selector', 'source', 'valueType', 'bindingKey', 'generator']), bPath);
+    assertKnownKeys(binding, new Set(['target', 'selector', 'source', 'valueType', 'bindingKey', 'generator', 'provenance']), bPath);
     assertEnum(binding.target, ['BODY', 'PATH_PARAM', 'QUERY'], `${bPath}.target`);
     assertString(binding.selector, `${bPath}.selector`, { max: 320 });
     assertEnum(binding.source, ['GENERATED', 'FIXED', 'SECRET', 'OBSERVED'], `${bPath}.source`);
     if (isSensitiveTestDataSelector(binding.target, binding.selector) && binding.source !== 'SECRET') fail('Campo sensível de Test Data deve usar SECRET.', `${bPath}.source`, 'TEST_DATA_SECRET_SOURCE_REQUIRED');
     assertEnum(binding.valueType, ['STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'JSON'], `${bPath}.valueType`);
+    if (binding.provenance != null) {
+      assertPlainObject(binding.provenance, `${bPath}.provenance`);
+      assertKnownKeys(binding.provenance, new Set(['origin']), `${bPath}.provenance`);
+      assertEnum(binding.provenance.origin, ['USER_DEFINED', 'AI_GENERATED', 'SYSTEM_DERIVED', 'OBSERVED', 'RESULT_EVOLUTION', 'LEGACY_UNKNOWN'], `${bPath}.provenance.origin`);
+    }
     if (binding.source === 'SECRET' && binding.valueType !== 'STRING') fail('SECRET Test Data v1 suporta somente STRING.', `${bPath}.valueType`, 'TEST_DATA_SECRET_VALUE_TYPE_INVALID');
     if (binding.source === 'GENERATED') {
       assertPlainObject(binding.generator, `${bPath}.generator`);

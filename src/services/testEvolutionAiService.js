@@ -50,12 +50,15 @@ Rules:
 3. A test failure is NOT evidence that the test should be changed.
 4. If a negative/validation scenario historically returns 4xx and now returns 2xx, prefer APPLICATION_BUG_SUSPECTED.
 5. HTTP 5xx, auth failures inconsistent with scenario intent, runtime/network failures, or weak/conflicting evidence must NOT be auto-healed.
-6. TEST_DATA_DRIFT means the response expectation normally stays unchanged, but if currentTest.candidateChanges contains only TEST_DATA_BINDING request repairs, you MAY choose TEST_DATA_DRIFT + EVOLVE_TEST when execution evidence proves QAgent generated an invalid request and successful observed request samples support the proposed valueType/generatorKind and, when present, the bounded generatorConfig safe envelope.
+6. TEST_DATA_DRIFT means the response expectation normally stays unchanged. Candidate request repairs may be TEST_DATA_BINDING, REQUEST_BODY_FIELD_ADD, or REQUEST_BODY_FIELD_REMOVE. Choose TEST_DATA_DRIFT + EVOLVE_TEST only when machine-readable request rejection evidence and successful request evidence support the deterministic candidate. Structural BODY add/remove changes are human-review gated by policy even when your recommendation is EVOLVE_TEST.
 7. EXPECTED_BEHAVIOR_LEARNED is for behavior that matches scenario intent and is supported by execution/observed evidence, where the test expectation simply lacked the real product behavior. A candidate ADD_JSON_PATH_EQUALS_ASSERTION on a LEARNING scenario strengthens the test; approve it only when the observed literal is semantically stable and appropriate to assert.
 8. Changing an existing JSON_PATH_EQUALS literal is more dangerous than adding a learned assertion and normally requires review. EXPECTATION_DRIFT is a plausible product contract change that still deserves human review unless risk is clearly low; do not call it learned behavior just to make a test pass.
 9. If evidence is insufficient or ambiguous, choose INCONCLUSIVE + REVIEW_REQUIRED.
-10. When the response explicitly identifies invalid request parameters and the candidate change repairs GENERATED Test Data using successful request evidence, prefer TEST_DATA_DRIFT over changing STATUS expectations.
-11. Never include secrets, raw credentials, or new request data in the output.
+10. When the response explicitly identifies invalid, missing-required, or unexpected request fields and the candidate change repairs GENERATED Test Data/payload structure using successful request evidence, prefer TEST_DATA_DRIFT over changing STATUS expectations.
+11. FIXED request data is origin-aware. USER_DEFINED and LEGACY_UNKNOWN values must never be treated as QAgent-owned merely because their literal looks generic. If deterministic evidence proposes FIXED -> OBSERVED, classify it as TEST_DATA_DRIFT only when the candidate already contains strong successful evidence; the policy will require human review.
+12. Never recommend changing a successful-intent 2xx expectation to a 4xx merely because the request constructed for the test was rejected. If request evidence is machine-readable but no safe repair exists, prefer INCONCLUSIVE + REVIEW_REQUIRED rather than expectation drift.
+13. REQUEST_BODY_FIELD_ADD/REMOVE and FIXED -> OBSERVED changes must remain explainable as request construction repairs; never reinterpret them as product behavior learning.
+14. Never include secrets, raw credentials, raw configured FIXED values, or new request data in the output.
 
 Return ONLY JSON with this exact shape:
 {
@@ -69,7 +72,7 @@ Return ONLY JSON with this exact shape:
 Decision guidance:
 - EXPECTED_BEHAVIOR_LEARNED -> EVOLVE_TEST only when evidence supports the scenario intent.
 - APPLICATION_BUG_SUSPECTED -> KEEP_TEST.
-- TEST_DATA_DRIFT -> EVOLVE_TEST only for bounded TEST_DATA_BINDING request repairs supported by successful evidence. A generatorConfig safe envelope is evidence-derived and must never be widened or invented by the model; otherwise KEEP_TEST or REVIEW_REQUIRED.
+- TEST_DATA_DRIFT -> EVOLVE_TEST only for deterministic request repairs already present in candidateChanges and supported by successful evidence. GENERATED -> GENERATED TEST_DATA_BINDING may be AUTO_SAFE only when policy allows it. FIXED -> OBSERVED and structural REQUEST_BODY_FIELD_ADD/REMOVE are always human-review gated. Generator constraints are evidence-derived and must never be widened or invented by the model; otherwise KEEP_TEST or REVIEW_REQUIRED.
 - RUNTIME_FAILURE -> KEEP_TEST.
 - INCONCLUSIVE -> REVIEW_REQUIRED.
 - EXPECTATION_DRIFT -> usually REVIEW_REQUIRED.`;

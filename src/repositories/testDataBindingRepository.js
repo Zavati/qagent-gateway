@@ -18,6 +18,7 @@ const BINDING_SELECT = `
     secret_id AS secretId,
     description,
     status,
+    origin,
     created_by_user_id AS createdByUserId,
     created_at AS createdAt,
     updated_at AS updatedAt
@@ -68,8 +69,8 @@ export async function createEndpointTestDataBinding(env, input) {
       binding_id, organization_id, project_id, scope_type, environment_id, endpoint_id,
       target, selector, source_type, value_type,
       generator_kind, generator_config_json, fixed_value_json, secret_id,
-      description, status, created_by_user_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+      description, status, origin, created_by_user_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
   `).bind(
     bindingId,
     input.organizationId,
@@ -86,6 +87,7 @@ export async function createEndpointTestDataBinding(env, input) {
     input.fixedValueJson || null,
     input.secretId || null,
     input.description || null,
+    input.origin || 'LEGACY_UNKNOWN',
     input.createdByUserId || null,
     now,
     now,

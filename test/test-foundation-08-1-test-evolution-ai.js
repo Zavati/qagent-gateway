@@ -64,6 +64,8 @@ assert.equal(capturedRequest.temperature, 0);
 assert.equal(capturedRequest.timeoutMs, 22000);
 assert.match(capturedRequest.systemPrompt, /NOT blind self-healing/);
 assert.match(capturedRequest.systemPrompt, /APPLICATION_BUG_SUSPECTED/);
+assert.match(capturedRequest.systemPrompt, /REQUEST_BODY_FIELD_ADD/);
+assert.match(capturedRequest.systemPrompt, /Structural BODY add\/remove changes are human-review gated/);
 assert.equal(result.assessment.confidence, 98);
 assert.equal(result.ai.configSource, 'account');
 

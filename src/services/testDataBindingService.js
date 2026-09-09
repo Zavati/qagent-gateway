@@ -140,6 +140,7 @@ function publicBinding(row) {
     secretConfigured: row.sourceType === 'SECRET' ? Boolean(row.secretId) : false,
     description: row.description || null,
     status: row.status,
+    origin: row.origin || 'LEGACY_UNKNOWN',
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -230,6 +231,7 @@ export async function createProjectEndpointTestDataBinding(env, { organizationId
       fixedValueJson,
       secretId,
       description,
+      origin: 'USER_DEFINED',
       createdByUserId: userId,
     }));
   } catch (error) {
