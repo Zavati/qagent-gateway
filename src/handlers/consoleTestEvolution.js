@@ -16,6 +16,7 @@ import { assessTestEvolutionWithAi } from '../services/testEvolutionAiService.js
 import { createEvolutionRerunV1 } from '../services/evolutionRerunService.js';
 import { getRun } from '../repositories/runRepository.js';
 import { createHumanRequestRepairV1 } from '../services/humanRequestRepairService.js';
+import { recordManualEvolutionApprovalInLearningCycle } from '../services/learningCycleService.js';
 
 async function auth(req,env,projectId,deps={}){
   const t=await (deps.requireTenant||requireConsoleTenant)(req,env);
@@ -49,9 +50,13 @@ export async function getConsoleEvolutionProposal(req,env,{projectId,proposalId}
 }
 export async function postConsoleEvolutionApprove(req,env,{projectId,proposalId},deps={}){
   const t=await auth(req,env,projectId,deps);
-  return {status:'ok',data:await (deps.approve||approveEvolutionProposal)({
+  const data=await (deps.approve||approveEvolutionProposal)({
     env,organizationId:t.organizationId,projectId,userId:actor(t),proposalId,input:await read(req),
-  })};
+  });
+  if(String(data?.status||'').toUpperCase()==='APPLIED'){
+    await (deps.recordLearningApproval||recordManualEvolutionApprovalInLearningCycle)(env,{organizationId:t.organizationId,projectId,proposal:data}).catch(()=>{});
+  }
+  return {status:'ok',data};
 }
 export async function postConsoleEvolutionReject(req,env,{projectId,proposalId},deps={}){
   const t=await auth(req,env,projectId,deps);

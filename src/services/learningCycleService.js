@@ -14,6 +14,7 @@ import {
   listLearningScenarios,
   listProjectLearningCycles,
   listLatestProjectLearningScenarioStates,
+  markLearningScenarioProposalPendingVerification,
   setLearningCycleStatus,
   updateLearningScenarioHumanOutcomeByRerun,
   updateLearningScenarioHumanRepair,
@@ -131,13 +132,19 @@ async function getCycleByIdUnsafe(env,row){
   const cycle=await db.prepare(`SELECT suite_run_id AS suiteRunId FROM continuous_learning_cycles WHERE learning_cycle_id=? LIMIT 1`).bind(row.learningCycleId).first();return cycle||null;
 }
 
-export async function recordHumanRepairInLearningCycle(env,{organizationId,projectId,resultSetId,scenarioId,repairId,testDesignVersionId,testDesignVersion,rerunRunId=null}){
+export async function recordHumanRepairInLearningCycle(env,{organizationId,projectId,resultSetId,scenarioId,repairId,testDesignVersionId,testDesignVersion,rerunRunId=null,rerunRequested=false,rerunStatus=null,rerunErrorCode=null}){
   const db=env?.QAGENT_DB;if(!db?.prepare)return null;
   const row=await db.prepare(`SELECT learning_cycle_id AS learningCycleId FROM continuous_learning_scenarios WHERE organization_id=? AND project_id=? AND source_result_set_id=? AND scenario_id=? LIMIT 1`).bind(organizationId,projectId,resultSetId,scenarioId).first();
   if(!row)return null;
-  const effectiveState=rerunRunId?'HUMAN_VERIFYING':'REVIEW_REQUIRED';
-  const updated=await updateLearningScenarioHumanRepair(env,{learningCycleId:row.learningCycleId,resultSetId,scenarioId,repairId,testDesignVersionId,testDesignVersion,humanRerunRunId:rerunRunId,effectiveState});
-  await appendLearningCycleEvent(env,{eventId:await eventId(row.learningCycleId,`HUMAN_REPAIR:${repairId}`),learningCycleId:row.learningCycleId,learningScenarioId:updated?.learningScenarioId||null,organizationId,projectId,eventType:'HUMAN_REPAIR_APPLIED',eventKey:`HUMAN_REPAIR:${repairId}`,metadata:{repairId,testDesignVersionId,testDesignVersion,rerunRunId}}).catch(()=>{});
+  const rerunFailed=rerunRequested===true&&String(rerunStatus||'').toUpperCase()==='CREATE_FAILED';
+  const effectiveState=rerunFailed?'HUMAN_VERIFICATION_BLOCKED':(rerunRunId?'HUMAN_VERIFYING':'PENDING_VERIFICATION');
+  const attentionStatus=rerunFailed?'OPEN':'PENDING_VERIFICATION';
+  const updated=await updateLearningScenarioHumanRepair(env,{learningCycleId:row.learningCycleId,resultSetId,scenarioId,repairId,testDesignVersionId,testDesignVersion,humanRerunRunId:rerunRunId,effectiveState,attentionStatus,resolutionKind:'HUMAN_REQUEST_REPAIR',verificationRequired:!rerunFailed});
+  if(rerunFailed){
+    const db2=env?.QAGENT_DB;
+    await db2.prepare(`UPDATE continuous_learning_scenarios SET verification_outcome='VERIFICATION_BLOCKED',verification_reason_code=?,updated_at=? WHERE learning_scenario_id=?`).bind(rerunErrorCode||'HUMAN_REPAIR_RERUN_CREATE_FAILED',new Date().toISOString(),updated.learningScenarioId).run();
+  }
+  await appendLearningCycleEvent(env,{eventId:await eventId(row.learningCycleId,`HUMAN_REPAIR:${repairId}`),learningCycleId:row.learningCycleId,learningScenarioId:updated?.learningScenarioId||null,organizationId,projectId,eventType:'HUMAN_REPAIR_APPLIED',eventKey:`HUMAN_REPAIR:${repairId}`,metadata:{repairId,testDesignVersionId,testDesignVersion,rerunRequested,rerunStatus,rerunRunId,attentionStatus}}).catch(()=>{});
   const cycle=await getCycleByIdUnsafe(env,{learningCycleId:row.learningCycleId});
   if(cycle)await refreshLearningCycleState(env,{organizationId,projectId,suiteRunId:cycle.suiteRunId});
   return updated;
@@ -149,6 +156,17 @@ export async function recordHumanRepairRerunOutcome(env,{runId,summary}){
   if(!updated)return null;
   await appendLearningCycleEvent(env,{eventId:await eventId(updated.learningCycleId,`HUMAN_VERIFY:${runId}`),learningCycleId:updated.learningCycleId,learningScenarioId:updated.learningScenarioId,organizationId:updated.organizationId,projectId:updated.projectId,eventType:'HUMAN_REPAIR_VERIFIED',eventKey:`HUMAN_VERIFY:${runId}`,metadata:{runId,outcome:verdict.outcome,reasonCode:verdict.reasonCode}}).catch(()=>{});
   const cycle=await getCycleByIdUnsafe(env,updated);if(cycle)await refreshLearningCycleState(env,{organizationId:updated.organizationId,projectId:updated.projectId,suiteRunId:cycle.suiteRunId});
+  return updated;
+}
+
+export async function recordManualEvolutionApprovalInLearningCycle(env,{organizationId,projectId,proposal}){
+  if(!proposal?.proposalId||String(proposal?.status||'').toUpperCase()!=='APPLIED')return null;
+  const testDesignVersionId=proposal?.result?.testDesignVersionId||null;
+  const testDesignVersion=proposal?.result?.testDesignVersion??null;
+  const updated=await markLearningScenarioProposalPendingVerification(env,{proposalId:proposal.proposalId,testDesignVersionId,testDesignVersion,resolutionKind:'MANUAL_EVOLUTION_APPROVAL'});
+  if(!updated)return null;
+  await appendLearningCycleEvent(env,{eventId:await eventId(updated.learningCycleId,`MANUAL_APPROVAL:${proposal.proposalId}`),learningCycleId:updated.learningCycleId,learningScenarioId:updated.learningScenarioId,organizationId,projectId,eventType:'MANUAL_EVOLUTION_APPROVED',eventKey:`MANUAL_APPROVAL:${proposal.proposalId}`,metadata:{proposalId:proposal.proposalId,testDesignVersionId,testDesignVersion,attentionStatus:'PENDING_VERIFICATION'}}).catch(()=>{});
+  const cycle=await getCycleByIdUnsafe(env,updated);if(cycle)await refreshLearningCycleState(env,{organizationId,projectId,suiteRunId:cycle.suiteRunId});
   return updated;
 }
 
@@ -223,6 +241,8 @@ function publicSummary(cycle,agg,state){
       proposalCount:agg.proposal_count||0,
       autoAppliedCount:agg.auto_applied_count||0,
       attentionRequiredCount:agg.attention_count||0,
+      pendingVerificationCount:agg.pending_verification_count||0,
+      resolvedAttentionCount:agg.resolved_attention_count||0,
       healthyCount:agg.healthy_count||0,
     },
     classifications:{
@@ -234,7 +254,7 @@ function publicSummary(cycle,agg,state){
       inconclusive:agg.inconclusive_count||0,
     },
     verification:{
-      pendingCount:agg.pending_verification_count||0,
+      pendingCount:agg.active_verification_count||0,
       recoveredByEvolutionCount:agg.recovered_evolution_count||0,
       notRecoveredCount:agg.not_recovered_count||0,
       blockedCount:agg.verification_blocked_count||0,
@@ -261,9 +281,10 @@ export async function refreshLearningCycleState(env,{organizationId,projectId,su
   if(missingResults>0)await reconcileMissingLearningTriggers(env,{cycle,state,missingResults}).catch(()=>0);
   const pendingAnalysis=Number(agg.pending_analysis_count||0)+missingResults;
   const pendingVerification=Number(agg.pending_verification_count||0);
+  const activeVerification=Number(agg.active_verification_count||0);
   const attention=Number(agg.attention_count||0);
   const errorUnits=Number(state.counts?.error||0)+Number(state.counts?.createError||0)+Number(state.counts?.cancelled||0);
-  const status=determineLearningCycleStatus({suiteStatus:state.suiteRun.status,expectedResultSetCount:expectedResultSets,resultSetCount:agg.result_set_count,pendingAnalysisCount:agg.pending_analysis_count,pendingVerificationCount:pendingVerification,attentionCount:attention,errorUnits});
+  const status=determineLearningCycleStatus({suiteStatus:state.suiteRun.status,expectedResultSetCount:expectedResultSets,resultSetCount:agg.result_set_count,pendingAnalysisCount:agg.pending_analysis_count,pendingVerificationCount:activeVerification,attentionCount:attention+((pendingVerification>0&&activeVerification===0)?1:0),errorUnits});
   const settled=status==='WAITING_REVIEW'||status==='COMPLETED';
   const completed=status==='COMPLETED';
   const updatedCycle=cycle.status===status&&Boolean(cycle.settledAt)===settled?cycle:await setLearningCycleStatus(env,{organizationId,projectId,learningCycleId:cycle.learningCycleId,status,settled,completed});
@@ -279,13 +300,14 @@ export async function getLearningCycleDetailV1({env,organizationId,projectId,sui
   const summary=await refreshLearningCycleState(env,{organizationId,projectId,suiteRunId});if(!summary)return null;
   const cycle=await getLearningCycleBySuiteRunId(env,organizationId,projectId,suiteRunId);
   const [items,events]=await Promise.all([listLearningScenarios(env,{organizationId,projectId,learningCycleId:cycle.learningCycleId,limit}),listLearningCycleEvents(env,{organizationId,projectId,learningCycleId:cycle.learningCycleId,limit:30})]);
-  return {...summary,items:items.map((x)=>({learningScenarioId:x.learningScenarioId,resultSetId:x.sourceResultSetId,runId:x.sourceRunId,scenarioResultId:x.sourceScenarioResultId,scenarioId:x.scenarioId,endpointId:x.endpointId,sourceTestDesignVersionId:x.sourceTestDesignVersionId,sourceTestDesignVersion:x.sourceTestDesignVersion,sourceOutcome:x.sourceOutcome,httpOutcome:x.httpOutcome,statusCode:x.statusCode,assertionFailedCount:x.assertionFailedCount,inspection:{state:x.inspectionState,eligible:x.inspectionEligible,reason:x.inspectionReason,requestIssueDetected:x.requestIssueDetected},evolution:{proposalId:x.proposalId,classification:x.classification,decision:x.decision,confidence:x.confidence,riskScore:x.riskScore,riskLevel:x.riskLevel,autoAction:x.autoAction,evolvedTestDesignVersionId:x.evolvedTestDesignVersionId,evolvedTestDesignVersion:x.evolvedTestDesignVersion,rerunRunId:x.evolutionRerunRunId},verification:{outcome:x.verificationOutcome,reasonCode:x.verificationReasonCode},humanRepair:x.humanRepairId?{repairId:x.humanRepairId,testDesignVersionId:x.humanRepairTestDesignVersionId,testDesignVersion:x.humanRepairTestDesignVersion,rerunRunId:x.humanRerunRunId}:null,effectiveState:x.effectiveState,updatedAt:x.updatedAt})),itemsTruncated:(summary.learning.scenarioCount||0)>items.length,events};
+  return {...summary,items:items.map((x)=>({learningScenarioId:x.learningScenarioId,resultSetId:x.sourceResultSetId,runId:x.sourceRunId,scenarioResultId:x.sourceScenarioResultId,scenarioId:x.scenarioId,endpointId:x.endpointId,sourceTestDesignVersionId:x.sourceTestDesignVersionId,sourceTestDesignVersion:x.sourceTestDesignVersion,sourceOutcome:x.sourceOutcome,httpOutcome:x.httpOutcome,statusCode:x.statusCode,assertionFailedCount:x.assertionFailedCount,inspection:{state:x.inspectionState,eligible:x.inspectionEligible,reason:x.inspectionReason,requestIssueDetected:x.requestIssueDetected},evolution:{proposalId:x.proposalId,classification:x.classification,decision:x.decision,confidence:x.confidence,riskScore:x.riskScore,riskLevel:x.riskLevel,autoAction:x.autoAction,evolvedTestDesignVersionId:x.evolvedTestDesignVersionId,evolvedTestDesignVersion:x.evolvedTestDesignVersion,rerunRunId:x.evolutionRerunRunId},verification:{outcome:x.verificationOutcome,reasonCode:x.verificationReasonCode},humanRepair:x.humanRepairId?{repairId:x.humanRepairId,testDesignVersionId:x.humanRepairTestDesignVersionId,testDesignVersion:x.humanRepairTestDesignVersion,rerunRunId:x.humanRerunRunId}:null,attention:{status:x.attentionStatus,resolutionKind:x.attentionResolutionKind||null,resolutionRefId:x.attentionResolutionRefId||null,testDesignVersionId:x.attentionResolutionTestDesignVersionId||null,testDesignVersion:x.attentionResolutionTestDesignVersion??null,resolvedAt:x.attentionResolutionAt||null,verificationRequired:x.attentionVerificationRequired===true},effectiveState:x.effectiveState,updatedAt:x.updatedAt})),itemsTruncated:(summary.learning.scenarioCount||0)>items.length,events};
 }
 
 
 const ATTENTION_STATES=new Set(['REVIEW_REQUIRED','NOT_RECOVERED','VERIFICATION_BLOCKED','HUMAN_REPAIR_NOT_RECOVERED','HUMAN_VERIFICATION_BLOCKED']);
 
 export function learningAttentionActionType(item){
+  if(String(item?.attentionStatus||'').toUpperCase()==='PENDING_VERIFICATION')return 'AWAITING_VERIFICATION';
   const state=String(item?.effectiveState||'');
   const classification=String(item?.classification||'');
   const reason=String(item?.inspectionReason||'');
@@ -326,12 +348,14 @@ export async function listLearningCycleHistoryV1({env,organizationId,projectId,e
   return {contractVersion:'qagent.continuous-learning-history.v1',items:cycles.map(publicHistoryItem),count:cycles.length};
 }
 
-export async function listLearningAttentionV1({env,organizationId,projectId,environmentId=null,limit=100,classification=null,actionType=null}){
-  // Query the latest known occurrence for each endpoint/scenario identity. If a later
-  // cycle recovered or passed the scenario, the older attention item is naturally hidden.
+export async function listLearningAttentionV1({env,organizationId,projectId,environmentId=null,limit=100,classification=null,actionType=null,status='OPEN'}){
+  // Latest occurrence wins. Attention status is a workflow projection:
+  // OPEN = human action required now; PENDING_VERIFICATION = action taken, awaiting evidence; RESOLVED = verified/healthy.
+  const requestedStatus=String(status||'OPEN').toUpperCase();
   const latest=await listLatestProjectLearningScenarioStates(env,{organizationId,projectId,environmentId,limit:1200});
-  const allItems=latest.filter((item)=>ATTENTION_STATES.has(String(item.effectiveState||''))).map((item)=>({
+  const projected=latest.map((item)=>({
     attentionKey:`${item.endpointId||item.sourceTestDesignVersionId||item.runId}:${item.scenarioId}`,
+    attentionStatus:item.attentionStatus||'PROCESSING',
     learningCycleId:item.learningCycleId,
     suiteRunId:item.suiteRunId,
     environmentId:item.environmentId,
@@ -362,12 +386,16 @@ export async function listLearningAttentionV1({env,organizationId,projectId,envi
     verificationReasonCode:item.verificationReasonCode||null,
     humanRepairId:item.humanRepairId||null,
     actionType:learningAttentionActionType(item),
+    resolution:item.attentionResolutionKind?{kind:item.attentionResolutionKind,refId:item.attentionResolutionRefId||null,testDesignVersionId:item.attentionResolutionTestDesignVersionId||null,testDesignVersion:item.attentionResolutionTestDesignVersion??null,resolvedAt:item.attentionResolutionAt||null,verificationRequired:item.attentionVerificationRequired===true}:null,
     occurrenceCount:item.occurrenceCount||1,
     firstSeenAt:item.firstSeenAt,
     updatedAt:item.updatedAt,
   }));
-  const summary={openCount:allItems.length,reviewProposalCount:0,requestRepairCount:0,applicationRiskCount:0,runtimeBlockedCount:0,verificationReviewCount:0,otherReviewCount:0};
-  for(const item of allItems){
+  const open=projected.filter((item)=>item.attentionStatus==='OPEN');
+  const pending=projected.filter((item)=>item.attentionStatus==='PENDING_VERIFICATION');
+  const resolved=projected.filter((item)=>item.attentionStatus==='RESOLVED');
+  const summary={openCount:open.length,pendingVerificationCount:pending.length,resolvedCount:resolved.length,reviewProposalCount:0,requestRepairCount:0,applicationRiskCount:0,runtimeBlockedCount:0,verificationReviewCount:0,otherReviewCount:0};
+  for(const item of open){
     if(item.actionType==='REVIEW_PROPOSAL')summary.reviewProposalCount+=1;
     else if(item.actionType==='REQUEST_DATA_REPAIR')summary.requestRepairCount+=1;
     else if(item.actionType==='APPLICATION_INVESTIGATION')summary.applicationRiskCount+=1;
@@ -375,9 +403,9 @@ export async function listLearningAttentionV1({env,organizationId,projectId,envi
     else if(item.actionType==='VERIFICATION_REVIEW')summary.verificationReviewCount+=1;
     else summary.otherReviewCount+=1;
   }
-  let items=allItems;
+  let items=requestedStatus==='ALL'?projected:projected.filter((item)=>item.attentionStatus===requestedStatus);
   if(classification)items=items.filter((item)=>item.classification===classification);
   if(actionType)items=items.filter((item)=>item.actionType===actionType);
   const bounded=Math.max(1,Math.min(200,Number(limit)||100));
-  return {contractVersion:'qagent.continuous-learning-attention.v1',summary,items:items.slice(0,bounded),itemsTruncated:items.length>bounded};
+  return {contractVersion:'qagent.continuous-learning-attention.v1',status:requestedStatus,summary,items:items.slice(0,bounded),itemsTruncated:items.length>bounded};
 }

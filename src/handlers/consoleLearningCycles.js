@@ -13,7 +13,8 @@ function clampLimit(value,fallback=80,max=200){const n=Number.parseInt(String(va
 function normalizeOptionalId(value,prefix){const v=String(value??'').trim();if(!v)return null;if(prefix&&!v.startsWith(prefix)){const e=new Error('Filtro inválido.');e.status=400;e.code='LEARNING_CYCLE_FILTER_INVALID';throw e;}return v.slice(0,240);}
 function normalizeEnum(value,allowed){const v=String(value??'').trim().toUpperCase();if(!v)return null;if(!allowed.has(v)){const e=new Error('Filtro inválido.');e.status=400;e.code='LEARNING_CYCLE_FILTER_INVALID';throw e;}return v;}
 const CLASSIFICATIONS=new Set(['EXPECTED_BEHAVIOR_LEARNED','EXPECTATION_DRIFT','TEST_DATA_DRIFT','APPLICATION_BUG_SUSPECTED','RUNTIME_FAILURE','INCONCLUSIVE']);
-const ACTION_TYPES=new Set(['REVIEW_PROPOSAL','REQUEST_DATA_REPAIR','APPLICATION_INVESTIGATION','RUNTIME_REVIEW','VERIFICATION_REVIEW','REVIEW_RESULT']);
+const ACTION_TYPES=new Set(['REVIEW_PROPOSAL','REQUEST_DATA_REPAIR','APPLICATION_INVESTIGATION','RUNTIME_REVIEW','VERIFICATION_REVIEW','REVIEW_RESULT','AWAITING_VERIFICATION']);
+const ATTENTION_STATUSES=new Set(['OPEN','PENDING_VERIFICATION','RESOLVED','ALL']);
 
 async function context(req,env,projectId,deps){const tenant=await (deps.requireTenant||requireConsoleTenant)(req,env);await (deps.getProject||getOrganizationProject)(env,tenant.organizationId,projectId);return tenant;}
 
@@ -51,6 +52,7 @@ export async function listConsoleLearningAttention(req,env,{projectId},deps={}){
     limit:clampLimit(url.searchParams.get('limit'),100,200),
     classification:normalizeEnum(url.searchParams.get('classification'),CLASSIFICATIONS),
     actionType:normalizeEnum(url.searchParams.get('actionType'),ACTION_TYPES),
+    status:normalizeEnum(url.searchParams.get('status'),ATTENTION_STATUSES)||'OPEN',
   });
   return {status:'ok',data};
 }

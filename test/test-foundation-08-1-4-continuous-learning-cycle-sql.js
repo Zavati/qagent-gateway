@@ -28,7 +28,7 @@ const sqlite=new DatabaseSync(':memory:');
 sqlite.exec('PRAGMA foreign_keys=ON;');
 sqlite.exec(`CREATE TABLE suite_runs(suite_run_id TEXT PRIMARY KEY); INSERT INTO suite_runs(suite_run_id) VALUES('srun_sql_12345678');`);
 sqlite.exec(fs.readFileSync(new URL('../migrations/0019_foundation_08_1_4_continuous_learning_cycle.sql',import.meta.url),'utf8'));
-sqlite.exec(fs.readFileSync(new URL('../migrations/0020_foundation_08_1_4_fix_1_durable_learning_workspace.sql',import.meta.url),'utf8'));
+sqlite.exec(fs.readFileSync(new URL('../migrations/0020_foundation_08_1_4_fix_1_durable_learning_workspace.sql',import.meta.url),'utf8'));sqlite.exec(fs.readFileSync(new URL('../migrations/0021_foundation_08_1_4_fix_2_attention_resolution_pending_verification.sql',import.meta.url),'utf8'));
 const env={QAGENT_DB:new D1DatabaseShim(sqlite)};
 const cycle=await ensureLearningCycle(env,{learningCycleId:'lcycle_sql',organizationId:'org_sql',projectId:'prj_sql',suiteRunId:'srun_sql_12345678',suiteVersionId:'suitev_sql',suiteVersion:16,environmentId:'env_sql',now:'2026-09-08T23:00:00.000Z'});
 assert.equal(cycle.status,'COLLECTING');
