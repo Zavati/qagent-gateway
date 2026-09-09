@@ -285,6 +285,19 @@ export function resolveGatewayRoute(method, pathname) {
     if (segs.length === 7 && segs[4] === 'suite-runs' && segs[6] === 'learning-cycle' && normalizedMethod === 'GET') {
       return { name: 'consoleLearningCycleGet', params: { projectId: decodeURIComponent(segs[3]), suiteRunId: decodeURIComponent(segs[5]) } };
     }
+    // 08.1.4 FIX-1 — Durable Learning Workspace
+    // /v1/console/projects/:projectId/continuous-learning/latest
+    if (segs.length === 6 && segs[4] === 'continuous-learning' && segs[5] === 'latest' && normalizedMethod === 'GET') {
+      return { name: 'consoleLatestLearningCycleGet', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/continuous-learning/cycles
+    if (segs.length === 6 && segs[4] === 'continuous-learning' && segs[5] === 'cycles' && normalizedMethod === 'GET') {
+      return { name: 'consoleLearningCyclesList', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
+    // /v1/console/projects/:projectId/continuous-learning/attention
+    if (segs.length === 6 && segs[4] === 'continuous-learning' && segs[5] === 'attention' && normalizedMethod === 'GET') {
+      return { name: 'consoleLearningAttentionList', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
 
     // Foundation 07.7.2 - Run Contract + immutable Execution Plan foundation
     // 07.7.8-D FIX-1 - Manual multi-scenario execution fan-out

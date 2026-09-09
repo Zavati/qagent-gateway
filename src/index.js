@@ -313,7 +313,7 @@ import { postInternalEndpointTestDesignGeneration } from './handlers/internalTes
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleRunBatch } from './handlers/consoleRunBatches.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
-import { getConsoleLearningCycle } from './handlers/consoleLearningCycles.js';
+import { getConsoleLearningCycle, getConsoleLatestLearningCycle, listConsoleLearningCycles, listConsoleLearningAttention } from './handlers/consoleLearningCycles.js';
 import { getConsoleMutationPolicies, putConsoleMutationPolicy } from './handlers/consoleMutationPolicies.js';
 import { handleSuiteRunQueue } from './handlers/suiteRunQueue.js';
 import { handleRunDlqQueue } from './handlers/runDlqQueue.js';
@@ -2110,6 +2110,9 @@ const gatewayRouteHandlers = {
   consoleSuiteRunsCreate: async (req, env, _ctx, params) => json(await postConsoleSuiteRun(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleSuiteRunGet: async (req, env, _ctx, params) => json(await getConsoleSuiteRun(req, env, params), { headers: corsHeaders(req, env) }),
   consoleLearningCycleGet: async (req, env, _ctx, params) => json(await getConsoleLearningCycle(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleLatestLearningCycleGet: async (req, env, _ctx, params) => json(await getConsoleLatestLearningCycle(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleLearningCyclesList: async (req, env, _ctx, params) => json(await listConsoleLearningCycles(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleLearningAttentionList: async (req, env, _ctx, params) => json(await listConsoleLearningAttention(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationTestInventoryGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestInventory(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationAutoSuiteMaterializePost: async (req, env, _ctx, params) => json(await postConsoleMaterializeAutoReadySuite(req, env, params), { headers: corsHeaders(req, env) }),

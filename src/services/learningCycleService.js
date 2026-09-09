@@ -12,6 +12,8 @@ import {
   listLearningCycleEvents,
   listLearningCycleSourceRunIds,
   listLearningScenarios,
+  listProjectLearningCycles,
+  listLatestProjectLearningScenarioStates,
   setLearningCycleStatus,
   updateLearningScenarioHumanOutcomeByRerun,
   updateLearningScenarioHumanRepair,
@@ -84,7 +86,7 @@ export async function recordLearningResultTrigger(env,{trigger,sourceRun}){
   for(const summary of summaries){
     if(!summary?.scenarioId)continue;
     const learningScenarioId=await scenarioId(cycle.learningCycleId,trigger.resultSetId,summary.scenarioId);
-    const item=await upsertLearningScenario(env,{learningScenarioId,learningCycleId:cycle.learningCycleId,organizationId:cycle.organizationId,projectId:cycle.projectId,resultSetId:trigger.resultSetId,runId:sourceRun.runId,scenarioResultId:summary.scenarioResultId||null,scenarioId:summary.scenarioId,endpointId:trigger.endpointId||sourceRun.endpointId||null,testDesignVersionId:trigger.testDesignVersionId||sourceRun.testDesignVersionId||null,testDesignVersion:trigger.testDesignVersion??sourceRun.testDesignVersion??null,outcome:summary.outcome||null,httpOutcome:summary.httpOutcome||null,statusCode:summary.statusCode??null,assertionFailedCount:summary.assertionFailedCount||0});
+    const item=await upsertLearningScenario(env,{learningScenarioId,learningCycleId:cycle.learningCycleId,organizationId:cycle.organizationId,projectId:cycle.projectId,resultSetId:trigger.resultSetId,runId:sourceRun.runId,scenarioResultId:summary.scenarioResultId||null,scenarioId:summary.scenarioId,endpointId:trigger.endpointId||sourceRun.endpointId||null,testDesignVersionId:trigger.testDesignVersionId||sourceRun.testDesignVersionId||null,testDesignVersion:trigger.testDesignVersion??sourceRun.testDesignVersion??null,requestMethod:summary.method||trigger.method||null,requestPath:summary.path||trigger.path||null,outcome:summary.outcome||null,httpOutcome:summary.httpOutcome||null,statusCode:summary.statusCode??null,assertionFailedCount:summary.assertionFailedCount||0});
     await appendLearningCycleEvent(env,{eventId:await eventId(cycle.learningCycleId,`RESULT:${trigger.resultSetId}:${summary.scenarioId}`),learningCycleId:cycle.learningCycleId,learningScenarioId:item.learningScenarioId,organizationId:cycle.organizationId,projectId:cycle.projectId,eventType:'RESULT_RECEIVED',eventKey:`RESULT:${trigger.resultSetId}:${summary.scenarioId}`,metadata:{runId:sourceRun.runId,resultSetId:trigger.resultSetId,scenarioId:summary.scenarioId,outcome:summary.outcome||null,statusCode:summary.statusCode??null}}).catch(()=>{});
   }
   await refreshLearningCycleState(env,{organizationId:cycle.organizationId,projectId:cycle.projectId,suiteRunId:cycle.suiteRunId});
@@ -159,9 +161,11 @@ export function buildLearningReconciliationTrigger({organizationId,projectId,run
     httpOutcome:scenario?.http?.outcome||null,
     statusCode:scenario?.http?.statusCode??null,
     assertionFailedCount:Number(scenario?.assertionFailedCount||0),
+    method:scenario?.http?.method||null,
+    path:scenario?.http?.path||null,
   })).filter((scenario)=>scenario.scenarioId).slice(0,500);
   if(!resultSet?.resultSetId||!summaries.length)return null;
-  return {contractVersion:'qagent.test-evolution-result-trigger.v1',organizationId,projectId,resultSetId:resultSet.resultSetId,runId,endpointId:resultSet.endpointId||null,environmentId:resultSet.environmentId||null,testDesignVersionId:resultSet.testDesignVersionId||null,testDesignVersion:resultSet.testDesignVersion??null,scenarioIds:summaries.map((x)=>x.scenarioId),scenarioSummaries:summaries,createdAt:new Date().toISOString()};
+  return {contractVersion:'qagent.test-evolution-result-trigger.v1',organizationId,projectId,resultSetId:resultSet.resultSetId,runId,endpointId:resultSet.endpointId||null,method:resultSet.method||null,path:resultSet.path||null,environmentId:resultSet.environmentId||null,testDesignVersionId:resultSet.testDesignVersionId||null,testDesignVersion:resultSet.testDesignVersion??null,scenarioIds:summaries.map((x)=>x.scenarioId),scenarioSummaries:summaries,createdAt:new Date().toISOString()};
 }
 
 async function reconcileMissingLearningTriggers(env,{cycle,state,missingResults}){
@@ -276,4 +280,104 @@ export async function getLearningCycleDetailV1({env,organizationId,projectId,sui
   const cycle=await getLearningCycleBySuiteRunId(env,organizationId,projectId,suiteRunId);
   const [items,events]=await Promise.all([listLearningScenarios(env,{organizationId,projectId,learningCycleId:cycle.learningCycleId,limit}),listLearningCycleEvents(env,{organizationId,projectId,learningCycleId:cycle.learningCycleId,limit:30})]);
   return {...summary,items:items.map((x)=>({learningScenarioId:x.learningScenarioId,resultSetId:x.sourceResultSetId,runId:x.sourceRunId,scenarioResultId:x.sourceScenarioResultId,scenarioId:x.scenarioId,endpointId:x.endpointId,sourceTestDesignVersionId:x.sourceTestDesignVersionId,sourceTestDesignVersion:x.sourceTestDesignVersion,sourceOutcome:x.sourceOutcome,httpOutcome:x.httpOutcome,statusCode:x.statusCode,assertionFailedCount:x.assertionFailedCount,inspection:{state:x.inspectionState,eligible:x.inspectionEligible,reason:x.inspectionReason,requestIssueDetected:x.requestIssueDetected},evolution:{proposalId:x.proposalId,classification:x.classification,decision:x.decision,confidence:x.confidence,riskScore:x.riskScore,riskLevel:x.riskLevel,autoAction:x.autoAction,evolvedTestDesignVersionId:x.evolvedTestDesignVersionId,evolvedTestDesignVersion:x.evolvedTestDesignVersion,rerunRunId:x.evolutionRerunRunId},verification:{outcome:x.verificationOutcome,reasonCode:x.verificationReasonCode},humanRepair:x.humanRepairId?{repairId:x.humanRepairId,testDesignVersionId:x.humanRepairTestDesignVersionId,testDesignVersion:x.humanRepairTestDesignVersion,rerunRunId:x.humanRerunRunId}:null,effectiveState:x.effectiveState,updatedAt:x.updatedAt})),itemsTruncated:(summary.learning.scenarioCount||0)>items.length,events};
+}
+
+
+const ATTENTION_STATES=new Set(['REVIEW_REQUIRED','NOT_RECOVERED','VERIFICATION_BLOCKED','HUMAN_REPAIR_NOT_RECOVERED','HUMAN_VERIFICATION_BLOCKED']);
+
+export function learningAttentionActionType(item){
+  const state=String(item?.effectiveState||'');
+  const classification=String(item?.classification||'');
+  const reason=String(item?.inspectionReason||'');
+  if(state==='NOT_RECOVERED'||state==='HUMAN_REPAIR_NOT_RECOVERED'||state==='VERIFICATION_BLOCKED'||state==='HUMAN_VERIFICATION_BLOCKED')return 'VERIFICATION_REVIEW';
+  if(classification==='APPLICATION_BUG_SUSPECTED')return 'APPLICATION_INVESTIGATION';
+  if(classification==='RUNTIME_FAILURE')return 'RUNTIME_REVIEW';
+  if(item?.requestIssueDetected===true||reason.includes('REQUEST_DATA')||reason.includes('REQUEST_REJECTION'))return 'REQUEST_DATA_REPAIR';
+  if(item?.proposalId)return 'REVIEW_PROPOSAL';
+  return 'REVIEW_RESULT';
+}
+
+function publicHistoryItem(cycle){
+  return {
+    learningCycleId:cycle.learningCycleId,
+    suiteRunId:cycle.suiteRunId,
+    suiteVersionId:cycle.suiteVersionId,
+    suiteVersion:cycle.suiteVersion,
+    environmentId:cycle.environmentId,
+    status:cycle.status,
+    settled:isTerminalLearningCycleStatus(cycle.status),
+    startedAt:cycle.startedAt,
+    settledAt:cycle.settledAt||null,
+    completedAt:cycle.completedAt||null,
+    updatedAt:cycle.updatedAt,
+  };
+}
+
+export async function getLatestLearningCycleV1({env,organizationId,projectId,environmentId=null}){
+  const cycles=await listProjectLearningCycles(env,{organizationId,projectId,environmentId,limit:1});
+  const latest=cycles[0]||null;
+  if(!latest)return {contractVersion:'qagent.continuous-learning-latest.v1',exists:false,cycle:null};
+  const cycle=await refreshLearningCycleState(env,{organizationId,projectId,suiteRunId:latest.suiteRunId});
+  return {contractVersion:'qagent.continuous-learning-latest.v1',exists:Boolean(cycle),cycle:cycle||null};
+}
+
+export async function listLearningCycleHistoryV1({env,organizationId,projectId,environmentId=null,limit=12}){
+  const cycles=await listProjectLearningCycles(env,{organizationId,projectId,environmentId,limit});
+  return {contractVersion:'qagent.continuous-learning-history.v1',items:cycles.map(publicHistoryItem),count:cycles.length};
+}
+
+export async function listLearningAttentionV1({env,organizationId,projectId,environmentId=null,limit=100,classification=null,actionType=null}){
+  // Query the latest known occurrence for each endpoint/scenario identity. If a later
+  // cycle recovered or passed the scenario, the older attention item is naturally hidden.
+  const latest=await listLatestProjectLearningScenarioStates(env,{organizationId,projectId,environmentId,limit:1200});
+  const allItems=latest.filter((item)=>ATTENTION_STATES.has(String(item.effectiveState||''))).map((item)=>({
+    attentionKey:`${item.endpointId||item.sourceTestDesignVersionId||item.runId}:${item.scenarioId}`,
+    learningCycleId:item.learningCycleId,
+    suiteRunId:item.suiteRunId,
+    environmentId:item.environmentId,
+    cycleStatus:item.cycleStatus,
+    suiteVersion:item.suiteVersion,
+    resultSetId:item.resultSetId,
+    runId:item.runId,
+    endpointId:item.endpointId||null,
+    method:item.requestMethod||null,
+    path:item.requestPath||null,
+    scenarioId:item.scenarioId,
+    sourceTestDesignVersionId:item.sourceTestDesignVersionId||null,
+    sourceTestDesignVersion:item.sourceTestDesignVersion??null,
+    sourceOutcome:item.sourceOutcome||null,
+    httpOutcome:item.httpOutcome||null,
+    statusCode:item.statusCode??null,
+    assertionFailedCount:item.assertionFailedCount||0,
+    effectiveState:item.effectiveState,
+    classification:item.classification||null,
+    decision:item.decision||null,
+    confidence:item.confidence??null,
+    riskScore:item.riskScore??null,
+    riskLevel:item.riskLevel||null,
+    proposalId:item.proposalId||null,
+    inspectionReason:item.inspectionReason||null,
+    requestIssueDetected:item.requestIssueDetected===true,
+    verificationOutcome:item.verificationOutcome||null,
+    verificationReasonCode:item.verificationReasonCode||null,
+    humanRepairId:item.humanRepairId||null,
+    actionType:learningAttentionActionType(item),
+    occurrenceCount:item.occurrenceCount||1,
+    firstSeenAt:item.firstSeenAt,
+    updatedAt:item.updatedAt,
+  }));
+  const summary={openCount:allItems.length,reviewProposalCount:0,requestRepairCount:0,applicationRiskCount:0,runtimeBlockedCount:0,verificationReviewCount:0,otherReviewCount:0};
+  for(const item of allItems){
+    if(item.actionType==='REVIEW_PROPOSAL')summary.reviewProposalCount+=1;
+    else if(item.actionType==='REQUEST_DATA_REPAIR')summary.requestRepairCount+=1;
+    else if(item.actionType==='APPLICATION_INVESTIGATION')summary.applicationRiskCount+=1;
+    else if(item.actionType==='RUNTIME_REVIEW')summary.runtimeBlockedCount+=1;
+    else if(item.actionType==='VERIFICATION_REVIEW')summary.verificationReviewCount+=1;
+    else summary.otherReviewCount+=1;
+  }
+  let items=allItems;
+  if(classification)items=items.filter((item)=>item.classification===classification);
+  if(actionType)items=items.filter((item)=>item.actionType===actionType);
+  const bounded=Math.max(1,Math.min(200,Number(limit)||100));
+  return {contractVersion:'qagent.continuous-learning-attention.v1',summary,items:items.slice(0,bounded),itemsTruncated:items.length>bounded};
 }
