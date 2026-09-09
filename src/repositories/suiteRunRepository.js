@@ -35,3 +35,17 @@ export async function refreshSuiteRunTerminalState(env,organizationId,projectId,
 export async function refreshSuiteRunByChildRunId(env,runId){const db=requireDataDb(env);const row=await db.prepare(`SELECT organization_id AS organizationId,project_id AS projectId,suite_run_id AS suiteRunId FROM suite_run_children WHERE run_id=? LIMIT 1`).bind(runId).first();if(!row)return null;return refreshSuiteRunTerminalState(env,row.organizationId,row.projectId,row.suiteRunId);}
 
 export async function reconcileSuiteRunChildTerminal(env,runId,errorCode=null){const db=requireDataDb(env),now=new Date().toISOString(),code=errorCode==null?null:String(errorCode).slice(0,120);await db.batch([db.prepare(`UPDATE suite_run_children SET last_error_code=COALESCE(?,last_error_code),updated_at=? WHERE run_id=?`).bind(code,now,runId),db.prepare(`UPDATE suite_run_execution_units SET last_error_code=COALESCE(?,last_error_code),updated_at=? WHERE run_id=?`).bind(code,now,runId)]);return refreshSuiteRunByChildRunId(env,runId);}
+
+// 08.1.4 — Continuous Learning Cycle correlation helpers.
+export async function getSuiteRunContextByChildRunId(env,runId){
+  const db=requireDataDb(env);
+  const row=await db.prepare(`SELECT c.suite_run_id AS suiteRunId,c.organization_id AS organizationId,c.project_id AS projectId,c.endpoint_id AS endpointId,c.test_design_version_id AS testDesignVersionId,c.test_design_version AS testDesignVersion,c.scenario_count AS scenarioCount,c.ordinal,r.status AS runStatus FROM suite_run_children c LEFT JOIN runs r ON r.run_id=c.run_id WHERE c.run_id=? LIMIT 1`).bind(runId).first();
+  if(!row)return null;
+  return {...row,ordinal:Number(row.ordinal),testDesignVersion:Number(row.testDesignVersion),scenarioCount:Number(row.scenarioCount),suiteRun:await getSuiteRun(env,row.organizationId,row.projectId,row.suiteRunId)};
+}
+
+export async function listSuiteRunChildRuns(env,organizationId,projectId,suiteRunId,{limit=500}={}){
+  const db=requireDataDb(env);
+  const rows=(await db.prepare(`SELECT c.suite_run_child_id AS suiteRunChildId,c.ordinal,c.endpoint_id AS endpointId,c.test_design_version_id AS testDesignVersionId,c.test_design_version AS testDesignVersion,c.scenario_count AS scenarioCount,c.run_id AS runId,c.status AS orchestrationStatus,c.last_error_code AS lastErrorCode,r.status AS runStatus FROM suite_run_children c LEFT JOIN runs r ON r.run_id=c.run_id WHERE c.organization_id=? AND c.project_id=? AND c.suite_run_id=? ORDER BY c.ordinal ASC LIMIT ?`).bind(organizationId,projectId,suiteRunId,Math.max(1,Math.min(1000,Number(limit)||500))).all())?.results||[];
+  return rows.map(mapChild);
+}

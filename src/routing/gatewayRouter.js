@@ -281,6 +281,10 @@ export function resolveGatewayRoute(method, pathname) {
     if (segs.length === 6 && segs[4] === 'suite-runs' && normalizedMethod === 'GET') {
       return { name: 'consoleSuiteRunGet', params: { projectId: decodeURIComponent(segs[3]), suiteRunId: decodeURIComponent(segs[5]) } };
     }
+    // 08.1.4 — /v1/console/projects/:projectId/suite-runs/:suiteRunId/learning-cycle
+    if (segs.length === 7 && segs[4] === 'suite-runs' && segs[6] === 'learning-cycle' && normalizedMethod === 'GET') {
+      return { name: 'consoleLearningCycleGet', params: { projectId: decodeURIComponent(segs[3]), suiteRunId: decodeURIComponent(segs[5]) } };
+    }
 
     // Foundation 07.7.2 - Run Contract + immutable Execution Plan foundation
     // 07.7.8-D FIX-1 - Manual multi-scenario execution fan-out

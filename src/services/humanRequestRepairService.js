@@ -9,6 +9,7 @@ import {
   archiveProjectEndpointTestDataBinding,
 } from './testDataBindingService.js';
 import { createEvolutionRerunV1 } from './evolutionRerunService.js';
+import { recordHumanRepairInLearningCycle } from './learningCycleService.js';
 
 const VALUE_TYPES=new Set(['STRING','NUMBER','INTEGER','BOOLEAN']);
 const SENSITIVE=/(?:password|passwd|secret|token|api[_-]?key|authorization|cookie|credential|private[_-]?key|client[_-]?secret)/i;
@@ -96,6 +97,7 @@ export async function createHumanRequestRepairV1({env,organizationId,projectId,u
         rerun={requested:true,reason:'EXPLICIT_HUMAN_RERUN',status:'CREATED',run:created?.run?{runId:created.run.runId,status:created.run.status,testDesignVersionId:derived.testDesign.versionId,scenarioId:normalized.scenarioId}:null,runtimeReuse:created?.evolutionRuntimeReuse||null};
       }catch(error){rerun={requested:true,reason:'EXPLICIT_HUMAN_RERUN',status:'CREATE_FAILED',errorCode:error?.code||'HUMAN_REQUEST_REPAIR_RERUN_FAILED',run:null};}
     }
+    await (deps.recordLearning||recordHumanRepairInLearningCycle)(env,{organizationId,projectId,resultSetId:normalized.resultSetId,scenarioId:normalized.scenarioId,repairId,testDesignVersionId:derived.testDesign.versionId,testDesignVersion:derived.testDesign.version,rerunRunId:rerun?.run?.runId||null}).catch(()=>{});
     return {contractVersion:'qagent.human-request-repair-result.v1',repairId,resultSetId:normalized.resultSetId,scenarioId:normalized.scenarioId,sourceTestDesignVersionId:normalized.sourceTestDesignVersionId,testDesign:{testDesignId:derived.testDesign.id,testDesignVersionId:derived.testDesign.versionId,testDesignVersion:derived.testDesign.version},bindings:updatedBindings.map((b)=>({bindingId:b.bindingId,target:b.target,selector:b.selector,sourceType:b.sourceType,valueType:b.valueType,origin:b.origin})),rerun};
   }catch(error){await rollbackBindings(env,scope,rs.endpointId,actions);throw error;}
 }

@@ -72,8 +72,8 @@ async function fetchResults({ env, organizationId, projectId, path, query = {}, 
   const body = safeJson(await response.text());
   if (!response.ok) {
     const upstreamCode = typeof body?.code === 'string' ? body.code : null;
-    if (response.status === 404 && upstreamCode === 'RESULT_SET_NOT_FOUND') {
-      throw new ResultsReadClientError('Result Set não encontrado.', { code: 'RESULT_SET_NOT_FOUND', status: 404, retryable: false, upstreamStatus: 404, upstreamCode });
+    if (response.status === 404 && (upstreamCode === 'RESULT_SET_NOT_FOUND' || upstreamCode === 'RUN_RESULT_SET_NOT_FOUND')) {
+      throw new ResultsReadClientError('Result Set não encontrado.', { code: upstreamCode || 'RESULT_SET_NOT_FOUND', status: 404, retryable: false, upstreamStatus: 404, upstreamCode });
     }
     throw new ResultsReadClientError('Results Plane rejeitou a leitura.', {
       code: 'RESULTS_READ_UPSTREAM_REJECTED',
@@ -100,4 +100,8 @@ export function getResultsProjectResultSet({ env, organizationId, projectId, res
 
 export function getResultsEndpointLatest({ env, organizationId, projectId, endpointId, environmentId = null, fetchImpl = null }) {
   return fetchResults({ env, organizationId, projectId, path: `/internal/v1/projects/${encodeURIComponent(projectId)}/endpoints/${encodeURIComponent(endpointId)}/latest`, query: { environmentId }, fetchImpl });
+}
+
+export function getResultsLatestRunResultSet({ env, organizationId, projectId, runId, fetchImpl = null }) {
+  return fetchResults({ env, organizationId, projectId, path: `/internal/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/latest-result-set`, fetchImpl });
 }
