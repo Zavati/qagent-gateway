@@ -129,7 +129,9 @@
     "check:08.1.3-c-fix-4": "npm run check:08.1.4-fix-1 && npm run test:f08-1-3-c-fix-4 && npm run test:router",
     "test:f08-1-4-fix-2": "node test/test-foundation-08-1-4-fix-2-attention-resolution.js",
     "test:f08-1-4-fix-2-sql": "node --experimental-sqlite test/test-foundation-08-1-4-fix-2-attention-resolution-sql.js",
-    "check:08.1.4-fix-2": "npm run check:08.1.3-c-fix-4 && npm run test:f08-1-4-fix-2 && npm run test:f08-1-4-fix-2-sql && npm run test:router"
+    "check:08.1.4-fix-2": "npm run check:08.1.3-c-fix-4 && npm run test:f08-1-4-fix-2 && npm run test:f08-1-4-fix-2-sql && npm run test:router",
+    "test:f08-1-4-fix-2-1": "node test/test-foundation-08-1-4-fix-2-1-api-identity-projection.js",
+    "check:08.1.4-fix-2-1": "npm run check:08.1.4-fix-2 && npm run test:f08-1-4-fix-2-1 && npm run test:router"
   },
   "keywords": [],
   "author": "",
