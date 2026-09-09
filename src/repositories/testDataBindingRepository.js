@@ -101,7 +101,8 @@ export async function updateEndpointTestDataBinding(env, input) {
   await db.prepare(`
     UPDATE test_data_bindings
     SET source_type = ?, value_type = ?, generator_kind = ?, generator_config_json = ?,
-        fixed_value_json = ?, secret_id = ?, description = ?, status = ?, updated_at = ?
+        fixed_value_json = ?, secret_id = ?, description = ?, status = ?,
+        origin = ?, created_by_user_id = ?, updated_at = ?
     WHERE organization_id = ? AND project_id = ? AND binding_id = ?
   `).bind(
     input.sourceType,
@@ -112,6 +113,8 @@ export async function updateEndpointTestDataBinding(env, input) {
     input.secretId || null,
     input.description || null,
     input.status,
+    input.origin || 'LEGACY_UNKNOWN',
+    input.createdByUserId || null,
     now,
     input.organizationId,
     input.projectId,

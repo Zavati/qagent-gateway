@@ -237,6 +237,10 @@ export function resolveGatewayRoute(method, pathname) {
       if (normalizedMethod === 'GET') return { name: 'consoleEvolutionPolicyGet', params: { projectId: decodeURIComponent(segs[3]) } };
       if (normalizedMethod === 'PUT') return { name: 'consoleEvolutionPolicyPut', params: { projectId: decodeURIComponent(segs[3]) } };
     }
+    // /v1/console/projects/:projectId/test-evolution/request-repairs
+    if (segs.length === 6 && segs[4] === 'test-evolution' && segs[5] === 'request-repairs' && normalizedMethod === 'POST') {
+      return { name: 'consoleHumanRequestRepairPost', params: { projectId: decodeURIComponent(segs[3]) } };
+    }
     // /v1/console/projects/:projectId/test-evolution/proposals
     if (segs.length === 6 && segs[4] === 'test-evolution' && segs[5] === 'proposals' && normalizedMethod === 'POST') {
       return { name: 'consoleEvolutionProposalPost', params: { projectId: decodeURIComponent(segs[3]) } };

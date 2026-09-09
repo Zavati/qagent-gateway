@@ -15,6 +15,7 @@ import {
 import { assessTestEvolutionWithAi } from '../services/testEvolutionAiService.js';
 import { createEvolutionRerunV1 } from '../services/evolutionRerunService.js';
 import { getRun } from '../repositories/runRepository.js';
+import { createHumanRequestRepairV1 } from '../services/humanRequestRepairService.js';
 
 async function auth(req,env,projectId,deps={}){
   const t=await (deps.requireTenant||requireConsoleTenant)(req,env);
@@ -153,5 +154,14 @@ export async function postConsoleEvolutionVerifyOutcome(req,env,{projectId,propo
   if(!String(run.idempotencyKey||'').startsWith(`test-evolution-rerun:${proposalId}:`)){const e=new Error('Run não pertence ao bounded rerun desta evolução.');e.status=409;e.code='TEST_EVOLUTION_OUTCOME_RUN_NOT_LINKED';throw e;}
   return {status:'ok',data:await (deps.verifyOutcome||verifyEvolutionOutcome)({
     env,organizationId:t.organizationId,projectId,userId:actor(t),proposalId,input:{...input,rerunRunId},
+  })};
+}
+
+
+export async function postConsoleHumanRequestRepair(req,env,{projectId},deps={}){
+  const t=await auth(req,env,projectId,deps);
+  if(!['owner','admin','member'].includes(t.organizationRole)){const e=new Error('Sem permissão para corrigir Test Data nesta organização.');e.status=403;e.code='HUMAN_REQUEST_REPAIR_FORBIDDEN';throw e;}
+  return {status:'ok',data:await (deps.createHumanRequestRepair||createHumanRequestRepairV1)({
+    env,organizationId:t.organizationId,projectId,userId:actor(t),input:await read(req),deps:deps.repairDeps||{},
   })};
 }

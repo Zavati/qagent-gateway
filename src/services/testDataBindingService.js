@@ -240,7 +240,7 @@ export async function createProjectEndpointTestDataBinding(env, { organizationId
   }
 }
 
-export async function patchProjectEndpointTestDataBinding(env, { organizationId, projectId, endpointId, bindingId, userId, input }) {
+export async function patchProjectEndpointTestDataBinding(env, { organizationId, projectId, endpointId, bindingId, userId, input, originOverride = null }) {
   const row = await getEndpointTestDataBinding(env, organizationId, projectId, endpointId, bindingId, { includeArchived: true });
   if (!row) bad('Test Data binding não encontrado.', 'TEST_DATA_BINDING_NOT_FOUND', 404);
   if (row.status === 'archived') bad('Test Data binding arquivado não pode ser alterado.', 'TEST_DATA_BINDING_ARCHIVED', 409);
@@ -288,6 +288,8 @@ export async function patchProjectEndpointTestDataBinding(env, { organizationId,
     fixedValueJson,
     secretId,
     description,
+    origin: originOverride || row.origin || 'LEGACY_UNKNOWN',
+    createdByUserId: row.createdByUserId || userId || null,
     status: 'active',
   }));
 }
