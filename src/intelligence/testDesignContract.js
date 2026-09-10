@@ -1,3 +1,4 @@
+import { validateObservedBaseline, observedBaselineReady, validateObservedBaselineScenario } from '../baselineContract.js';
 import { discoveredRuntimeServiceKey, normalizeObservedOrigin } from './discoveredRuntime.js';
 import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
 
@@ -163,8 +164,9 @@ function assertUniqueStrings(values, path) {
   }
 }
 
-function assertJsonValue(value, path, depth = 0) {
-  if (depth > 12) fail('JSON excede profundidade máxima.', path, 'TEST_DESIGN_JSON_TOO_DEEP');
+function assertJsonValue(value, path, depth = 0, maxDepth = 12, budget = {nodes: 0}) {
+  if (++budget.nodes > 4096) fail('JSON excede limite de nós.', path, 'TEST_DESIGN_JSON_TOO_LARGE');
+  if (depth > maxDepth) fail('JSON excede profundidade máxima.', path, 'TEST_DESIGN_JSON_TOO_DEEP');
   if (value == null || typeof value === 'string' || typeof value === 'boolean') return;
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) fail('Número JSON inválido.', path);
@@ -172,7 +174,7 @@ function assertJsonValue(value, path, depth = 0) {
   }
   if (Array.isArray(value)) {
     if (value.length > 100) fail('Array JSON excede 100 itens.', path);
-    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`, depth + 1));
+    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`, depth + 1, maxDepth, budget));
     return;
   }
   if (isPlainObject(value)) {
@@ -180,7 +182,7 @@ function assertJsonValue(value, path, depth = 0) {
     if (keys.length > 100) fail('Objeto JSON excede 100 propriedades.', path);
     for (const key of keys) {
       if (key.length > 160) fail('Nome de propriedade excede limite.', `${path}.${key}`);
-      assertJsonValue(value[key], `${path}.${key}`, depth + 1);
+      assertJsonValue(value[key], `${path}.${key}`, depth + 1, maxDepth, budget);
     }
     return;
   }
@@ -649,7 +651,7 @@ export function validateCatalogTestDesignContextV1(context) {
     if ('schema' in schema) {
       assertJsonValue(
         schema.schema,
-        `${path}.schema`,
+        `${path}.schema`, 0, 32,
       );
     }
 
@@ -1460,7 +1462,16 @@ export function validateTestDesignModelOutputV1(output, context) {
     assertEnum(scenario.category, TEST_SCENARIO_CATEGORIES, `${path}.category`);
     assertEnum(scenario.priority, TEST_PRIORITIES, `${path}.priority`);
     const confidence = assertEnum(scenario.confidence, TEST_CONFIDENCE_LEVELS, `${path}.confidence`);
-    validateGrounding(scenario.grounding, `${path}.grounding`, refs);
+    if(scenario.generationClass!=null && !['OBSERVED_BASELINE','AI_EXPLORATORY'].includes(scenario.generationClass))fail('Origem de geração inválida.',`${path}.generationClass`);
+    let scenarioRefs=refs;
+    if(scenario.generationClass==='OBSERVED_BASELINE'){
+      validateObservedBaselineScenario(scenario,{organizationId:context.organizationId,projectId:context.projectId,endpointId:context.endpoint.endpointId});
+      if(scenario.baseline.source.method!==context.endpoint.method||scenario.baseline.source.path!==context.endpoint.normalizedPath)fail('Baseline target divergente.',path);
+      scenarioRefs={...refs,evidenceRefs:new Set([...refs.evidenceRefs,scenario.baseline.source.evidenceId]),schemaRefs:new Set([...refs.schemaRefs,...(scenario.baseline.responseSchemaVersionId?[scenario.baseline.responseSchemaVersionId]:[])])};
+      if(scenario.automation?.readiness==='READY'&&!observedBaselineReady(scenario.baseline))fail('Baseline incompleta não pode estar pronta.',path,'OBSERVED_BASELINE_NOT_READY');
+      if(scenario.spec?.testData||Object.values(scenario.spec?.request||{}).some(v=>v!=null&&(typeof v!=='object'||Object.keys(v).length)))fail('Massa da baseline é resolvida somente pela fonte segura.',path,'OBSERVED_BASELINE_INLINE_DATA_FORBIDDEN');
+    }else if(scenario.baseline!=null)fail('Proveniência não pertence a cenário exploratório.',path);
+    validateGrounding(scenario.grounding, `${path}.grounding`, scenarioRefs);
     if (scenario.grounding.level === 'ASSUMED' && confidence === 'HIGH') {
       fail('Cenário ASSUMED não pode declarar confidence HIGH.', `${path}.confidence`, 'TEST_DESIGN_CONFIDENCE_INCONSISTENT');
     }
@@ -1519,7 +1530,7 @@ function computeAutomationReadiness(scenario, context) {
   };
 }
 
-function buildSummary(scenarios) {
+export function buildSummary(scenarios) {
   const byCategory = {};
   const byReadiness = {};
   const byGrounding = {};
@@ -1668,7 +1679,7 @@ export function validateTestSpecificationV1(specification, context) {
 
   assertPlainObject(specification.generation, 'specification.generation');
   assertKnownKeys(specification.generation, new Set(['mode', 'provider', 'model', 'generatedAt', 'contextFingerprint']), 'specification.generation');
-  if (specification.generation.mode !== 'AI') fail('Generation mode inválido.', 'specification.generation.mode');
+  if (!['AI','OBSERVED_WITH_AI','OBSERVED_ONLY','OBSERVED_REBASELINE'].includes(specification.generation.mode)) fail('Generation mode inválido.', 'specification.generation.mode');
   assertString(specification.generation.provider, 'specification.generation.provider', { max: 80 });
   assertString(specification.generation.model, 'specification.generation.model', { max: 160 });
   assertString(specification.generation.generatedAt, 'specification.generation.generatedAt', { max: 64 });
@@ -1684,7 +1695,7 @@ export function validateTestSpecificationV1(specification, context) {
     assertPlainObject(scenario, path);
     assertKnownKeys(scenario, new Set([
       'scenarioId', 'title', 'objective', 'category', 'priority', 'confidence', 'grounding',
-      'automation', 'preconditions', 'spec',
+      'automation', 'preconditions', 'spec', 'generationClass', 'baseline',
     ]), path);
     assertString(scenario.scenarioId, `${path}.scenarioId`, { max: 80 });
     assertString(scenario.title, `${path}.title`, { max: 260 });
@@ -1693,7 +1704,16 @@ export function validateTestSpecificationV1(specification, context) {
     assertEnum(scenario.category, TEST_SCENARIO_CATEGORIES, `${path}.category`);
     assertEnum(scenario.priority, TEST_PRIORITIES, `${path}.priority`);
     assertEnum(scenario.confidence, TEST_CONFIDENCE_LEVELS, `${path}.confidence`);
-    validateGrounding(scenario.grounding, `${path}.grounding`, refs);
+    if(scenario.generationClass!=null && !['OBSERVED_BASELINE','AI_EXPLORATORY'].includes(scenario.generationClass))fail('Origem de geração inválida.',`${path}.generationClass`);
+    let scenarioRefs=refs;
+    if(scenario.generationClass==='OBSERVED_BASELINE'){
+      validateObservedBaselineScenario(scenario,{organizationId:context.organizationId,projectId:context.projectId,endpointId:context.endpoint.endpointId});
+      if(scenario.baseline.source.method!==context.endpoint.method||scenario.baseline.source.path!==context.endpoint.normalizedPath)fail('Baseline target divergente.',path);
+      scenarioRefs={...refs,evidenceRefs:new Set([...refs.evidenceRefs,scenario.baseline.source.evidenceId]),schemaRefs:new Set([...refs.schemaRefs,...(scenario.baseline.responseSchemaVersionId?[scenario.baseline.responseSchemaVersionId]:[])])};
+      if(scenario.automation?.readiness==='READY'&&!observedBaselineReady(scenario.baseline))fail('Baseline incompleta não pode estar pronta.',path,'OBSERVED_BASELINE_NOT_READY');
+      if(scenario.spec?.testData||Object.values(scenario.spec?.request||{}).some(v=>v!=null&&(typeof v!=='object'||Object.keys(v).length)))fail('Massa da baseline é resolvida somente pela fonte segura.',path,'OBSERVED_BASELINE_INLINE_DATA_FORBIDDEN');
+    }else if(scenario.baseline!=null)fail('Proveniência não pertence a cenário exploratório.',path);
+    validateGrounding(scenario.grounding, `${path}.grounding`, scenarioRefs);
     assertPlainObject(scenario.automation, `${path}.automation`);
     assertEnum(scenario.automation.readiness, AUTOMATION_READINESS_LEVELS, `${path}.automation.readiness`);
     if (scenario.automation.evolutionState != null) assertEnum(scenario.automation.evolutionState, ['STABLE', 'LEARNING', 'BLOCKED'], `${path}.automation.evolutionState`);
@@ -1731,7 +1751,7 @@ export function validateTestSpecificationV1(specification, context) {
     if (scenario.spec.testData != null) validateTestDataBindingsV1(scenario.spec.testData, `${path}.spec.testData`);
     const assertions = assertArray(scenario.spec.assertions, `${path}.spec.assertions`, { max: 30 });
     if (!assertions.length) fail('Specification scenario precisa de ao menos uma assertion.', `${path}.spec.assertions`);
-    assertions.forEach((assertion, assertionIndex) => validateAssertion(assertion, `${path}.spec.assertions[${assertionIndex}]`, refs.schemaRefs));
+    assertions.forEach((assertion, assertionIndex) => validateAssertion(assertion, `${path}.spec.assertions[${assertionIndex}]`, scenarioRefs.schemaRefs));
     const extract = assertArray(scenario.spec.extract ?? [], `${path}.spec.extract`, { max: 20 });
     extract.forEach((item, extractIndex) => validateExtract(item, `${path}.spec.extract[${extractIndex}]`));
   }

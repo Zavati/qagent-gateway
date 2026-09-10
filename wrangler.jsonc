@@ -60,6 +60,8 @@
 		]
 	},
 	"vars": {
+        "OBSERVED_BASELINE_GENERATION_ENABLED": "false",
+        "OBSERVED_BASELINE_PROJECT_IDS": "",
 		// Environment
 		"ENVIRONMENT": "development",
 		// AI Engine (provider default)

@@ -1,3 +1,4 @@
+import { materializeObservedBaselineRequests, verifyObservedBaselineSchemas } from './observedBaselineRuntime.js';
 import { getCatalogEndpointForTestDesign, getCatalogEvidenceForTestDesign, getCatalogSchemasForTestDesign } from '../intelligence/catalogKnowledgeClient.js';
 import { deriveDiscoveredRuntimeCandidate, isDiscoveredRuntimeServiceKey } from '../intelligence/discoveredRuntime.js';
 import { resolveEnvironmentRuntimeConfig } from './environmentRuntimeConfigService.js';
@@ -180,7 +181,7 @@ function validateArtifactScope(artifact, { organizationId, projectId }) {
   }
 }
 
-function selectScenarios(specification, requestedScenarioIds) {
+function selectScenarios(specification, requestedScenarioIds, environmentId) {
   const scenarios = Array.isArray(specification?.scenarios) ? specification.scenarios : [];
   const byId = new Map(scenarios.map((scenario) => [scenario?.scenarioId, scenario]));
 
@@ -194,7 +195,8 @@ function selectScenarios(specification, requestedScenarioIds) {
       return scenario;
     });
   } else {
-    selected = scenarios.filter((scenario) => scenario?.automation?.readiness === EXECUTABLE_READINESS);
+    selected = scenarios.filter((scenario) => scenario?.automation?.readiness === EXECUTABLE_READINESS
+      && (scenario.generationClass !== 'OBSERVED_BASELINE' || scenario.baseline?.source?.environmentId === environmentId));
   }
 
   if (!selected.length) {
@@ -461,10 +463,9 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
 
 function schemaVersionForTrack(track) {
   const versions = Array.isArray(track?.versions) ? track.versions : [];
-  return versions.find((version) => version?.schemaVersionId === track?.currentSchemaVersionId)
-    || versions.find((version) => version?.schemaHash === track?.currentSchemaHash)
-    || versions[0]
-    || null;
+  if(track?.currentSchemaVersionId)return versions.find(v=>v.schemaVersionId===track.currentSchemaVersionId)||null;
+  if(track?.currentSchemaHash)return versions.find(v=>v.schemaHash===track.currentSchemaHash)||null;
+  return versions[0]||null;
 }
 
 function schemaCandidate(track, version, requestedRef, refType) {
@@ -504,11 +505,11 @@ export function materializeSchemaSnapshotsV1(catalogSchemas, requestedRefs) {
         const candidate = schemaCandidate(track, current, ref, 'TRACK');
         if (candidate) candidates.push(candidate);
       }
-      if (track?.currentSchemaVersionId === ref && current) {
+      if (track?.currentSchemaVersionId === ref && current?.schemaVersionId === ref) {
         const candidate = schemaCandidate(track, current, ref, 'VERSION');
         if (candidate) candidates.push(candidate);
       }
-      if (track?.currentSchemaHash === ref && current) {
+      if (track?.currentSchemaHash === ref && current?.schemaHash === ref) {
         const candidate = schemaCandidate(track, current, ref, 'HASH');
         if (candidate) candidates.push(candidate);
       }
@@ -582,9 +583,11 @@ export async function materializeExecutionPlanV1({
   loadEvidence = getCatalogEvidenceForTestDesign,
   resolveTestDataBindings = resolveEndpointTestDataBindingsForRun,
   resolveObservedTestData = resolveObservedTestDataForRun,
+  loadBaselineSource = undefined,
+  baselineNow = Date.now(),
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
-  const selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds);
+  const selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId);
 
   const runtimeConfig = await resolveRuntime(env, organizationId, projectId, environmentId);
   if (runtimeConfig?.environment?.environmentId !== environmentId) {
@@ -628,9 +631,12 @@ export async function materializeExecutionPlanV1({
   const requiresConfiguredTestData = selectedScenarios.some((scenario) =>
     (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'FIXED' || binding?.source === 'SECRET')
   );
-  const configuredTestDataBindings = requiresConfiguredTestData
+  const hasObservedBaselines = selectedScenarios.some(s=>s.generationClass==='OBSERVED_BASELINE');
+  const configuredTestDataBindings = (requiresConfiguredTestData || hasObservedBaselines)
     ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId)
     : [];
+  const baselineRequests = hasObservedBaselines ? await materializeObservedBaselineRequests({env,organizationId,projectId,endpointId:artifact.endpointId,environmentId,scenarios:selectedScenarios,
+    configuredBindings:configuredTestDataBindings,loadSource:loadBaselineSource,now:baselineNow}) : new Map();
   const configuredByKey = new Map(configuredTestDataBindings.map((item) => [`${item.target}:${item.selector}`, item]));
   const frozenFixed = {};
   const frozenSecrets = {};
@@ -748,9 +754,12 @@ export async function materializeExecutionPlanV1({
       projectId,
       endpointId: artifact.endpointId,
       versionsPerTrack: 50,
+      schemaRefs, // 08.1.6: request exact versions even when outside the history window.
     });
     schemaSnapshots = materializeSchemaSnapshotsV1(catalogSchemas, schemaRefs);
   }
+
+  await verifyObservedBaselineSchemas(selectedScenarios,schemaSnapshots);
 
   const runtimeSnapshotBase = {
     contractVersion: RUNTIME_SNAPSHOT_CONTRACT_VERSION,
@@ -788,6 +797,7 @@ export async function materializeExecutionPlanV1({
 
   const scenarioPlans = selectedScenarios.map((scenario) => {
     const spec = clone(scenario.spec);
+    if(baselineRequests.has(scenario.scenarioId))spec.request=clone(baselineRequests.get(scenario.scenarioId));
 
     /*
      * OBSERVED is a Test Design policy.
@@ -904,6 +914,8 @@ export async function materializeExecutionPlanV1({
       priority: scenario.priority,
       confidence: scenario.confidence,
       groundingLevel: scenario?.grounding?.level || null,
+      ...(scenario.generationClass?{generationClass:scenario.generationClass}:{}),
+      ...(scenario.baseline?{baseline:clone(scenario.baseline)}:{}),
       readiness: scenario.automation.readiness,
       spec,
     };
@@ -911,6 +923,7 @@ export async function materializeExecutionPlanV1({
 
   const executionPlanBase = {
     contractVersion: EXECUTION_PLAN_CONTRACT_VERSION,
+    baselineSelection: { environmentId, excludedOtherEnvironmentScenarioIds: (artifact.specification.scenarios || []).filter(s => s.generationClass === 'OBSERVED_BASELINE' && s.baseline?.source?.environmentId !== environmentId && !selectedScenarios.includes(s)).map(s=>s.scenarioId) },
     executionPlanId,
     runId,
     organizationId,

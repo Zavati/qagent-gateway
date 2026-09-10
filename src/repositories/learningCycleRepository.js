@@ -115,3 +115,48 @@ export async function listLatestProjectLearningScenarioStates(env,{organizationI
   const rows=(await db.prepare(sql).bind(...params).all())?.results||[];
   return rows.map((row)=>({...row,sourceTestDesignVersion:row.sourceTestDesignVersion==null?null:n(row.sourceTestDesignVersion),statusCode:row.statusCode==null?null:n(row.statusCode),assertionFailedCount:n(row.assertionFailedCount),inspectionEligible:row.inspectionEligible==null?null:bool(row.inspectionEligible),requestIssueDetected:bool(row.requestIssueDetected),confidence:row.confidence==null?null:n(row.confidence),riskScore:row.riskScore==null?null:n(row.riskScore),evolvedTestDesignVersion:row.evolvedTestDesignVersion==null?null:n(row.evolvedTestDesignVersion),humanRepairTestDesignVersion:row.humanRepairTestDesignVersion==null?null:n(row.humanRepairTestDesignVersion),attentionVerificationRequired:bool(row.attentionVerificationRequired),attentionResolutionTestDesignVersion:row.attentionResolutionTestDesignVersion==null?null:n(row.attentionResolutionTestDesignVersion),suiteVersion:n(row.suiteVersion),occurrenceCount:n(row.occurrenceCount)}));
 }
+
+/**
+ * Operational projection after an explicit source/policy revision has been persisted in Registry.
+ * No result/history mutation or synthetic human-repair attribution. Scoped, version-guarded,
+ * atomic with its audit event and safe to retry after cross-service persistence succeeded.
+ */
+export async function markObservedBaselineRevisionPending(env, {
+  organizationId, projectId, environmentId, endpointId, scenarioId,
+  testDesignVersionId, testDesignVersion, baselineId, approvedByUserId, approvedAt,
+}) {
+  const db = requireDataDb(env);
+  const row = await db.prepare(`SELECT s.learning_scenario_id AS scenarioKey,
+    s.learning_cycle_id AS cycleKey, s.source_test_design_version AS sourceVersion,
+    s.attention_resolution_test_design_version AS resolutionVersion
+    FROM continuous_learning_scenarios s
+    JOIN continuous_learning_cycles c ON c.learning_cycle_id=s.learning_cycle_id
+    WHERE s.organization_id=? AND s.project_id=? AND c.environment_id=?
+      AND s.endpoint_id=? AND s.scenario_id=?
+    ORDER BY c.started_at DESC,s.updated_at DESC,s.learning_scenario_id DESC LIMIT 1`)
+    .bind(organizationId,projectId,environmentId,endpointId,scenarioId).first();
+  if (!row) return 'NOT_FOUND';
+  if (Number(row.sourceVersion)>=testDesignVersion || Number(row.resolutionVersion)>testDesignVersion) return 'NEWER_EVIDENCE';
+  const guard = `learning_scenario_id=? AND organization_id=? AND project_id=?
+    AND COALESCE(source_test_design_version,0)<?
+    AND COALESCE(attention_resolution_test_design_version,0)<=?`;
+  const params = [row.scenarioKey,organizationId,projectId,testDesignVersion,testDesignVersion];
+  const eventKey = `OBSERVED_BASELINE_REVISION:${testDesignVersionId}:${scenarioId}`;
+  const metadata = JSON.stringify({baselineId,testDesignVersionId,testDesignVersion,approvedByUserId,attentionStatus:'PENDING_VERIFICATION'});
+  // SELECT guard is evaluated before UPDATE in this transaction; retries share the same audit key.
+  const result = await db.batch([
+    db.prepare(`INSERT INTO continuous_learning_events
+      (event_id,learning_cycle_id,learning_scenario_id,organization_id,project_id,event_type,event_key,metadata_json,created_at)
+      SELECT ?,learning_cycle_id,learning_scenario_id,organization_id,project_id,'OBSERVED_BASELINE_REVISED',?,?,?
+      FROM continuous_learning_scenarios WHERE ${guard}
+      ON CONFLICT(learning_cycle_id,event_key) DO NOTHING`)
+      .bind(`lce_${crypto.randomUUID()}`,eventKey,metadata,approvedAt,...params),
+    db.prepare(`UPDATE continuous_learning_scenarios SET attention_status='PENDING_VERIFICATION',
+      effective_state='PENDING_VERIFICATION', attention_resolution_kind='OBSERVED_REBASELINE',
+      attention_resolution_ref_id=?,attention_resolution_test_design_version_id=?,
+      attention_resolution_test_design_version=?,attention_resolution_at=?,attention_verification_required=1,
+      updated_at=? WHERE ${guard}`)
+      .bind(baselineId,testDesignVersionId,testDesignVersion,approvedAt,approvedAt,...params),
+  ]);
+  return Number(result[1]?.meta?.changes)>0 ? 'UPDATED' : 'NEWER_EVIDENCE';
+}

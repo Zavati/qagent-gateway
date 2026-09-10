@@ -1,3 +1,8 @@
+import { reviseObservedBaseline } from './observedBaselineRevision.js';
+import { buildObservedBaselineScenario } from './observedBaselineGeneration.js';
+import { listCatalogObservedBaselines } from './catalogKnowledgeClient.js';
+import { getLatestTestDesign } from '../services/testRegistryClient.js';
+import { buildSummary } from './testDesignContract.js';
 import { aiEngine as defaultAiEngine } from '../ai/aiEngine.js';
 import { getEnvNum, getTestDesignModel } from '../lib/config.js';
 import { resolveAiRuntimeConfig } from '../services/aiRuntimeConfigService.js';
@@ -129,7 +134,7 @@ function mergeSecretSafeDiagnostics(target, current) {
   return target;
 }
 
-export async function generateCatalogTestDesignV1({
+export async function generateExploratoryTestDesignV1({
   env,
   organizationId,
   projectId,
@@ -462,4 +467,60 @@ export async function generateCatalogTestDesignV1({
       context: contextDiagnostics,
     },
   };
+}
+
+/** System-owned baselines are composed outside the model/repair/sanitizer/planner pipeline. */
+export async function generateCatalogTestDesignV1(input={}){
+  const enabled=['1','true'].includes(String(input.env?.OBSERVED_BASELINE_GENERATION_ENABLED||'false').toLowerCase());
+  if(!enabled){if(input.baselineOptions?.replace)throw Object.assign(new Error('Revisão de baseline não habilitada.'),{code:'OBSERVED_BASELINE_FEATURE_DISABLED',status:409});return generateExploratoryTestDesignV1(input);}
+  const allowedProjects=String(input.env?.OBSERVED_BASELINE_PROJECT_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+  if(allowedProjects.length&&!allowedProjects.includes(input.projectId)){if(input.baselineOptions?.replace)throw Object.assign(new Error('Revisão de baseline não habilitada neste projeto.'),{code:'OBSERVED_BASELINE_FEATURE_DISABLED',status:409});return generateExploratoryTestDesignV1(input);}
+  const {env,organizationId,projectId,endpointId}=input;
+  const now=input.now?input.now():new Date();
+  const contextResult=await (input.contextBuilder||buildCatalogTestDesignContextV1)({env,organizationId,projectId,endpointId});
+  const context=contextResult.context;
+  const options=input.baselineOptions||{};
+  if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(k=>!['mode','confirmControlledContext','replace'].includes(k))||(options.confirmControlledContext!==undefined&&typeof options.confirmControlledContext!=='boolean'))throw Object.assign(new Error('Opções de baseline inválidas.'),{code:'OBSERVED_BASELINE_POLICY_INVALID',status:400});
+  if(options.mode && !['STRUCTURE','CONTROLLED_STATE'].includes(options.mode))throw Object.assign(new Error('Política de baseline inválida.'),{code:'OBSERVED_BASELINE_POLICY_INVALID',status:400});
+  if(options.mode==='CONTROLLED_STATE' && (!input.baselineActorId||options.confirmControlledContext!==true))throw Object.assign(new Error('Confirme explicitamente o contexto controlado.'),{code:'OBSERVED_BASELINE_CONTEXT_CONFIRMATION_REQUIRED',status:400});
+  const [sources,previous]=await Promise.all([
+    (input.loadBaselines||listCatalogObservedBaselines)({env,organizationId,projectId,endpointId}),
+    (input.loadPrevious||getLatestTestDesign)({env,organizationId,projectId,endpointId}),
+  ]);
+  if(options.replace) return reviseObservedBaseline({previous,sources,context,contextFingerprint:contextResult.contextFingerprint,options,actor:input.baselineActorId,now});
+  const carried=(previous?.testDesign?.specification?.scenarios||[]).filter(s=>s.generationClass==='OBSERVED_BASELINE');
+  const byId=new Map(); const existingFamilies=new Set();
+  for(const prior of carried){
+    // Keep the protected source/policy; only recompute readiness against current runtime/expiry.
+    const updated=buildObservedBaselineScenario(prior.baseline,context,{now});
+    updated.scenarioId=prior.scenarioId; // Preserve identity after an explicitly approved source replacement.
+    byId.set(updated.baseline.baselineId,updated);if (Date.parse(prior.baseline.expiresAt) > now.getTime()) existingFamilies.add(prior.baseline.familyKey);
+  }
+  let omitted=0;
+  for(const source of sources?.items||[]){
+    if(byId.has(source.baselineId)||existingFamilies.has(source.familyKey))continue;
+    if(byId.size>=12){omitted++;continue;}
+    const scenario=buildObservedBaselineScenario(source,context,{mode:options.mode||'STRUCTURE',actor:input.baselineActorId,now});
+    byId.set(source.baselineId,scenario);existingFamilies.add(source.familyKey);
+  }
+  if(byId.size>20)throw Object.assign(new Error('As baselines protegidas excedem o limite do pack; não serão descartadas.'),{code:'OBSERVED_BASELINE_PACK_LIMIT',status:409});
+  let generated=null,explorationError=null;
+  try{generated=await generateExploratoryTestDesignV1({...input,contextBuilder:async()=>contextResult});}
+  catch(error){if(!byId.size)throw error;explorationError=String(error.code||'AI_EXPLORATION_UNAVAILABLE').replace(/[^A-Z0-9_]/g,'').slice(0,100);}
+  const specification=generated?structuredClone(generated.specification):{
+    contractVersion:'qagent.test-design.v1',specificationVersion:'qagent.test-spec.v1',source:{type:'CATALOG_ENDPOINT',organizationId,projectId,endpointId},
+    title:`Regressões observadas · ${context.endpoint.method} ${context.endpoint.normalizedPath}`.slice(0,260),objective:'Preservar comportamentos monitorados com origem verificável.',assumptions:[],summary:{},scenarios:[],
+    generation:{mode:'OBSERVED_ONLY',provider:'SYSTEM',model:'observed-baseline-v1',generatedAt:now.toISOString(),contextFingerprint:contextResult.contextFingerprint},
+  };
+  const explored=specification.scenarios.map(s=>({...s,generationClass:'AI_EXPLORATORY'}));
+  const reserved=new Set([...byId.values()].map(s=>s.scenarioId));
+  specification.scenarios=[...byId.values(),...explored.filter(s=>!reserved.has(s.scenarioId)).slice(0,20-byId.size)];
+  specification.summary=buildSummary(specification.scenarios);
+  specification.generation.mode=generated?'OBSERVED_WITH_AI':'OBSERVED_ONLY';
+  if(!byId.size)specification.assumptions=[...specification.assumptions,'Nenhuma fonte de baseline elegível disponível: este pack contém somente exploração da IA. Remonitore após habilitar a captura 08.1.6.'].slice(0,20);
+  validateTestSpecificationV1(specification,context);
+  return {...(generated||{}),specification,contextFingerprint:contextResult.contextFingerprint,
+    diagnostics:{...(generated?.diagnostics||{}),observedBaselines:{contractVersion:'qagent.observed-baseline-generation.v1',count:byId.size,
+      preservedCount:carried.length,readyCount:[...byId.values()].filter(s=>s.automation.readiness==='READY').length,
+      sourceCount:(sources?.items||[]).length,omittedSourceCount:omitted,sourceBudgetOmissions:sources?.budgetOmittedCount||0,sourceListTruncated:sources?.itemsTruncated===true,explorationError,sourceDataSentToAi:false}}};
 }

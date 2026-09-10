@@ -104,7 +104,13 @@ function buildKnowledge(context) {
       track?.currentSchemaHash,
       ...(track?.versions || []).flatMap((version) => [version?.versionId, version?.schemaHash]),
     ]);
-    for (const ref of refs) schemaByRef.set(ref, track);
+    for (const ref of refs) {
+      const historical = (track?.versions || []).find(v => (v.versionId === ref || v.schemaHash === ref)
+        && v.versionId !== track.currentVersionId && v.schemaHash !== track.currentSchemaHash);
+      // Historical reference metadata is not evidence of its structure. Never use today's schema for yesterday's ref.
+      schemaByRef.set(ref, historical ? {...track, schema: undefined, currentVersionId: historical.versionId,
+        currentSchemaHash: historical.schemaHash} : track);
+    }
     if (track?.direction === 'RESPONSE') responseTracks.push(track);
     if (track?.direction === 'REQUEST') requestTracks.push(track);
   }

@@ -83,6 +83,7 @@ export async function createHumanRequestRepairV1({env,organizationId,projectId,u
   const artifact=await getArtifact({env,organizationId,projectId,testDesignVersionId:normalized.sourceTestDesignVersionId});
   if(artifact.endpointId!==rs.endpointId)fail('Artifact e Result Set divergem no endpoint.','HUMAN_REQUEST_REPAIR_SOURCE_MISMATCH',409);
   const scenario=findScenarioArtifact(artifact,normalized.scenarioId);if(!scenario)fail('Cenário não existe no Test Design source.','HUMAN_REQUEST_REPAIR_SCENARIO_NOT_FOUND',409);
+  if(scenario.generationClass==='OBSERVED_BASELINE')fail('Uma regressão observada exige revisão da origem; não aceita correção ad hoc que altere a baseline.','OBSERVED_BASELINE_REBASELINE_REQUIRED',409);
   const bindings=scenario?.spec?.testData?.bindings||[];
   const bodyEvidence=new Map((resultScenario?.evidence?.request?.bodyFields||[]).map((f)=>[f.path,f]));
   const registryChanges=[];let nextBindingIndex=bindings.length;

@@ -320,6 +320,7 @@ export async function resolveEndpointTestDataBindingsForRun(env, organizationId,
     try { fixedValue = row.fixedValueJson == null ? null : JSON.parse(row.fixedValueJson); } catch {}
     return {
       bindingId: row.bindingId,
+      origin: row.origin || 'LEGACY_UNKNOWN',
       scopeType: row.scopeType,
       target: row.target,
       selector: row.selector,

@@ -522,7 +522,7 @@ function buildAuthRuntime(controlPlane, runtimeMapping, authObservation) {
 }
 
 function isContextSafeJson(value, depth = 0) {
-  if (depth > 10) return false;
+  if (depth > 32) return false;
   if (value == null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) {
@@ -537,18 +537,17 @@ function isContextSafeJson(value, depth = 0) {
 
 function mapSchemaTrack(track, versionLimit) {
   const versions = Array.isArray(track?.versions) ? track.versions : [];
-  const currentVersion = versions.find((version) => version?.schemaVersionId === track?.currentSchemaVersionId)
-    || versions.find((version) => version?.schemaHash === track?.currentSchemaHash)
-    || versions[0]
-    || null;
+  const currentVersion = (track?.currentSchemaVersionId
+    ? versions.find(version => version?.schemaVersionId === track.currentSchemaVersionId)
+    : track?.currentSchemaHash ? versions.find(version => version?.schemaHash === track.currentSchemaHash) : versions[0]) || null;
   const contentTypes = uniqueStrings((currentVersion?.contentTypes || []).map((item) => item?.contentType));
   const structuralSchema = currentVersion && isContextSafeJson(currentVersion.schema) ? currentVersion.schema : undefined;
   const mapped = {
     trackId: nullableString(track?.schemaTrackId),
     direction: track?.direction,
     statusCode: nullableInteger(track?.statusCode),
-    currentVersionId: nullableString(track?.currentSchemaVersionId),
-    currentSchemaHash: nullableString(track?.currentSchemaHash),
+    currentVersionId: nullableString(currentVersion?.schemaVersionId),
+    currentSchemaHash: nullableString(currentVersion?.schemaHash),
     contentTypes,
     versions: versions.slice(0, versionLimit).map((version) => ({
       versionId: nullableString(version?.schemaVersionId),

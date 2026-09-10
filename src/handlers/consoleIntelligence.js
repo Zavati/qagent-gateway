@@ -1,3 +1,4 @@
+import { listCatalogObservedBaselines } from '../intelligence/catalogKnowledgeClient.js';
 import { getEnvNum } from '../lib/config.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
@@ -41,6 +42,12 @@ export async function getConsoleTestDesign(
     endpointId,
   });
 
+  const allowedProjects=String(env?.OBSERVED_BASELINE_PROJECT_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+  if(['1','true'].includes(String(env?.OBSERVED_BASELINE_GENERATION_ENABLED||'false').toLowerCase())&&(!allowedProjects.length||allowedProjects.includes(projectId))){
+    try{const sources=await listCatalogObservedBaselines({env,organizationId:tenant.organizationId,projectId,endpointId});
+      result.observedBaselineSources=sources.items;result.observedBaselineSourcesTruncated=sources.itemsTruncated===true;
+    }catch{result.observedBaselineSources=[];result.observedBaselineSourcesUnavailable=true;}
+  }
   return {
     status: 'ok',
     data: result,
@@ -59,12 +66,21 @@ export async function postConsoleTestDesign(req, env, { projectId, endpointId },
     });
   }
 
+  let body={};
+  const requestText=await req.text();
+  if(requestText.trim()){
+    if(requestText.length>4096)throw Object.assign(new Error('Payload de geração excedeu o limite.'),{status:413,code:'TEST_DESIGN_OPTIONS_TOO_LARGE'});
+    try{body=JSON.parse(requestText);}catch{throw Object.assign(new Error('JSON inválido.'),{status:400,code:'TEST_DESIGN_OPTIONS_INVALID'});}
+    if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>k!=='baselineOptions'))throw Object.assign(new Error('Opções de geração inválidas.'),{status:400,code:'TEST_DESIGN_OPTIONS_INVALID'});
+  }
   const result = await generateAndPersistCatalogTestDesignV1({
     env,
     organizationId: tenant.organizationId,
     projectId,
     endpointId,
     accountId: tenant.accountId || null,
+    baselineActorId: tenant.user?.userId || tenant.accountId || null,
+    baselineOptions: body.baselineOptions || null,
   });
 
   return {

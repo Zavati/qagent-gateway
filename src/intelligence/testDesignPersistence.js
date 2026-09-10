@@ -1,3 +1,4 @@
+import { markObservedBaselineRevisionPending } from '../repositories/learningCycleRepository.js';
 import { appendTestDesignVersion } from '../services/testRegistryClient.js';
 import { generateCatalogTestDesignV1 } from './testDesignService.js';
 
@@ -37,6 +38,7 @@ export async function persistGeneratedTestDesignV1({
   generationResult,
   generationRequestId = createGenerationRequestId(),
   registryAppend = appendTestDesignVersion,
+  projectRevisionAttention = markObservedBaselineRevisionPending,
 } = {}) {
   const log = logger(env);
 
@@ -65,6 +67,24 @@ export async function persistGeneratedTestDesignV1({
       idempotentReplay: persisted.idempotentReplay === true,
     });
 
+    let diagnostics=generationResult.diagnostics;
+    const revision=diagnostics?.observedBaselineRevision;
+    if(revision){
+      const scenario=generationResult.specification.scenarios.find(s=>s.scenarioId===revision.scenarioId);
+      let attentionProjection='DEFERRED';
+      try{
+        attentionProjection=await projectRevisionAttention(env,{
+          organizationId,projectId,endpointId,environmentId:scenario.baseline.source.environmentId,
+          scenarioId:scenario.scenarioId,baselineId:scenario.baseline.baselineId,
+          testDesignVersionId:registryTestDesign.versionId,testDesignVersion:registryTestDesign.version,
+          approvedByUserId:scenario.baseline.revision.approvedByUserId,approvedAt:scenario.baseline.revision.approvedAt,
+        });
+      }catch(error){
+        // Registry already committed. Do not pretend that version failed to save or retry generation.
+        log('observed_baseline_attention_deferred',{organizationId,projectId,endpointId,testDesignVersionId:registryTestDesign.versionId,code:error?.code||'ATTENTION_PROJECTION_UNAVAILABLE'});
+      }
+      diagnostics={...diagnostics,observedBaselineRevision:{...revision,attentionProjection}};
+    }
     return {
       testDesign: {
         id: registryTestDesign.id,
@@ -74,7 +94,7 @@ export async function persistGeneratedTestDesignV1({
       },
       specification: generationResult.specification,
       contextFingerprint: generationResult.contextFingerprint,
-      diagnostics: generationResult.diagnostics,
+      diagnostics,
     };
   } catch (error) {
     log('testDesign_persistence_failed', {
@@ -88,6 +108,9 @@ export async function persistGeneratedTestDesignV1({
       upstreamCode: error?.upstreamCode ?? error?.code ?? null,
       retryable: error?.retryable ?? null,
     });
+    if (String(error?.upstreamCode||error?.code||'').startsWith('OBSERVED_BASELINE_')) {
+      throw Object.assign(new Error('A baseline ou a versão mudou; atualize o Test Design e revise novamente.'), {status:409,code:error.upstreamCode||error.code,retryable:false});
+    }
     throw wrapPersistenceFailure(error);
   }
 }
@@ -99,6 +122,8 @@ export async function generateAndPersistCatalogTestDesignV1({
   endpointId,
   accountId = null,
   generationRequestId = null,
+  baselineOptions = null,
+  baselineActorId = null,
   generateDesign = generateCatalogTestDesignV1,
   registryAppend = appendTestDesignVersion,
   generationRequestIdFactory = createGenerationRequestId,
@@ -109,6 +134,8 @@ export async function generateAndPersistCatalogTestDesignV1({
     projectId,
     endpointId,
     accountId,
+    baselineOptions,
+    baselineActorId,
   });
 
   return persistGeneratedTestDesignV1({

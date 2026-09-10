@@ -1,0 +1,719 @@
+{
+  "source": {
+    "arrayStates": [
+      {
+        "path": "$.data",
+        "state": "NON_EMPTY"
+      },
+      {
+        "path": "$.rels",
+        "state": "EMPTY"
+      }
+    ],
+    "baselineId": "obl_4de81d1b629c48c03a8368cd05b2c5fafbc4544e",
+    "contractVersion": "qagent.observed-baseline-source.v1",
+    "expiresAt": "2026-10-10T03:13:09.817Z",
+    "familyKey": "bfm_8d7ff36cdab1321f8f6ed01262e1b463b5b182be",
+    "fingerprintScope": "CANONICAL_CAPTURED_REQUEST_DATA",
+    "generationClass": "OBSERVED_BASELINE",
+    "inferenceVersion": "qagent.structural-inference.v2",
+    "requestBodyEncoding": "NONE",
+    "requestCoverage": {
+      "headers": "AUTH_RUNTIME_AND_CONFIG",
+      "reasons": [],
+      "status": "COMPLETE"
+    },
+    "requestFingerprint": "brq_c382a4dc110d8b44588001bcbaeb4af063bd693ad2a548ed708d962df18f07ae",
+    "responseCoverage": {
+      "reasons": [],
+      "status": "COMPLETE"
+    },
+    "responseSchemaHash": "sch_8d09def3977f79943503ceb69ecf7178e8682589",
+    "responseSchemaVersionId": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9",
+    "selfCheck": "PASSED",
+    "source": {
+      "authObserved": false,
+      "authScheme": null,
+      "batchId": "batch_evt_public_fixture",
+      "contentType": "application/json",
+      "endpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531",
+      "environmentId": "env_audit",
+      "eventId": "cat_evt_75dc798a8401e802f21fca99969a1898be80d66b",
+      "evidenceId": "cev_dceaa671a11730202be232409b1f5887cdccbf60",
+      "method": "GET",
+      "normalizedEventId": "evt_public_fixture",
+      "observationSessionId": "obs_evt_public_fixture",
+      "observedAt": "2026-09-10T03:13:09.817Z",
+      "organizationId": "org_audit",
+      "origin": "https://audit.example",
+      "path": "/api/items",
+      "projectId": "prj_audit",
+      "statusCode": 200
+    },
+    "availability": "AVAILABLE",
+    "request": {
+      "headers": {},
+      "pathParams": {},
+      "query": {
+        "limit": "50"
+      }
+    }
+  },
+  "context": {
+    "contractVersion": "qagent.test-design.v1",
+    "organizationId": "org_audit",
+    "projectId": "prj_audit",
+    "endpoint": {
+      "endpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531",
+      "serviceId": "svc_gateway",
+      "serviceName": "apigtw.example.com",
+      "classification": "FIRST_PARTY_API",
+      "classificationConfidence": 94,
+      "method": "GET",
+      "normalizedPath": "/api/items",
+      "discoveryConfidenceScore": 79,
+      "discoveryConfidenceLevel": "HIGH",
+      "lifecycleState": "DISCOVERED",
+      "observationCount": 31,
+      "sessionCount": 2,
+      "environmentCount": 1,
+      "successRatePct": 100,
+      "latencyAvgMs": 534.26,
+      "firstSeenAt": "2026-08-16T17:48:43.913Z",
+      "lastSeenAt": "2026-08-17T00:15:01.187Z"
+    },
+    "schemas": [
+      {
+        "trackId": "cst_audit",
+        "direction": "RESPONSE",
+        "statusCode": 200,
+        "currentVersionId": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9",
+        "currentSchemaHash": "sch_8d09def3977f79943503ceb69ecf7178e8682589",
+        "contentTypes": [
+          "application/json"
+        ],
+        "schema": {
+          "properties": {
+            "data": {
+              "items": {
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "deletedAt": {
+                    "type": "null"
+                  },
+                  "id": {
+                    "type": "integer"
+                  },
+                  "price": {
+                    "type": "number"
+                  }
+                },
+                "type": "object",
+                "x-qagent-observed-required": [
+                  "active",
+                  "code",
+                  "deletedAt",
+                  "id",
+                  "price"
+                ]
+              },
+              "type": "array"
+            },
+            "meta": {
+              "properties": {
+                "total": {
+                  "type": "integer"
+                }
+              },
+              "type": "object",
+              "x-qagent-observed-required": [
+                "total"
+              ]
+            },
+            "rels": {
+              "type": "array"
+            }
+          },
+          "type": "object",
+          "x-qagent-inference-version": "qagent.structural-inference.v2",
+          "x-qagent-observed-required": [
+            "data",
+            "meta",
+            "rels"
+          ]
+        },
+        "versions": [
+          {
+            "versionId": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9",
+            "schemaHash": "sch_8d09def3977f79943503ceb69ecf7178e8682589",
+            "observationCount": 1,
+            "introducedAt": "2026-09-10T03:13:09.817Z"
+          }
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "evidenceId": "cev_dceaa671a11730202be232409b1f5887cdccbf60",
+        "observedAt": "2026-09-10T03:13:09.817Z",
+        "environmentId": "env_audit",
+        "outcome": "HTTP_2XX",
+        "statusCode": 200,
+        "latencyMs": 12,
+        "sourceHost": "audit.example",
+        "sessionId": "obs_evt_public_fixture",
+        "requestSchemaVersionId": null,
+        "responseSchemaVersionId": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9"
+      }
+    ],
+    "environments": [
+      {
+        "environmentId": "env_audit",
+        "name": "Audit STG",
+        "observationCount": 1,
+        "successRatePct": 100,
+        "lastSeenAt": "2026-09-10T03:13:09.817Z"
+      }
+    ],
+    "runtime": {
+      "apiServiceKey": "audit-api",
+      "defaultAuthProfileRef": null,
+      "availableAuthProfileRefs": []
+    }
+  },
+  "schema": {
+    "properties": {
+      "data": {
+        "items": {
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "code": {
+              "type": "string"
+            },
+            "deletedAt": {
+              "type": "null"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "price": {
+              "type": "number"
+            }
+          },
+          "type": "object",
+          "x-qagent-observed-required": [
+            "active",
+            "code",
+            "deletedAt",
+            "id",
+            "price"
+          ]
+        },
+        "type": "array"
+      },
+      "meta": {
+        "properties": {
+          "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object",
+        "x-qagent-observed-required": [
+          "total"
+        ]
+      },
+      "rels": {
+        "type": "array"
+      }
+    },
+    "type": "object",
+    "x-qagent-inference-version": "qagent.structural-inference.v2",
+    "x-qagent-observed-required": [
+      "data",
+      "meta",
+      "rels"
+    ]
+  },
+  "specification": {
+    "contractVersion": "qagent.test-design.v1",
+    "specificationVersion": "qagent.test-spec.v1",
+    "source": {
+      "type": "CATALOG_ENDPOINT",
+      "organizationId": "org_audit",
+      "projectId": "prj_audit",
+      "endpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531"
+    },
+    "title": "Exploração de validação",
+    "objective": "Verificar rejeição de entrada inválida sem alterar baseline.",
+    "assumptions": [],
+    "summary": {
+      "scenarioCount": 2,
+      "readyCount": 1,
+      "byCategory": {
+        "HAPPY_PATH": 1,
+        "NEGATIVE": 1
+      },
+      "byReadiness": {
+        "READY": 1,
+        "REVIEW_REQUIRED": 1
+      },
+      "byGrounding": {
+        "OBSERVED": 1,
+        "ASSUMED": 1
+      }
+    },
+    "scenarios": [
+      {
+        "scenarioId": "baseline_4de81d1b629c48c03a8368cd05b2c5fafbc4544e",
+        "title": "Regressão observada · 200 · objetos observados",
+        "objective": "Proteger as regras selecionadas da observação de origem, sem mover a expectativa com o Catalog corrente.",
+        "category": "HAPPY_PATH",
+        "priority": "HIGH",
+        "confidence": "HIGH",
+        "generationClass": "OBSERVED_BASELINE",
+        "baseline": {
+          "contractVersion": "qagent.observed-baseline-source.v1",
+          "baselineId": "obl_4de81d1b629c48c03a8368cd05b2c5fafbc4544e",
+          "generationClass": "OBSERVED_BASELINE",
+          "source": {
+            "authObserved": false,
+            "authScheme": null,
+            "batchId": "batch_evt_public_fixture",
+            "contentType": "application/json",
+            "endpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531",
+            "environmentId": "env_audit",
+            "eventId": "cat_evt_75dc798a8401e802f21fca99969a1898be80d66b",
+            "evidenceId": "cev_dceaa671a11730202be232409b1f5887cdccbf60",
+            "method": "GET",
+            "normalizedEventId": "evt_public_fixture",
+            "observationSessionId": "obs_evt_public_fixture",
+            "observedAt": "2026-09-10T03:13:09.817Z",
+            "organizationId": "org_audit",
+            "origin": "https://audit.example",
+            "path": "/api/items",
+            "projectId": "prj_audit",
+            "statusCode": 200
+          },
+          "responseSchemaVersionId": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9",
+          "responseSchemaHash": "sch_8d09def3977f79943503ceb69ecf7178e8682589",
+          "requestFingerprint": "brq_c382a4dc110d8b44588001bcbaeb4af063bd693ad2a548ed708d962df18f07ae",
+          "fingerprintScope": "CANONICAL_CAPTURED_REQUEST_DATA",
+          "requestBodyEncoding": "NONE",
+          "requestCoverage": {
+            "headers": "AUTH_RUNTIME_AND_CONFIG",
+            "reasons": [],
+            "status": "COMPLETE"
+          },
+          "responseCoverage": {
+            "reasons": [],
+            "status": "COMPLETE"
+          },
+          "inferenceVersion": "qagent.structural-inference.v2",
+          "arrayStates": [
+            {
+              "path": "$.data",
+              "state": "NON_EMPTY"
+            },
+            {
+              "path": "$.rels",
+              "state": "EMPTY"
+            }
+          ],
+          "selfCheck": "PASSED",
+          "expiresAt": "2026-10-10T03:13:09.817Z",
+          "familyKey": "bfm_8d7ff36cdab1321f8f6ed01262e1b463b5b182be",
+          "comparisonPolicy": {
+            "contractVersion": "qagent.observed-comparison.v1",
+            "mode": "STRUCTURE",
+            "protectObservedPresence": true,
+            "arrayStates": [
+              {
+                "path": "$.data",
+                "state": "NON_EMPTY"
+              },
+              {
+                "path": "$.rels",
+                "state": "EMPTY"
+              }
+            ],
+            "confirmedContext": null
+          }
+        },
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "Baseline construída deterministicamente a partir de uma transação monitorada; sua origem não é escolhida pela IA."
+          ],
+          "evidenceRefs": [
+            "cev_dceaa671a11730202be232409b1f5887cdccbf60"
+          ],
+          "schemaRefs": [
+            "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9"
+          ]
+        },
+        "automation": {
+          "readiness": "READY",
+          "blockers": [],
+          "evolutionState": "STABLE"
+        },
+        "preconditions": [
+          "Ambiente de origem: env_audit.",
+          "Dados da fonte disponíveis até 2026-10-10T03:13:09.817Z.",
+          "Somente estrutura: diferenças vazio/preenchido são informadas, não são declaradas defeito sem contexto controlado.",
+          "Headers de negócio não capturados devem ser mantidos na configuração do serviço; autenticação pertence ao Auth Runtime."
+        ],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531",
+            "apiServiceKey": "audit-api",
+            "method": "GET",
+            "path": "/api/items"
+          },
+          "auth": {
+            "requirement": "NONE",
+            "authProfileRef": null
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {}
+          },
+          "assertions": [
+            {
+              "type": "STATUS",
+              "expectedStatusCodes": [
+                200
+              ]
+            },
+            {
+              "type": "CONTENT_TYPE",
+              "expected": [
+                "application/json"
+              ]
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9"
+            }
+          ],
+          "extract": []
+        }
+      },
+      {
+        "scenarioId": "ai_negative",
+        "title": "Rejeitar limite negativo",
+        "objective": "Verificar rejeição do parâmetro limit inválido.",
+        "category": "NEGATIVE",
+        "priority": "MEDIUM",
+        "confidence": "LOW",
+        "grounding": {
+          "level": "ASSUMED",
+          "rationale": [
+            "Variação negativa exploratória.",
+            "QAgent Guard: Query params (limit) não são modelados pelo Catalog Context; sua existência precisa ser revisada."
+          ],
+          "evidenceRefs": [],
+          "schemaRefs": []
+        },
+        "automation": {
+          "readiness": "REVIEW_REQUIRED",
+          "blockers": [
+            "O status HTTP 422 não foi observado nas evidências selecionadas para este endpoint. O cenário será executado em modo LEARNING para capturar comportamento real antes de promover novas expectativas.",
+            "O status HTTP 422 não foi observado nas evidências selecionadas para este endpoint.",
+            "Query params (limit) não são modelados pelo Catalog Context; sua existência precisa ser revisada."
+          ],
+          "evolutionState": "BLOCKED"
+        },
+        "preconditions": [],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531",
+            "apiServiceKey": "audit-api",
+            "method": "GET",
+            "path": "/api/items"
+          },
+          "auth": {
+            "requirement": "NONE",
+            "authProfileRef": null
+          },
+          "request": {
+            "pathParams": {},
+            "query": {
+              "limit": -1
+            },
+            "headers": {}
+          },
+          "assertions": [
+            {
+              "type": "STATUS",
+              "expectedStatusCodes": [
+                422
+              ]
+            }
+          ],
+          "extract": []
+        },
+        "generationClass": "AI_EXPLORATORY"
+      }
+    ],
+    "generation": {
+      "mode": "OBSERVED_WITH_AI",
+      "provider": "gemini",
+      "model": "fixture",
+      "generatedAt": "2026-09-10T03:14:09.916Z",
+      "contextFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "envelope": {
+    "contractVersion": "qagent.execution-result-ingest.v1.3",
+    "organizationId": "org_audit",
+    "projectId": "prj_audit",
+    "runId": "run_public_fixture_0001",
+    "attemptId": "runatt_attempt_audit_0001",
+    "attemptNumber": 1,
+    "executionPlanId": "xplan_public_fixture_0001",
+    "runtimeSnapshotId": "rts_public_fixture_0001",
+    "runtimePlanHash": "b14c74e5a2cab206ed1702931b32817d457de120709ecab80d8da5b7b6c9d756",
+    "testDesign": {
+      "testDesignId": "td_189ee617e63143d0ee50822693214aa0d840f84a8ae1dbd8c55acfaa114a6b83",
+      "testDesignVersionId": "tdv_bbde9950-626d-4e64-ba97-a1f04c3d309c",
+      "version": 1,
+      "endpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531"
+    },
+    "environmentId": "env_audit",
+    "startedAt": "2026-09-10T03:14:09.933Z",
+    "completedAt": "2026-09-10T03:14:09.937Z",
+    "scenarios": [
+      {
+        "scenarioId": "baseline_4de81d1b629c48c03a8368cd05b2c5fafbc4544e",
+        "generationClass": "OBSERVED_BASELINE",
+        "baseline": {
+          "contractVersion": "qagent.observed-baseline-source.v1",
+          "baselineId": "obl_4de81d1b629c48c03a8368cd05b2c5fafbc4544e",
+          "generationClass": "OBSERVED_BASELINE",
+          "source": {
+            "authObserved": false,
+            "authScheme": null,
+            "batchId": "batch_evt_public_fixture",
+            "contentType": "application/json",
+            "endpointId": "cep_1dad21d5f33712609451a1c4b81d222ea181f531",
+            "environmentId": "env_audit",
+            "eventId": "cat_evt_75dc798a8401e802f21fca99969a1898be80d66b",
+            "evidenceId": "cev_dceaa671a11730202be232409b1f5887cdccbf60",
+            "method": "GET",
+            "normalizedEventId": "evt_public_fixture",
+            "observationSessionId": "obs_evt_public_fixture",
+            "observedAt": "2026-09-10T03:13:09.817Z",
+            "organizationId": "org_audit",
+            "origin": "https://audit.example",
+            "path": "/api/items",
+            "projectId": "prj_audit",
+            "statusCode": 200
+          },
+          "responseSchemaVersionId": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9",
+          "responseSchemaHash": "sch_8d09def3977f79943503ceb69ecf7178e8682589",
+          "requestFingerprint": "brq_c382a4dc110d8b44588001bcbaeb4af063bd693ad2a548ed708d962df18f07ae",
+          "fingerprintScope": "CANONICAL_CAPTURED_REQUEST_DATA",
+          "requestBodyEncoding": "NONE",
+          "requestCoverage": {
+            "headers": "AUTH_RUNTIME_AND_CONFIG",
+            "reasons": [],
+            "status": "COMPLETE"
+          },
+          "responseCoverage": {
+            "reasons": [],
+            "status": "COMPLETE"
+          },
+          "inferenceVersion": "qagent.structural-inference.v2",
+          "arrayStates": [
+            {
+              "path": "$.data",
+              "state": "NON_EMPTY"
+            },
+            {
+              "path": "$.rels",
+              "state": "EMPTY"
+            }
+          ],
+          "selfCheck": "PASSED",
+          "expiresAt": "2026-10-10T03:13:09.817Z",
+          "familyKey": "bfm_8d7ff36cdab1321f8f6ed01262e1b463b5b182be",
+          "comparisonPolicy": {
+            "contractVersion": "qagent.observed-comparison.v1",
+            "mode": "STRUCTURE",
+            "protectObservedPresence": true,
+            "arrayStates": [
+              {
+                "path": "$.data",
+                "state": "NON_EMPTY"
+              },
+              {
+                "path": "$.rels",
+                "state": "EMPTY"
+              }
+            ],
+            "confirmedContext": null
+          }
+        },
+        "baselineComparison": {
+          "contractVersion": "qagent.observed-array-comparison.v1",
+          "scope": "ARRAY_STATES",
+          "mode": "STRUCTURE",
+          "status": "UNCHANGED_PROFILE",
+          "complete": true,
+          "differences": []
+        },
+        "outcome": "PASSED",
+        "http": {
+          "outcome": "RESPONSE",
+          "method": "GET",
+          "origin": "https://audit.example",
+          "path": "/api/items",
+          "queryKeys": [
+            "limit"
+          ],
+          "headerNames": [],
+          "bodyBytes": 0,
+          "durationMs": 4,
+          "redirectCount": 0,
+          "statusCode": 200,
+          "contentType": "application/json",
+          "responseHeaderNames": [
+            "content-type"
+          ],
+          "capturedBytes": 105,
+          "truncated": false,
+          "errorCode": null,
+          "networkErrorCategory": null,
+          "errorName": null,
+          "causeCode": null
+        },
+        "assertions": [
+          {
+            "assertionIndex": 0,
+            "type": "STATUS",
+            "outcome": "PASSED",
+            "errorCode": null,
+            "path": null,
+            "headerName": null,
+            "schemaRef": null,
+            "actualStatusCode": 200,
+            "expectedStatusCodes": [
+              200
+            ],
+            "actualContentType": null,
+            "expectedContentTypes": null,
+            "matchCount": null,
+            "primaryIssueCode": null,
+            "expectedType": null,
+            "actualTypes": null
+          },
+          {
+            "assertionIndex": 1,
+            "type": "CONTENT_TYPE",
+            "outcome": "PASSED",
+            "errorCode": null,
+            "path": null,
+            "headerName": null,
+            "schemaRef": null,
+            "actualStatusCode": null,
+            "expectedStatusCodes": null,
+            "actualContentType": "application/json",
+            "expectedContentTypes": [
+              "application/json"
+            ],
+            "matchCount": null,
+            "primaryIssueCode": null,
+            "expectedType": null,
+            "actualTypes": null
+          },
+          {
+            "assertionIndex": 2,
+            "type": "SCHEMA",
+            "outcome": "PASSED",
+            "errorCode": null,
+            "path": null,
+            "headerName": null,
+            "schemaRef": "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9",
+            "actualStatusCode": null,
+            "expectedStatusCodes": null,
+            "actualContentType": null,
+            "expectedContentTypes": null,
+            "matchCount": null,
+            "primaryIssueCode": null,
+            "expectedType": null,
+            "actualTypes": null
+          }
+        ],
+        "evidence": {
+          "contractVersion": "qagent.sanitized-execution-evidence.v1",
+          "expected": {
+            "statusCodes": [
+              200
+            ],
+            "contentTypes": [
+              "application/json"
+            ],
+            "schemaRefs": [
+              "csv_2f251e1ceb92ff741802f0e69720e29c03e85ed9"
+            ],
+            "testDataBindings": [],
+            "requestBodyDeclared": false
+          },
+          "request": {
+            "method": "GET",
+            "path": "/api/items",
+            "pathParams": [],
+            "contentType": null,
+            "bodyEncoding": "NONE",
+            "serialization": "NONE",
+            "bodyBytes": 0,
+            "query": [
+              {
+                "name": "limit",
+                "source": "DESIGN",
+                "values": [
+                  "50"
+                ],
+                "redacted": false
+              }
+            ],
+            "headers": [],
+            "bodyFields": [],
+            "bodyFieldCount": 0,
+            "signals": []
+          },
+          "response": {
+            "previewFormat": "JSON",
+            "bodyPreview": "{\n  \"data\": [\n    {\n      \"active\": true,\n      \"code\": \"0012\",\n      \"deletedAt\": null,\n      \"id\": 7,\n      \"price\": 2.5\n    }\n  ],\n  \"meta\": {\n    \"total\": 1\n  },\n  \"rels\": []\n}",
+            "suppressionReason": null,
+            "previewTruncated": false,
+            "redacted": false,
+            "typesPreserved": true
+          },
+          "diagnosis": {
+            "classification": "NONE",
+            "faultDomain": "NONE",
+            "primaryCode": null,
+            "probableCause": null,
+            "remediationCode": null,
+            "remediation": null,
+            "confidence": "HIGH",
+            "signals": []
+          }
+        }
+      }
+    ]
+  }
+}

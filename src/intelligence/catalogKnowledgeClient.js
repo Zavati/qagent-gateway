@@ -38,7 +38,7 @@ function parseBody(bodyText) {
   }
 }
 
-async function queryCatalogData({
+export async function queryCatalogData({
   env,
   organizationId,
   projectId,
@@ -125,6 +125,7 @@ export function getCatalogSchemasForTestDesign(
     query: {
       versionsPerTrack:
         input.versionsPerTrack,
+      schemaRefs: Array.isArray(input.schemaRefs) ? input.schemaRefs.join(',') : undefined,
     },
   });
 }
@@ -239,4 +240,10 @@ export async function getCatalogObservedRequestSamplesForTestDesign(
   return Array.isArray(data)
     ? data
     : [];
+}
+export function listCatalogObservedBaselines(input) {
+  return queryCatalogData({...input,upstreamPath:`/v1/catalog/endpoints/${encodeURIComponent(input.endpointId)}/observed-baselines`,query:{environmentId:input.environmentId}});
+}
+export function getCatalogObservedBaseline(input) {
+  return queryCatalogData({...input,upstreamPath:`/v1/catalog/endpoints/${encodeURIComponent(input.endpointId)}/observed-baselines/${encodeURIComponent(input.baselineId)}`});
 }
