@@ -681,3 +681,6 @@ export async function getSuiteExecutionSlice({
   }
   return data;
 }
+
+// 08.1.6 FIX-1: dedicated, bounded read contracts; existing inventory consumers unchanged.
+export { getProjectTestReadiness, getEndpointTestReadinessScenarios } from './testReadinessClient.js';

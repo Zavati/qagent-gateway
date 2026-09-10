@@ -37,6 +37,13 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  // 08.1.6 FIX-1 — read-only readiness; no collision with Catalog discovery or test generation.
+  const readinessMatch = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/intelligence\/test-readiness(?:\/endpoints\/([^/]+)\/scenarios)?$/);
+  if (normalizedMethod === 'GET' && readinessMatch) {
+    return { name: readinessMatch[2] ? 'consoleEndpointTestReadinessScenariosGet' : 'consoleProjectTestReadinessGet',
+      params: { projectId: decodeURIComponent(readinessMatch[1]), ...(readinessMatch[2] ? { endpointId: decodeURIComponent(readinessMatch[2]) } : {}) } };
+  }
+
   // Foundation 07.7.3 - internal Runner Control API (HMAC protected)
   if (normalizedPath.startsWith('/internal/v1/runner/runs/')) {
     const segs = normalizedPath.split('/').filter(Boolean);

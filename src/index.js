@@ -1,3 +1,4 @@
+import { getConsoleProjectTestReadiness, getConsoleEndpointTestReadinessScenarios } from './handlers/consoleTestReadiness.js';
 // QAgent Gateway (Cloudflare Worker)
 // Endpoints:
 //  - POST /v1/generate-tests
@@ -2114,6 +2115,8 @@ const gatewayRouteHandlers = {
   consoleLearningCyclesList: async (req, env, _ctx, params) => json(await listConsoleLearningCycles(req, env, params), { headers: corsHeaders(req, env) }),
   consoleLearningAttentionList: async (req, env, _ctx, params) => json(await listConsoleLearningAttention(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleProjectTestReadinessGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestReadiness(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
+  consoleEndpointTestReadinessScenariosGet: async (req, env, _ctx, params) => json(await getConsoleEndpointTestReadinessScenarios(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleAutomationTestInventoryGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestInventory(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationAutoSuiteMaterializePost: async (req, env, _ctx, params) => json(await postConsoleMaterializeAutoReadySuite(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationAutoSuiteLatestGet: async (req, env, _ctx, params) => json(await getConsoleLatestAutoReadySuite(req, env, params), { headers: corsHeaders(req, env) }),
