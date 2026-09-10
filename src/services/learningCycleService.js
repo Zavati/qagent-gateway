@@ -24,6 +24,7 @@ import {
   upsertLearningScenario,
 } from '../repositories/learningCycleRepository.js';
 import { getResultsLatestRunResultSet } from './resultsReadClient.js';
+import { getExecutionPlanForRun, getExecutionPlansForRuns } from '../repositories/runRepository.js';
 
 const CONTRACT='qagent.continuous-learning-cycle.v1';
 const TERMINAL_CYCLE=new Set(['WAITING_REVIEW','COMPLETED']);
@@ -60,6 +61,65 @@ function stateForHumanOutcome(summary){
   return {state:'HUMAN_VERIFICATION_BLOCKED',outcome:'VERIFICATION_BLOCKED',reasonCode:httpOutcome==='TIMEOUT'?'HUMAN_REPAIR_RERUN_TIMEOUT':httpOutcome==='NETWORK_ERROR'?'HUMAN_REPAIR_RERUN_NETWORK_ERROR':'HUMAN_REPAIR_RERUN_NOT_VERIFIABLE'};
 }
 
+function normalizeAttentionMethod(value){
+  const method=String(value||'').trim().toUpperCase();
+  return /^[A-Z]{2,16}$/.test(method)?method:null;
+}
+
+function normalizeAttentionPath(value){
+  if(typeof value!=='string')return null;
+  const path=value.trim();
+  return path&&path.length<=2048?path:null;
+}
+
+export function resolveExecutionPlanScenarioIdentity(executionPlan,scenarioIdValue){
+  const wanted=String(scenarioIdValue||'').trim();
+  if(!wanted)return {method:null,path:null};
+  const scenarios=Array.isArray(executionPlan?.plan?.scenarios)?executionPlan.plan.scenarios:[];
+  const scenario=scenarios.find((item)=>String(item?.scenarioId||'').trim()===wanted);
+  const target=scenario?.spec?.target||null;
+  return {method:normalizeAttentionMethod(target?.method),path:normalizeAttentionPath(target?.path)};
+}
+
+export function resolveLearningRequestIdentity({summary,trigger,executionPlan,scenarioId:scenarioIdValue}){
+  const planIdentity=resolveExecutionPlanScenarioIdentity(executionPlan,scenarioIdValue);
+  return {
+    method:normalizeAttentionMethod(summary?.method)||normalizeAttentionMethod(trigger?.method)||planIdentity.method||null,
+    path:normalizeAttentionPath(summary?.path)||normalizeAttentionPath(trigger?.path)||planIdentity.path||null,
+  };
+}
+
+async function loadExecutionPlanForIdentity(env,{organizationId,projectId,runId}){
+  if(!organizationId||!projectId||!runId)return null;
+  try{return await getExecutionPlanForRun(env,organizationId,projectId,runId);}
+  catch(error){
+    console.warn(JSON.stringify({type:'continuous_learning_execution_identity_lookup_failed',organizationId,projectId,runId,code:error?.code||null}));
+    return null;
+  }
+}
+
+async function recoverAttentionExecutionIdentity(env,{organizationId,projectId,items}){
+  const source=Array.isArray(items)?items:[];
+  const missing=source.filter((item)=>!item?.method||!item?.path);
+  if(!missing.length)return source;
+  const runIds=[...new Set(missing.map((item)=>String(item?.runId||'').trim()).filter(Boolean))];
+  if(!runIds.length)return source;
+
+  let plans=[];
+  try{plans=await getExecutionPlansForRuns(env,organizationId,projectId,runIds);}
+  catch(error){
+    console.warn(JSON.stringify({type:'continuous_learning_attention_identity_recovery_failed',organizationId,projectId,runCount:runIds.length,code:error?.code||null}));
+    return source;
+  }
+  const byRunId=new Map(plans.map((plan)=>[plan.runId,plan]));
+  return source.map((item)=>{
+    if(item?.method&&item?.path)return item;
+    const identity=resolveExecutionPlanScenarioIdentity(byRunId.get(item?.runId),item?.scenarioId);
+    if(!identity.method&&!identity.path)return item;
+    return {...item,method:item.method||identity.method||null,path:item.path||identity.path||null};
+  });
+}
+
 export function isTerminalLearningCycleStatus(status){return TERMINAL_CYCLE.has(String(status||''));}
 
 export function determineLearningCycleStatus({suiteStatus,expectedResultSetCount=0,resultSetCount=0,pendingAnalysisCount=0,pendingVerificationCount=0,attentionCount=0,errorUnits=0}={}){
@@ -84,10 +144,13 @@ export async function recordLearningResultTrigger(env,{trigger,sourceRun}){
   if(!link?.suiteRun)return null;
   const cycle=await ensureLearningCycleForSuiteRun(env,link.suiteRun);
   const summaries=Array.isArray(trigger.scenarioSummaries)&&trigger.scenarioSummaries.length?trigger.scenarioSummaries:trigger.scenarioIds.map((scenarioIdValue)=>({scenarioId:scenarioIdValue}));
+  const needsIdentityFallback=!trigger?.method||!trigger?.path||summaries.some((summary)=>!summary?.method||!summary?.path);
+  const executionPlan=needsIdentityFallback?await loadExecutionPlanForIdentity(env,{organizationId:cycle.organizationId,projectId:cycle.projectId,runId:sourceRun.runId}):null;
   for(const summary of summaries){
     if(!summary?.scenarioId)continue;
+    const requestIdentity=resolveLearningRequestIdentity({summary,trigger,executionPlan,scenarioId:summary.scenarioId});
     const learningScenarioId=await scenarioId(cycle.learningCycleId,trigger.resultSetId,summary.scenarioId);
-    const item=await upsertLearningScenario(env,{learningScenarioId,learningCycleId:cycle.learningCycleId,organizationId:cycle.organizationId,projectId:cycle.projectId,resultSetId:trigger.resultSetId,runId:sourceRun.runId,scenarioResultId:summary.scenarioResultId||null,scenarioId:summary.scenarioId,endpointId:trigger.endpointId||sourceRun.endpointId||null,testDesignVersionId:trigger.testDesignVersionId||sourceRun.testDesignVersionId||null,testDesignVersion:trigger.testDesignVersion??sourceRun.testDesignVersion??null,requestMethod:summary.method||trigger.method||null,requestPath:summary.path||trigger.path||null,outcome:summary.outcome||null,httpOutcome:summary.httpOutcome||null,statusCode:summary.statusCode??null,assertionFailedCount:summary.assertionFailedCount||0});
+    const item=await upsertLearningScenario(env,{learningScenarioId,learningCycleId:cycle.learningCycleId,organizationId:cycle.organizationId,projectId:cycle.projectId,resultSetId:trigger.resultSetId,runId:sourceRun.runId,scenarioResultId:summary.scenarioResultId||null,scenarioId:summary.scenarioId,endpointId:trigger.endpointId||sourceRun.endpointId||null,testDesignVersionId:trigger.testDesignVersionId||sourceRun.testDesignVersionId||null,testDesignVersion:trigger.testDesignVersion??sourceRun.testDesignVersion??null,requestMethod:requestIdentity.method,requestPath:requestIdentity.path,outcome:summary.outcome||null,httpOutcome:summary.httpOutcome||null,statusCode:summary.statusCode??null,assertionFailedCount:summary.assertionFailedCount||0});
     await appendLearningCycleEvent(env,{eventId:await eventId(cycle.learningCycleId,`RESULT:${trigger.resultSetId}:${summary.scenarioId}`),learningCycleId:cycle.learningCycleId,learningScenarioId:item.learningScenarioId,organizationId:cycle.organizationId,projectId:cycle.projectId,eventType:'RESULT_RECEIVED',eventKey:`RESULT:${trigger.resultSetId}:${summary.scenarioId}`,metadata:{runId:sourceRun.runId,resultSetId:trigger.resultSetId,scenarioId:summary.scenarioId,outcome:summary.outcome||null,statusCode:summary.statusCode??null}}).catch(()=>{});
   }
   await refreshLearningCycleState(env,{organizationId:cycle.organizationId,projectId:cycle.projectId,suiteRunId:cycle.suiteRunId});
@@ -407,5 +470,7 @@ export async function listLearningAttentionV1({env,organizationId,projectId,envi
   if(classification)items=items.filter((item)=>item.classification===classification);
   if(actionType)items=items.filter((item)=>item.actionType===actionType);
   const bounded=Math.max(1,Math.min(200,Number(limit)||100));
-  return {contractVersion:'qagent.continuous-learning-attention.v1',status:requestedStatus,summary,items:items.slice(0,bounded),itemsTruncated:items.length>bounded};
+  const selected=items.slice(0,bounded);
+  const enriched=await recoverAttentionExecutionIdentity(env,{organizationId,projectId,items:selected});
+  return {contractVersion:'qagent.continuous-learning-attention.v1',status:requestedStatus,summary,items:enriched,itemsTruncated:items.length>bounded};
 }

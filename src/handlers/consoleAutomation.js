@@ -1,3 +1,4 @@
+import { enrichLegacyAssertionComparison } from '../services/assertionComparisonService.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import {
@@ -50,7 +51,8 @@ export async function listConsoleAutomationResults(req, env, { projectId }, deps
 export async function getConsoleAutomationResult(req, env, { projectId, resultSetId }, deps = {}) {
   const tenant = await authorize(req, env, projectId, deps);
   const data = await (deps.getResult || getResultsProjectResultSet)({ env, organizationId: tenant.organizationId, projectId, resultSetId });
-  return { status: 'ok', data };
+  const enriched = await (deps.enrichResult || enrichLegacyAssertionComparison)({ env, organizationId: tenant.organizationId, projectId, data });
+  return { status: 'ok', data: enriched };
 }
 
 export async function getConsoleEndpointAutomationLatest(req, env, { projectId, endpointId }, deps = {}) {

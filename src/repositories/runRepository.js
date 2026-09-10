@@ -156,6 +156,31 @@ export async function getExecutionPlanForRun(env, organizationId, projectId, run
   return normalizePlan(row);
 }
 
+export async function getExecutionPlansForRuns(env, organizationId, projectId, runIds = []) {
+  const db = requireDataDb(env);
+  const normalizedRunIds = [...new Set(
+    (Array.isArray(runIds) ? runIds : [])
+      .map((value) => String(value || '').trim())
+      .filter(Boolean),
+  )].slice(0, 200);
+
+  if (!normalizedRunIds.length) return [];
+
+  const rows = [];
+  const chunkSize = 80;
+  for (let offset = 0; offset < normalizedRunIds.length; offset += chunkSize) {
+    const chunk = normalizedRunIds.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const result = await db.prepare(`${PLAN_SELECT}
+      WHERE organization_id = ? AND project_id = ?
+        AND run_id IN (${placeholders})
+    `).bind(organizationId, projectId, ...chunk).all();
+    rows.push(...(Array.isArray(result?.results) ? result.results : []));
+  }
+
+  return rows.map(normalizePlan).filter(Boolean);
+}
+
 export async function getRuntimeSnapshotForRun(env, organizationId, projectId, runId) {
   const db = requireDataDb(env);
   const row = await db.prepare(`${SNAPSHOT_SELECT}
