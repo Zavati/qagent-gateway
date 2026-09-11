@@ -1,3 +1,4 @@
+import { learningReadinessDiagnostics } from '../learningScenarioEligibility.js';
 import { validateObservedBaseline, observedBaselineReady, validateObservedBaselineScenario } from '../baselineContract.js';
 import { discoveredRuntimeServiceKey, normalizeObservedOrigin } from './discoveredRuntime.js';
 import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
@@ -1633,6 +1634,7 @@ export function buildTestSpecificationV1({ context, modelOutput, generation, tes
     };
   });
 
+  for(const s of scenarios)s.automation.diagnostics=learningReadinessDiagnostics(s);
   return {
     contractVersion: TEST_DESIGN_CONTRACT_VERSION,
     specificationVersion: TEST_SPECIFICATION_VERSION,

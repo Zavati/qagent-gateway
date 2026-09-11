@@ -1,3 +1,4 @@
+import { schemaTypeProves } from '../coverageAssertions.js';
 export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.5';
 
 const GROUNDING_RANK = Object.freeze({ ASSUMED: 0, INFERRED: 1, OBSERVED: 2 });
@@ -664,13 +665,13 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     {
       regex: INTEGER_INTENT_RE,
       type: 'integer',
-      predicate: (node) => node?.type === 'integer',
+      predicate: (node) => schemaTypeProves(node, 'integer'),
       label: 'integer/inteiro',
     },
     {
       regex: NUMBER_INTENT_RE,
       type: 'number',
-      predicate: (node) => node?.type === 'number',
+      predicate: (node) => schemaTypeProves(node, 'number'),
       label: 'number/numérico',
     },
     {

@@ -73,7 +73,7 @@ export function normalizeRunCreateInput(input) {
     fail('Payload de Run inválido.', 'RUN_CREATE_CONTRACT_INVALID');
   }
 
-  const allowed = new Set(['contractVersion', 'testDesignVersionId', 'environmentId', 'scenarioIds', 'confirmDiscoveredRuntime']);
+  const allowed = new Set(['contractVersion', 'testDesignVersionId', 'environmentId', 'scenarioIds', 'confirmDiscoveredRuntime', 'purpose']);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) {
       fail(`Campo não permitido no Run: ${key}.`, 'RUN_CREATE_CONTRACT_INVALID', 400, { field: key });
@@ -89,8 +89,11 @@ export function normalizeRunCreateInput(input) {
     );
   }
 
+  if (input.purpose != null && !['REGRESSION','LEARNING'].includes(input.purpose)) fail('purpose inválido.', 'RUN_CREATE_CONTRACT_INVALID');
+  if (input.purpose === 'LEARNING' && (!Array.isArray(input.scenarioIds) || !input.scenarioIds.length)) fail('Aprendizagem exige cenários selecionados explicitamente.', 'RUN_LEARNING_SELECTION_REQUIRED');
   return {
     contractVersion: RUN_CREATE_CONTRACT_VERSION,
+    ...(input.purpose === 'LEARNING' ? {purpose:'LEARNING'} : {}),
     testDesignVersionId: cleanId(input.testDesignVersionId, {
       field: 'testDesignVersionId', prefix: 'tdv_', max: 200,
     }),
@@ -129,6 +132,7 @@ export async function sha256Hex(value) {
 export async function fingerprintRunCreateInput(input) {
   return sha256Hex({
     contractVersion: RUN_CREATE_CONTRACT_VERSION,
+    ...(input.purpose === 'LEARNING' ? {purpose:'LEARNING'} : {}),
     testDesignVersionId: input.testDesignVersionId,
     environmentId: input.environmentId,
     scenarioIds: input.scenarioIds,
@@ -679,7 +683,7 @@ export function normalizeRunnerAssertionsEvaluatedInput(input) {
       fail('primaryDiagnostic.assertionIndex inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.assertionIndex' });
     }
     const assertionType = String(diagnostic.assertionType || '').trim().toUpperCase();
-    if (!['STATUS', 'SCHEMA', 'JSON_PATH_EXISTS', 'JSON_PATH_EQUALS', 'HEADER_EXISTS', 'CONTENT_TYPE'].includes(assertionType)) {
+    if (!['STATUS', 'SCHEMA', 'JSON_PATH_EXISTS', 'JSON_PATH_EQUALS', 'HEADER_EXISTS', 'CONTENT_TYPE', 'JSON_PATH_TYPE', 'JSON_ARRAY_LENGTH_LTE_REQUEST'].includes(assertionType)) {
       fail('primaryDiagnostic.assertionType inválido.', 'RUNNER_ASSERTIONS_EVALUATED_CONTRACT_INVALID', 400, { field: 'primaryDiagnostic.assertionType' });
     }
     const errorCode = String(diagnostic.errorCode || '').trim().toUpperCase();

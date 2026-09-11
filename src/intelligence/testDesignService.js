@@ -1,3 +1,5 @@
+import { observedBaselineGenerationEnabled } from './observedBaselineFeature.js';
+import { structuralIsPartial } from '../activeLearningSchema.js';
 import { reviseObservedBaseline } from './observedBaselineRevision.js';
 import { buildObservedBaselineScenario } from './observedBaselineGeneration.js';
 import { listCatalogObservedBaselines } from './catalogKnowledgeClient.js';
@@ -471,10 +473,8 @@ export async function generateExploratoryTestDesignV1({
 
 /** System-owned baselines are composed outside the model/repair/sanitizer/planner pipeline. */
 export async function generateCatalogTestDesignV1(input={}){
-  const enabled=['1','true'].includes(String(input.env?.OBSERVED_BASELINE_GENERATION_ENABLED||'false').toLowerCase());
+  const enabled=observedBaselineGenerationEnabled(input.env);
   if(!enabled){if(input.baselineOptions?.replace)throw Object.assign(new Error('Revisão de baseline não habilitada.'),{code:'OBSERVED_BASELINE_FEATURE_DISABLED',status:409});return generateExploratoryTestDesignV1(input);}
-  const allowedProjects=String(input.env?.OBSERVED_BASELINE_PROJECT_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
-  if(allowedProjects.length&&!allowedProjects.includes(input.projectId)){if(input.baselineOptions?.replace)throw Object.assign(new Error('Revisão de baseline não habilitada neste projeto.'),{code:'OBSERVED_BASELINE_FEATURE_DISABLED',status:409});return generateExploratoryTestDesignV1(input);}
   const {env,organizationId,projectId,endpointId}=input;
   const now=input.now?input.now():new Date();
   const contextResult=await (input.contextBuilder||buildCatalogTestDesignContextV1)({env,organizationId,projectId,endpointId});
@@ -512,12 +512,19 @@ export async function generateCatalogTestDesignV1(input={}){
     title:`Regressões observadas · ${context.endpoint.method} ${context.endpoint.normalizedPath}`.slice(0,260),objective:'Preservar comportamentos monitorados com origem verificável.',assumptions:[],summary:{},scenarios:[],
     generation:{mode:'OBSERVED_ONLY',provider:'SYSTEM',model:'observed-baseline-v1',generatedAt:now.toISOString(),contextFingerprint:contextResult.contextFingerprint},
   };
-  const explored=specification.scenarios.map(s=>({...s,generationClass:'AI_EXPLORATORY'}));
+  const partialRefs=new Set();
+  for(const schema of context.schemas||[])if(structuralIsPartial(schema.schema)){
+    if(schema.currentVersionId)partialRefs.add(schema.currentVersionId);
+    if(schema.trackId)partialRefs.add(schema.trackId);
+  }
+  const explored=specification.scenarios.map(s=>({ ...s,generationClass:'AI_EXPLORATORY',
+    ...(s.automation?.readiness==='READY' && s.spec?.assertions?.some(a=>a.type==='SCHEMA'&&partialRefs.has(a.schemaRef))
+      ? {automation:{...s.automation,evolutionState:'LEARNING'}} : {}) }));
   const reserved=new Set([...byId.values()].map(s=>s.scenarioId));
   specification.scenarios=[...byId.values(),...explored.filter(s=>!reserved.has(s.scenarioId)).slice(0,20-byId.size)];
   specification.summary=buildSummary(specification.scenarios);
   specification.generation.mode=generated?'OBSERVED_WITH_AI':'OBSERVED_ONLY';
-  if(!byId.size)specification.assumptions=[...specification.assumptions,'Nenhuma fonte de baseline elegível disponível: este pack contém somente exploração da IA. Remonitore após habilitar a captura 08.1.6.'].slice(0,20);
+  if(!byId.size)specification.assumptions=[...specification.assumptions,'Nenhuma fonte de baseline elegível disponível: este pack contém somente exploração da IA. Explore com os dados disponíveis; novas evidências não substituem automaticamente uma baseline protegida.'].slice(0,20);
   validateTestSpecificationV1(specification,context);
   return {...(generated||{}),specification,contextFingerprint:contextResult.contextFingerprint,
     diagnostics:{...(generated?.diagnostics||{}),observedBaselines:{contractVersion:'qagent.observed-baseline-generation.v1',count:byId.size,

@@ -48,6 +48,8 @@ function stateForProposal(result,rerun){
   return 'REVIEW_REQUIRED';
 }
 function stateForVerification(outcome){
+  if(['HYPOTHESIS_VERIFIED','COVERAGE_VERIFIED'].includes(outcome))return 'HEALTHY';
+  if(['HYPOTHESIS_NOT_VERIFIED','COVERAGE_NOT_VERIFIED'].includes(outcome))return 'REVIEW_REQUIRED';
   if(outcome==='RECOVERED_BY_EVOLUTION')return 'RECOVERED_BY_EVOLUTION';
   if(outcome==='NOT_RECOVERED')return 'NOT_RECOVERED';
   return 'VERIFICATION_BLOCKED';

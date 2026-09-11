@@ -1,0 +1,577 @@
+[
+  {
+    "scenarioId": "test_001",
+    "title": "Obter ações permitidas para candidato existente",
+    "objective": "Verificar se o endpoint retorna as ações permitidas para um candidato válido.",
+    "category": "HAPPY_PATH",
+    "priority": "HIGH",
+    "confidence": "MEDIUM",
+    "grounding": {
+      "level": "INFERRED",
+      "rationale": [
+        "O endpoint foi observado retornando 200 com dados válidos.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": [
+        "cst_learning"
+      ]
+    },
+    "automation": {
+      "readiness": "READY",
+      "blockers": [],
+      "evolutionState": "STABLE"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            200
+          ]
+        },
+        {
+          "type": "SCHEMA",
+          "schemaRef": "cst_learning"
+        }
+      ],
+      "extract": [],
+      "testData": {
+        "contractVersion": "qagent.test-data-bindings.v1",
+        "bindings": [
+          {
+            "target": "PATH_PARAM",
+            "selector": "id",
+            "source": "OBSERVED",
+            "provenance": {
+              "origin": "OBSERVED"
+            },
+            "valueType": "STRING",
+            "bindingKey": "PATH_PARAM:id@6:0"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "scenarioId": "test_002",
+    "title": "Obter ações permitidas para candidato inexistente",
+    "objective": "Verificar o comportamento do endpoint ao solicitar ações para um candidato que não existe.",
+    "category": "NEGATIVE",
+    "priority": "MEDIUM",
+    "confidence": "LOW",
+    "grounding": {
+      "level": "INFERRED",
+      "rationale": [
+        "Esperado erro 404 para candidato inexistente.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": []
+    },
+    "automation": {
+      "readiness": "REVIEW_REQUIRED",
+      "blockers": [
+        "Dados de teste seguro para candidato inexistente.",
+        "O status HTTP 404 não foi observado nas evidências selecionadas para este endpoint.",
+        "Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+      ],
+      "evolutionState": "BLOCKED"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            404
+          ]
+        }
+      ],
+      "extract": []
+    }
+  },
+  {
+    "scenarioId": "test_003",
+    "title": "Verificar resposta sem autenticação",
+    "objective": "Testar o comportamento do endpoint sem autenticação.",
+    "category": "AUTHORIZATION",
+    "priority": "HIGH",
+    "confidence": "LOW",
+    "grounding": {
+      "level": "ASSUMED",
+      "rationale": [
+        "Não foi observado comportamento sem autenticação.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime."
+      ],
+      "evidenceRefs": [],
+      "schemaRefs": []
+    },
+    "automation": {
+      "readiness": "REVIEW_REQUIRED",
+      "blockers": [
+        "Dados de teste seguro para autenticação.",
+        "O status HTTP 401 não foi observado nas evidências selecionadas para este endpoint.",
+        "Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+      ],
+      "evolutionState": "BLOCKED"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "UNAUTHENTICATED",
+        "authProfileRef": null
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            401
+          ]
+        }
+      ],
+      "extract": []
+    }
+  },
+  {
+    "scenarioId": "test_004",
+    "title": "Verificar estrutura da resposta",
+    "objective": "Validar a estrutura da resposta do endpoint para um candidato válido.",
+    "category": "SCHEMA_CONTRACT",
+    "priority": "HIGH",
+    "confidence": "MEDIUM",
+    "grounding": {
+      "level": "INFERRED",
+      "rationale": [
+        "A estrutura da resposta foi observada e corresponde ao schema.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": [
+        "cst_learning"
+      ]
+    },
+    "automation": {
+      "readiness": "READY",
+      "blockers": [],
+      "evolutionState": "STABLE"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            200
+          ]
+        },
+        {
+          "type": "SCHEMA",
+          "schemaRef": "cst_learning"
+        }
+      ],
+      "extract": [],
+      "testData": {
+        "contractVersion": "qagent.test-data-bindings.v1",
+        "bindings": [
+          {
+            "target": "PATH_PARAM",
+            "selector": "id",
+            "source": "OBSERVED",
+            "provenance": {
+              "origin": "OBSERVED"
+            },
+            "valueType": "STRING",
+            "bindingKey": "PATH_PARAM:id@6:0"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "scenarioId": "test_005",
+    "title": "Verificar cabeçalho Content-Type",
+    "objective": "Assegurar que o cabeçalho Content-Type da resposta é correto.",
+    "category": "STATUS_BEHAVIOR",
+    "priority": "MEDIUM",
+    "confidence": "MEDIUM",
+    "grounding": {
+      "level": "INFERRED",
+      "rationale": [
+        "O cabeçalho Content-Type foi observado como application/json.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": []
+    },
+    "automation": {
+      "readiness": "READY",
+      "blockers": [],
+      "evolutionState": "STABLE"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            200
+          ]
+        },
+        {
+          "type": "HEADER_EXISTS",
+          "name": "Content-Type"
+        },
+        {
+          "type": "CONTENT_TYPE",
+          "expected": [
+            "application/json"
+          ]
+        }
+      ],
+      "extract": [],
+      "testData": {
+        "contractVersion": "qagent.test-data-bindings.v1",
+        "bindings": [
+          {
+            "target": "PATH_PARAM",
+            "selector": "id",
+            "source": "OBSERVED",
+            "provenance": {
+              "origin": "OBSERVED"
+            },
+            "valueType": "STRING",
+            "bindingKey": "PATH_PARAM:id@6:0"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "scenarioId": "test_006",
+    "title": "Verificar total de ações permitidas",
+    "objective": "Validar que o total de ações permitidas é retornado corretamente.",
+    "category": "DATA_VARIATION",
+    "priority": "MEDIUM",
+    "confidence": "LOW",
+    "grounding": {
+      "level": "ASSUMED",
+      "rationale": [
+        "Não foi observado o total de ações permitidas.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": [
+        "cst_learning"
+      ]
+    },
+    "automation": {
+      "readiness": "REVIEW_REQUIRED",
+      "blockers": [
+        "O cenário contém hipótese que precisa de revisão humana."
+      ],
+      "evolutionState": "BLOCKED"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            200
+          ]
+        },
+        {
+          "type": "JSON_PATH_EXISTS",
+          "path": "$.meta.total"
+        }
+      ],
+      "extract": [],
+      "testData": {
+        "contractVersion": "qagent.test-data-bindings.v1",
+        "bindings": [
+          {
+            "target": "PATH_PARAM",
+            "selector": "id",
+            "source": "OBSERVED",
+            "provenance": {
+              "origin": "OBSERVED"
+            },
+            "valueType": "STRING",
+            "bindingKey": "PATH_PARAM:id@6:0"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "scenarioId": "test_007",
+    "title": "Verificar ações permitidas vazias",
+    "objective": "Testar o retorno de ações permitidas quando não há ações disponíveis.",
+    "category": "NEGATIVE",
+    "priority": "MEDIUM",
+    "confidence": "LOW",
+    "grounding": {
+      "level": "ASSUMED",
+      "rationale": [
+        "Esperado retorno com array vazio para ações.",
+        "QAgent Guard: O valor literal esperado não é provado por const/enum do schema nem por Evidence (payloads não fazem parte do contexto).",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": [
+        "cst_learning"
+      ]
+    },
+    "automation": {
+      "readiness": "NEEDS_DATA",
+      "blockers": [
+        "Dados de teste seguro para ações permitidas vazias.",
+        "O valor literal esperado não é provado por const/enum do schema nem por Evidence (payloads não fazem parte do contexto).",
+        "Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+      ],
+      "evolutionState": "BLOCKED"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            200
+          ]
+        },
+        {
+          "type": "JSON_PATH_EXISTS",
+          "path": "$.data"
+        },
+        {
+          "type": "JSON_PATH_EQUALS",
+          "path": "$.data",
+          "expected": []
+        }
+      ],
+      "extract": []
+    }
+  },
+  {
+    "scenarioId": "test_008",
+    "title": "Verificar rels na resposta",
+    "objective": "Validar a presença do campo rels na resposta.",
+    "category": "SCHEMA_CONTRACT",
+    "priority": "LOW",
+    "confidence": "MEDIUM",
+    "grounding": {
+      "level": "INFERRED",
+      "rationale": [
+        "O campo rels foi observado na resposta.",
+        "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+        "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+      ],
+      "evidenceRefs": [
+        "cev_learning"
+      ],
+      "schemaRefs": [
+        "cst_learning"
+      ]
+    },
+    "automation": {
+      "readiness": "READY",
+      "blockers": [],
+      "evolutionState": "STABLE"
+    },
+    "preconditions": [],
+    "spec": {
+      "dslVersion": "qagent.api-test-dsl.v1",
+      "type": "api",
+      "target": {
+        "catalogEndpointId": "cep_learning",
+        "apiServiceKey": "svc_learning",
+        "method": "GET",
+        "path": "/web/index.php/api/v2/recruitment/candidates/{id}/actions/allowed"
+      },
+      "auth": {
+        "requirement": "REQUIRED",
+        "authProfileRef": "authp_learning"
+      },
+      "request": {
+        "pathParams": {},
+        "query": {},
+        "headers": {},
+        "body": {}
+      },
+      "assertions": [
+        {
+          "type": "STATUS",
+          "expectedStatusCodes": [
+            200
+          ]
+        },
+        {
+          "type": "JSON_PATH_EXISTS",
+          "path": "$.rels"
+        }
+      ],
+      "extract": [],
+      "testData": {
+        "contractVersion": "qagent.test-data-bindings.v1",
+        "bindings": [
+          {
+            "target": "PATH_PARAM",
+            "selector": "id",
+            "source": "OBSERVED",
+            "provenance": {
+              "origin": "OBSERVED"
+            },
+            "valueType": "STRING",
+            "bindingKey": "PATH_PARAM:id@6:0"
+          }
+        ]
+      }
+    }
+  }
+]

@@ -140,7 +140,15 @@
     "test:f08-1-6": "node --test test/test-08-1-6-observed-baseline.mjs",
     "check:08.1.6": "npm run check:08.1.5 && npm run test:f08-1-6",
     "test:f08-1-6-fix1": "node --test test/test-foundation-08-1-6-fix1-readiness.mjs",
-    "check:08.1.6-fix1": "npm run check:08.1.6 && npm run test:f08-1-6-fix1"
+    "check:08.1.6-fix1": "npm run check:08.1.6 && npm run test:f08-1-6-fix1",
+    "test:f08-1-6-fix2": "node --test test/active-learning-resolution-08.1.6-fix2.test.mjs",
+    "check:08.1.6-fix2": "npm run check:08.1.6-fix1 && npm run test:f08-1-6-fix2",
+    "test:f08-1-6-fix2-1": "node --test test/learning-observed-data-08.1.6-fix2-1.test.mjs",
+    "check:08.1.6-fix2-1": "npm run check:08.1.6-fix2 && npm run test:f08-1-6-fix2-1",
+    "test:f08-1-6-fix2-2": "node --test test/learning-confirmation-08.1.6-fix2-2.test.mjs",
+    "check:08.1.6-fix2-2": "npm run check:08.1.6-fix2-1 && npm run test:f08-1-6-fix2-2",
+    "test:f08-1-6-fix2-3": "node --test test/semantic-readiness-08.1.6-fix2-3.test.mjs",
+    "check:08.1.6-fix2-3": "npm run check:08.1.6-fix2-2 && npm run test:f08-1-6-fix2-3"
   },
   "keywords": [],
   "author": "",

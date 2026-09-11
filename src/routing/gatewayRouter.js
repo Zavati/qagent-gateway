@@ -239,6 +239,11 @@ export function resolveGatewayRoute(method, pathname) {
     if (segs.length === 8 && segs[4] === 'automation' && segs[5] === 'results' && segs[7] === 'evolution' && normalizedMethod === 'GET') {
       return { name: 'consoleResultEvolutionInspectionGet', params: { projectId: decodeURIComponent(segs[3]), resultSetId: decodeURIComponent(segs[6]) } };
     }
+    // FIX-2: bounded adapters of existing Evolution, never a second engine.
+    if (segs.length === 7 && segs[4] === 'test-evolution' && segs[5] === 'resolutions' && normalizedMethod === 'POST') {
+      const action = { analyze: 'consoleLearningResolutionAnalyzePost', approve: 'consoleLearningResolutionApprovePost', verify: 'consoleLearningResolutionVerifyPost' }[segs[6]];
+      if (action) return { name: action, params: { projectId: decodeURIComponent(segs[3]) } };
+    }
     // /v1/console/projects/:projectId/test-evolution/policy
     if (segs.length === 6 && segs[4] === 'test-evolution' && segs[5] === 'policy') {
       if (normalizedMethod === 'GET') return { name: 'consoleEvolutionPolicyGet', params: { projectId: decodeURIComponent(segs[3]) } };

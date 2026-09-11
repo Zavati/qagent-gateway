@@ -1005,7 +1005,7 @@ function pathBindingKey({
   return `PATH_PARAM:${selector}@${segmentIndex}:${occurrence}`;
 }
 
-function pathPlaceholderDescriptors(path) {
+export function pathPlaceholderDescriptors(path) {
   const segments =
     String(path || '')
       .split('/')

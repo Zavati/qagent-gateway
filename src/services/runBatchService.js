@@ -73,8 +73,10 @@ export async function createRunBatchV1({
   const createRun = deps.createRun || createRunV1;
   const artifact = await loadArtifact({ env, organizationId, projectId, testDesignVersionId: input.testDesignVersionId });
   const selection = resolveSelection(artifact, input.scenarioIds);
+  if(input.purpose==='LEARNING'&&!SAFE_METHODS.includes(selection.method))batchError('Aprendizagem não autoriza mutação.','RUN_LEARNING_MUTATION_BLOCKED');
   const commonInput = {
     contractVersion: 'qagent.run-create.v1',
+    ...(input.purpose === 'LEARNING' ? {purpose:'LEARNING'} : {}),
     testDesignVersionId: input.testDesignVersionId,
     environmentId: input.environmentId,
     confirmDiscoveredRuntime: input.confirmDiscoveredRuntime === true,

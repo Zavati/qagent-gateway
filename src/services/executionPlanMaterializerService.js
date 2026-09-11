@@ -1,3 +1,7 @@
+import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion } from '../coverageAssertions.js';
+import { assessExploratoryLearning, buildExploratoryLearningAdmission } from '../learningScenarioEligibility.js';
+import { prepareExploratoryLearningData } from './exploratoryLearningData.js';
+import { baselineLearningEligibility, baselineEffectiveResponse } from '../baselineContract.js';
 import { materializeObservedBaselineRequests, verifyObservedBaselineSchemas } from './observedBaselineRuntime.js';
 import { getCatalogEndpointForTestDesign, getCatalogEvidenceForTestDesign, getCatalogSchemasForTestDesign } from '../intelligence/catalogKnowledgeClient.js';
 import { deriveDiscoveredRuntimeCandidate, isDiscoveredRuntimeServiceKey } from '../intelligence/discoveredRuntime.js';
@@ -181,7 +185,9 @@ function validateArtifactScope(artifact, { organizationId, projectId }) {
   }
 }
 
-function selectScenarios(specification, requestedScenarioIds, environmentId) {
+function selectScenarios(specification, requestedScenarioIds, environmentId, purpose = 'REGRESSION', now = Date.now()) {
+  if(!['REGRESSION','LEARNING'].includes(purpose))runError('Propósito inválido.','RUN_PURPOSE_INVALID',400);
+  if(purpose==='LEARNING'&&(!Array.isArray(requestedScenarioIds)||!requestedScenarioIds.length))runError('Selecione os cenários para aprender.','RUN_LEARNING_SELECTION_REQUIRED',400);
   const scenarios = Array.isArray(specification?.scenarios) ? specification.scenarios : [];
   const byId = new Map(scenarios.map((scenario) => [scenario?.scenarioId, scenario]));
 
@@ -205,7 +211,8 @@ function selectScenarios(specification, requestedScenarioIds, environmentId) {
 
   for (const scenario of selected) {
     const readiness = scenario?.automation?.readiness || 'UNKNOWN';
-    if (readiness !== EXECUTABLE_READINESS) {
+    if (purpose === 'LEARNING' && !['GET','HEAD','OPTIONS'].includes(scenario?.spec?.target?.method)) runError('Aprendizagem não autoriza mutações.', 'RUN_LEARNING_MUTATION_BLOCKED', 409);
+    if (readiness !== EXECUTABLE_READINESS && !(purpose === 'LEARNING' && (scenario.generationClass === 'OBSERVED_BASELINE' ? baselineLearningEligibility(scenario,now).allowed : assessExploratoryLearning(scenario).allowed))) {
       runError(
         `O cenário '${scenario?.scenarioId || 'unknown'}' não está elegível para execução.`,
         'RUN_SCENARIO_NOT_EXECUTABLE',
@@ -558,9 +565,11 @@ function collectSchemaRefs(selectedScenarios) {
   const refs = [];
   for (const scenario of selectedScenarios) {
     for (const assertion of scenario?.spec?.assertions || []) {
+      if (COVERAGE_ASSERTION_TYPES.has(assertion?.type)) validateCoverageAssertion(assertion);
       if (assertion?.type === 'SCHEMA' && assertion?.schemaRef) refs.push(assertion.schemaRef);
     }
   }
+  for(const s of selectedScenarios) if(s.baseline?.enrichment && s.baseline.responseSchemaVersionId)refs.push(s.baseline.responseSchemaVersionId);
   return uniqueStrings(refs);
 }
 
@@ -571,6 +580,7 @@ export async function materializeExecutionPlanV1({
   artifact,
   environmentId,
   requestedScenarioIds = null,
+  purpose = 'REGRESSION',
   confirmDiscoveredRuntime = false,
   confirmedRuntimeReuse = null,
   runId,
@@ -587,7 +597,14 @@ export async function materializeExecutionPlanV1({
   baselineNow = Date.now(),
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
-  const selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId);
+  let selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId, purpose, baselineNow);
+  // LEARNING performs a private preparation, not a version/readiness mutation.
+  // Reuse these settings below; no parallel resolver or observed-values store.
+  const prepareConfirmed = s => purpose === 'LEARNING' || ['HYPOTHESIS_CONFIRMATION','ASSERTION_COVERAGE_EXTENSION'].includes(s.learning?.kind);
+  const learningConfiguredBindings = selectedScenarios.some(prepareConfirmed) && selectedScenarios.some(s => s.generationClass !== 'OBSERVED_BASELINE' &&
+    ((s.spec?.testData?.bindings || []).length || /\{[^}]+\}/.test(s.spec?.target?.path || '')))
+    ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId) : null;
+  selectedScenarios = selectedScenarios.map(s => s.generationClass === 'OBSERVED_BASELINE' || !prepareConfirmed(s) ? s : prepareExploratoryLearningData(s, learningConfiguredBindings || []));
 
   const runtimeConfig = await resolveRuntime(env, organizationId, projectId, environmentId);
   if (runtimeConfig?.environment?.environmentId !== environmentId) {
@@ -632,11 +649,11 @@ export async function materializeExecutionPlanV1({
     (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'FIXED' || binding?.source === 'SECRET')
   );
   const hasObservedBaselines = selectedScenarios.some(s=>s.generationClass==='OBSERVED_BASELINE');
-  const configuredTestDataBindings = (requiresConfiguredTestData || hasObservedBaselines)
+  const configuredTestDataBindings = learningConfiguredBindings ?? ((requiresConfiguredTestData || hasObservedBaselines)
     ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId)
-    : [];
+    : []);
   const baselineRequests = hasObservedBaselines ? await materializeObservedBaselineRequests({env,organizationId,projectId,endpointId:artifact.endpointId,environmentId,scenarios:selectedScenarios,
-    configuredBindings:configuredTestDataBindings,loadSource:loadBaselineSource,now:baselineNow}) : new Map();
+    configuredBindings:configuredTestDataBindings,loadSource:loadBaselineSource,now:baselineNow,purpose}) : new Map();
   const configuredByKey = new Map(configuredTestDataBindings.map((item) => [`${item.target}:${item.selector}`, item]));
   const frozenFixed = {};
   const frozenSecrets = {};
@@ -917,12 +934,15 @@ export async function materializeExecutionPlanV1({
       ...(scenario.generationClass?{generationClass:scenario.generationClass}:{}),
       ...(scenario.baseline?{baseline:clone(scenario.baseline)}:{}),
       readiness: scenario.automation.readiness,
+      ...(purpose === 'LEARNING' && scenario.generationClass !== 'OBSERVED_BASELINE'
+        ? {learningAdmission: buildExploratoryLearningAdmission(scenario)} : {}),
       spec,
     };
   });
 
   const executionPlanBase = {
     contractVersion: EXECUTION_PLAN_CONTRACT_VERSION,
+    ...(purpose === 'LEARNING' ? {purpose:'LEARNING'} : {}),
     baselineSelection: { environmentId, excludedOtherEnvironmentScenarioIds: (artifact.specification.scenarios || []).filter(s => s.generationClass === 'OBSERVED_BASELINE' && s.baseline?.source?.environmentId !== environmentId && !selectedScenarios.includes(s)).map(s=>s.scenarioId) },
     executionPlanId,
     runId,

@@ -14,3 +14,5 @@ export const getEvolutionProposalContext=(x)=>call({...x,path:`/internal/v1/proj
 export const assessEvolutionProposal=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/${encodeURIComponent(x.proposalId)}/assess`,method:'POST',body:x.input});
 
 export const verifyEvolutionOutcome=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/${encodeURIComponent(x.proposalId)}/verify-outcome`,method:'POST',body:x.input});
+
+export const approveEvolutionProposalsBatch=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/approve-batch`,method:'POST',body:x.input});

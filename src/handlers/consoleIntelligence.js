@@ -1,3 +1,4 @@
+import { observedBaselineGenerationEnabled } from '../intelligence/observedBaselineFeature.js';
 import { listCatalogObservedBaselines } from '../intelligence/catalogKnowledgeClient.js';
 import { getEnvNum } from '../lib/config.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
@@ -30,6 +31,7 @@ export async function getConsoleTestDesign(
     requireTenant = requireConsoleTenant,
     getProject = getOrganizationProject,
     loadLatest = loadLatestPersistedTestDesignV1,
+    loadBaselines = listCatalogObservedBaselines,
   } = {},
 ) {
   const tenant = await requireTenant(req, env);
@@ -42,9 +44,8 @@ export async function getConsoleTestDesign(
     endpointId,
   });
 
-  const allowedProjects=String(env?.OBSERVED_BASELINE_PROJECT_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
-  if(['1','true'].includes(String(env?.OBSERVED_BASELINE_GENERATION_ENABLED||'false').toLowerCase())&&(!allowedProjects.length||allowedProjects.includes(projectId))){
-    try{const sources=await listCatalogObservedBaselines({env,organizationId:tenant.organizationId,projectId,endpointId});
+  if(observedBaselineGenerationEnabled(env)){
+    try{const sources=await loadBaselines({env,organizationId:tenant.organizationId,projectId,endpointId});
       result.observedBaselineSources=sources.items;result.observedBaselineSourcesTruncated=sources.itemsTruncated===true;
     }catch{result.observedBaselineSources=[];result.observedBaselineSourcesUnavailable=true;}
   }

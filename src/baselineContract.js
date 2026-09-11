@@ -2,7 +2,7 @@
 export const OBSERVED_BASELINE_CONTRACT = 'qagent.observed-baseline-source.v1';
 export const OBSERVED_COMPARISON_POLICY = 'qagent.observed-comparison.v1';
 const SOURCE_KEYS = ['organizationId', 'projectId', 'environmentId', 'endpointId', 'eventId', 'normalizedEventId', 'evidenceId', 'observationSessionId', 'batchId', 'observedAt', 'method', 'path', 'origin', 'statusCode', 'contentType', 'authObserved', 'authScheme'];
-const BASE_KEYS = ['contractVersion', 'baselineId', 'generationClass', 'source', 'responseSchemaVersionId', 'responseSchemaHash', 'requestFingerprint', 'fingerprintScope', 'requestBodyEncoding', 'requestCoverage', 'responseCoverage', 'inferenceVersion', 'arrayStates', 'selfCheck', 'expiresAt', 'familyKey', 'comparisonPolicy', 'revision'];
+const BASE_KEYS = ['contractVersion', 'baselineId', 'generationClass', 'source', 'responseSchemaVersionId', 'responseSchemaHash', 'requestFingerprint', 'fingerprintScope', 'requestBodyEncoding', 'requestCoverage', 'responseCoverage', 'inferenceVersion', 'arrayStates', 'selfCheck', 'expiresAt', 'familyKey', 'comparisonPolicy', 'revision', 'enrichment'];
 const REASONS = new Set(['REQUEST_QUERY_UNAVAILABLE', 'REPEATED_QUERY_UNAVAILABLE', 'REQUEST_BODY_UNAVAILABLE', 'REQUEST_BODY_TRUNCATED', 'REQUEST_DATA_UNSAFE_OR_UNSUPPORTED', 'REQUEST_PATH_UNAVAILABLE', 'REPEATED_PATH_UNSUPPORTED', 'REQUEST_LIMIT', 'BODY_ON_SAFE_METHOD', 'RESPONSE_UNAVAILABLE', 'PARTIAL_CAPTURE', 'UNKNOWN_STRUCTURE', 'SANITIZED_VALUE', 'UNSUPPORTED_VALUE', 'DEPTH_LIMIT', 'PROPERTY_LIMIT', 'ARRAY_SAMPLE_LIMIT', 'SANITIZED_CONTAINER', 'BODY_TRUNCATED', 'UNSUPPORTED_PROPERTY', 'PROFILE_LIMIT', 'AUTH_CONTEXT_UNAVAILABLE']);
 const plain = x => !!x && typeof x === 'object' && !Array.isArray(x);
 const exact = (x, keys) => plain(x) && Object.keys(x).every(k => keys.includes(k));
@@ -72,6 +72,7 @@ export function validateObservedBaseline(b, scope = {}) {
             || !['APPROVED_PRODUCT_CHANGE', 'RECAPTURE_SOURCE', 'CORRECT_GENERATION', 'COMPARISON_POLICY_REVIEW'].includes(r.reasonCode))
             fail('OBSERVED_BASELINE_APPROVAL_REQUIRED');
     }
+    if (b.enrichment != null) validateBaselineEnrichment(b.enrichment, b);
     const p = b.comparisonPolicy;
     if (!exact(p, ['contractVersion', 'mode', 'protectObservedPresence', 'arrayStates', 'confirmedContext']) || p.contractVersion !== OBSERVED_COMPARISON_POLICY || !['STRUCTURE', 'CONTROLLED_STATE'].includes(p.mode) || p.protectObservedPresence !== true)
         fail();
@@ -92,7 +93,9 @@ export function baselineFromSource(source, policy = { mode: 'STRUCTURE' }, actor
     return validateObservedBaseline(b);
 }
 export function observedBaselineReady(b, now = Date.now()) {
-    return b.requestCoverage.status === 'COMPLETE' && ['COMPLETE', 'NO_BODY'].includes(b.responseCoverage.status) && ['PASSED', 'NO_BODY'].includes(b.selfCheck) && Date.parse(b.expiresAt) > now;
+    return b.requestCoverage.status === 'COMPLETE' && Date.parse(b.expiresAt) > now
+        && ((['COMPLETE', 'NO_BODY'].includes(b.responseCoverage.status) && ['PASSED', 'NO_BODY'].includes(b.selfCheck))
+            || (b.enrichment != null && validateBaselineEnrichment(b.enrichment,b).selfCheck === 'PASSED'));
 }
 /** Never allow an ordinary repair/proposal to silently redefine a protected baseline. */
 export function assertNoProtectedBaselineChanges(specification, scenarioIds) {
@@ -110,8 +113,9 @@ export function observedBaselineAssertions(b) {
     const assertions = [{ type: 'STATUS', expectedStatusCodes: [b.source.statusCode] }];
     if (b.source.contentType)
         assertions.push({ type: 'CONTENT_TYPE', expected: [b.source.contentType.split(';', 1)[0].trim().toLowerCase()] });
-    if (b.responseSchemaVersionId && b.responseCoverage.status !== 'NO_BODY')
-        assertions.push({ type: 'SCHEMA', schemaRef: b.responseSchemaVersionId });
+    const expected = baselineEffectiveResponse(b);
+    if (expected.schemaVersionId && b.responseCoverage.status !== 'NO_BODY')
+        assertions.push({ type: 'SCHEMA', schemaRef: expected.schemaVersionId });
     return assertions;
 }
 export function validateObservedBaselineScenario(s, scope = {}) {
@@ -140,4 +144,35 @@ export function isApprovedBaselineRevision(prior, successor, currentVersionId) {
         return false;
     validateObservedBaselineScenario(successor);
     return true;
+}
+
+// Learning is an explicit execution purpose, never an implicit READY override.
+export const LEARNING_PURPOSE = 'LEARNING';
+const LEARNING_SOFT_BLOCKERS = new Set(['OBSERVED_BASELINE_RESPONSE_INCOMPLETE','OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE']);
+export function baselineLearningEligibility(scenario, now = Date.now()) {
+    const b=scenario?.baseline;
+    if(scenario?.generationClass!=='OBSERVED_BASELINE'||!b)return {allowed:false,reason:'NOT_OBSERVED_BASELINE'};
+    try { validateObservedBaselineScenario(scenario); } catch(e) { return {allowed:false,reason:e.code}; }
+    if(!['GET','HEAD','OPTIONS'].includes(b.source.method))return {allowed:false,reason:'LEARNING_MUTATION_REQUIRES_SEPARATE_AUTHORIZATION'};
+    if(Date.parse(b.expiresAt)<=now)return {allowed:false,reason:'OBSERVED_BASELINE_SOURCE_EXPIRED'};
+    if(b.requestCoverage.status!=='COMPLETE')return {allowed:false,reason:'OBSERVED_BASELINE_REQUEST_INCOMPLETE'};
+    if(b.responseCoverage.status!=='PARTIAL'||b.selfCheck!=='PARTIAL'||b.enrichment)return {allowed:false,reason:'BASELINE_NOT_PARTIAL_LEARNING_CANDIDATE'};
+    if(!b.responseSchemaVersionId||!b.responseSchemaHash)return {allowed:false,reason:'OBSERVED_BASELINE_SCHEMA_REQUIRED'};
+    if(!scenario.spec?.target?.apiServiceKey)return {allowed:false,reason:'OBSERVED_BASELINE_RUNTIME_REQUIRED'};
+    if(b.source.authObserved&&(!scenario.spec?.auth?.authProfileRef||scenario.spec.auth.requirement!=='REQUIRED'))return {allowed:false,reason:'OBSERVED_BASELINE_AUTH_REQUIRED'};
+    if(scenario.spec?.auth?.requirement==='REQUIRED'&&!scenario.spec.auth.authProfileRef)return {allowed:false,reason:'OBSERVED_BASELINE_AUTH_REQUIRED'};
+    if((scenario.automation?.blockers||[]).some(x=>!LEARNING_SOFT_BLOCKERS.has(x)))return {allowed:false,reason:'LEARNING_OPERATIONAL_BLOCKER'};
+    return {allowed:true,reason:'RESPONSE_KNOWLEDGE_INCOMPLETE'};
+}
+export function baselineEffectiveResponse(b) {
+    return b.enrichment ? {schemaVersionId:b.enrichment.responseSchemaVersionId,schemaHash:b.enrichment.responseSchemaHash}
+        : {schemaVersionId:b.responseSchemaVersionId,schemaHash:b.responseSchemaHash};
+}
+export function validateBaselineEnrichment(e,b) {
+    if(!exact(e,['contractVersion','proposalId','sourceResultSetId','sourceScenarioResultId','sourceRunId','sourceTestDesignVersionId','environmentId','responseSchemaVersionId','responseSchemaHash','approvedByUserId','approvedAt','selfCheck'])
+        || e.contractVersion!=='qagent.baseline-enrichment.v1'||e.selfCheck!=='PASSED')fail('OBSERVED_BASELINE_ENRICHMENT_INVALID');
+    for(const k of ['proposalId','sourceResultSetId','sourceScenarioResultId','sourceRunId','sourceTestDesignVersionId','environmentId','approvedByUserId'])if(!id(e[k]))fail('OBSERVED_BASELINE_ENRICHMENT_INVALID');
+    if(!date(e.approvedAt)||!/^csv_[A-Za-z0-9_-]{1,120}$/.test(e.responseSchemaVersionId)||!/^sch_[a-f0-9]{40}$/.test(e.responseSchemaHash))fail('OBSERVED_BASELINE_ENRICHMENT_INVALID');
+    if(b&&(b.responseCoverage.status!=='PARTIAL'||b.selfCheck!=='PARTIAL'||b.requestCoverage.status!=='COMPLETE'||b.source.environmentId!==e.environmentId||b.responseSchemaVersionId===e.responseSchemaVersionId))fail('OBSERVED_BASELINE_ENRICHMENT_INVALID');
+    return e;
 }

@@ -1,0 +1,614 @@
+{
+  "contractVersion": "qagent.test-design.v1",
+  "specificationVersion": "qagent.test-spec.v1",
+  "source": {
+    "type": "CATALOG_ENDPOINT",
+    "organizationId": "org_semantic",
+    "projectId": "prj_semantic",
+    "endpointId": "cep_semantic"
+  },
+  "title": "Cenários de Teste para o Endpoint de Status de Emprego",
+  "objective": "Validar o comportamento do endpoint que retorna os status de emprego na API de administração.",
+  "assumptions": [],
+  "summary": {
+    "scenarioCount": 8,
+    "readyCount": 4,
+    "byCategory": {
+      "HAPPY_PATH": 1,
+      "SCHEMA_CONTRACT": 4,
+      "DATA_VARIATION": 1,
+      "AUTHORIZATION": 2
+    },
+    "byReadiness": {
+      "READY": 4,
+      "REVIEW_REQUIRED": 3,
+      "NEEDS_DATA": 1
+    },
+    "byGrounding": {
+      "OBSERVED": 5,
+      "ASSUMED": 3
+    }
+  },
+  "scenarios": [
+    {
+      "scenarioId": "test_001",
+      "title": "Obter todos os status de emprego com sucesso",
+      "objective": "Verificar se o endpoint retorna todos os status de emprego corretamente.",
+      "category": "HAPPY_PATH",
+      "priority": "HIGH",
+      "confidence": "HIGH",
+      "grounding": {
+        "level": "OBSERVED",
+        "rationale": [
+          "O endpoint foi observado retornando um status 200 com dados válidos.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": [
+          "cst_semantic"
+        ]
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              200
+            ]
+          },
+          {
+            "type": "SCHEMA",
+            "schemaRef": "cst_semantic"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_002",
+      "title": "Verificar a presença do campo 'data' na resposta",
+      "objective": "Assegurar que o campo 'data' está presente na resposta do endpoint.",
+      "category": "SCHEMA_CONTRACT",
+      "priority": "MEDIUM",
+      "confidence": "HIGH",
+      "grounding": {
+        "level": "OBSERVED",
+        "rationale": [
+          "O campo 'data' foi observado na resposta do endpoint.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": [
+          "cst_semantic"
+        ]
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "JSON_PATH_EXISTS",
+            "path": "$.data"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_003",
+      "title": "Verificar a presença do campo 'meta' na resposta",
+      "objective": "Assegurar que o campo 'meta' está presente na resposta do endpoint.",
+      "category": "SCHEMA_CONTRACT",
+      "priority": "MEDIUM",
+      "confidence": "HIGH",
+      "grounding": {
+        "level": "OBSERVED",
+        "rationale": [
+          "O campo 'meta' foi observado na resposta do endpoint.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": [
+          "cst_semantic"
+        ]
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "JSON_PATH_EXISTS",
+            "path": "$.meta"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_004",
+      "title": "Verificar o campo 'total' dentro de 'meta'",
+      "objective": "Assegurar que o campo 'total' está presente e é um número na resposta do endpoint.",
+      "category": "SCHEMA_CONTRACT",
+      "priority": "MEDIUM",
+      "confidence": "HIGH",
+      "grounding": {
+        "level": "OBSERVED",
+        "rationale": [
+          "O campo 'total' foi observado na resposta do endpoint.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": [
+          "cst_semantic"
+        ]
+      },
+      "automation": {
+        "readiness": "REVIEW_REQUIRED",
+        "blockers": [
+          "O objetivo afirma tipo number/numérico, mas JSON_PATH_EXISTS só prova presença. Para provar o tipo com a DSL v1 é necessário um SCHEMA assertion cujo schema estrutural modele esse campo como type=number."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "JSON_PATH_EXISTS",
+            "path": "$.meta.total"
+          },
+          {
+            "type": "SCHEMA",
+            "schemaRef": "cst_semantic"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_005",
+      "title": "Verificar a estrutura do array 'data'",
+      "objective": "Assegurar que o array 'data' contém objetos com os campos 'id' e 'name'.",
+      "category": "SCHEMA_CONTRACT",
+      "priority": "MEDIUM",
+      "confidence": "HIGH",
+      "grounding": {
+        "level": "OBSERVED",
+        "rationale": [
+          "A estrutura do array 'data' foi observada na resposta do endpoint.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": [
+          "cst_semantic"
+        ]
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "JSON_PATH_EXISTS",
+            "path": "$.data[0].id"
+          },
+          {
+            "type": "JSON_PATH_EXISTS",
+            "path": "$.data[0].name"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_006",
+      "title": "Verificar o comportamento com limite de resultados",
+      "objective": "Testar a funcionalidade de limite de resultados na consulta.",
+      "category": "DATA_VARIATION",
+      "priority": "MEDIUM",
+      "confidence": "LOW",
+      "grounding": {
+        "level": "ASSUMED",
+        "rationale": [
+          "O comportamento com limite de resultados não foi observado.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "NEEDS_DATA",
+        "blockers": [
+          "Necessário observar a resposta para validar o limite de resultados."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              200
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_007",
+      "title": "Verificar resposta sem autenticação",
+      "objective": "Testar o comportamento do endpoint sem autenticação.",
+      "category": "AUTHORIZATION",
+      "priority": "LOW",
+      "confidence": "LOW",
+      "grounding": {
+        "level": "ASSUMED",
+        "rationale": [
+          "O comportamento sem autenticação não foi observado."
+        ],
+        "evidenceRefs": [],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "REVIEW_REQUIRED",
+        "blockers": [
+          "Necessário revisar o comportamento do endpoint sem autenticação.",
+          "O status HTTP 401 não foi observado nas evidências selecionadas para este endpoint."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "UNAUTHENTICATED",
+          "authProfileRef": null
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              401
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "test_008",
+      "title": "Verificar resposta com autenticação inválida",
+      "objective": "Testar o comportamento do endpoint com autenticação inválida.",
+      "category": "AUTHORIZATION",
+      "priority": "LOW",
+      "confidence": "LOW",
+      "grounding": {
+        "level": "ASSUMED",
+        "rationale": [
+          "O comportamento com autenticação inválida não foi observado.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_semantic"
+        ],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "REVIEW_REQUIRED",
+        "blockers": [
+          "Necessário revisar o comportamento do endpoint com autenticação inválida.",
+          "O status HTTP 403 não foi observado nas evidências selecionadas para este endpoint."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_semantic",
+          "apiServiceKey": "svc_semantic",
+          "method": "GET",
+          "path": "/api/employment-statuses"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_semantic"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {},
+          "body": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              403
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "limit",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "INTEGER",
+              "bindingKey": "QUERY:limit"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "generation": {
+    "mode": "AI",
+    "provider": "synthetic",
+    "model": "fixture",
+    "generatedAt": "2026-09-11T14:58:15.337Z",
+    "contextFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

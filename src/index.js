@@ -1,3 +1,4 @@
+import { postConsoleLearningResolutionAnalyze, postConsoleLearningResolutionApprove, postConsoleLearningResolutionVerify } from './handlers/consoleLearningResolution.js';
 import { getConsoleProjectTestReadiness, getConsoleEndpointTestReadinessScenarios } from './handlers/consoleTestReadiness.js';
 // QAgent Gateway (Cloudflare Worker)
 // Endpoints:
@@ -2124,6 +2125,9 @@ const gatewayRouteHandlers = {
   consoleAutomationResultsList: async (req, env, _ctx, params) => json(await listConsoleAutomationResults(req, env, params), { headers: corsHeaders(req, env) }),
   consoleAutomationResultGet: async (req, env, _ctx, params) => json(await getConsoleAutomationResult(req, env, params), { headers: corsHeaders(req, env) }),
   consoleResultEvolutionInspectionGet: async (req, env, _ctx, params) => json(await getConsoleResultEvolutionInspection(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleLearningResolutionAnalyzePost: async (req, env, _ctx, params) => json(await postConsoleLearningResolutionAnalyze(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'no-store' } }),
+  consoleLearningResolutionApprovePost: async (req, env, _ctx, params) => json(await postConsoleLearningResolutionApprove(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'no-store' } }),
+  consoleLearningResolutionVerifyPost: async (req, env, _ctx, params) => json(await postConsoleLearningResolutionVerify(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'no-store' } }),
   consoleEvolutionProposalPost: async (req, env, _ctx, params) => json(await postConsoleEvolutionProposal(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleEvolutionProposalGet: async (req, env, _ctx, params) => json(await getConsoleEvolutionProposal(req, env, params), { headers: corsHeaders(req, env) }),
   consoleEvolutionApprovePost: async (req, env, _ctx, params) => json(await postConsoleEvolutionApprove(req, env, params), { headers: corsHeaders(req, env) }),
