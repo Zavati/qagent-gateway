@@ -148,7 +148,9 @@
     "test:f08-1-6-fix2-2": "node --test test/learning-confirmation-08.1.6-fix2-2.test.mjs",
     "check:08.1.6-fix2-2": "npm run check:08.1.6-fix2-1 && npm run test:f08-1-6-fix2-2",
     "test:f08-1-6-fix2-3": "node --test test/semantic-readiness-08.1.6-fix2-3.test.mjs",
-    "check:08.1.6-fix2-3": "npm run check:08.1.6-fix2-2 && npm run test:f08-1-6-fix2-3"
+    "check:08.1.6-fix2-3": "npm run check:08.1.6-fix2-2 && npm run test:f08-1-6-fix2-3",
+    "test:f08-1-6-fix2-4": "node --test test/negative-request-08.1.6-fix2-4.test.mjs",
+    "check:08.1.6-fix2-4": "npm run check:08.1.6-fix2-3 && npm run test:f08-1-6-fix2-4"
   },
   "keywords": [],
   "author": "",

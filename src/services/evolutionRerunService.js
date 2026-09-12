@@ -146,6 +146,7 @@ export async function createEvolutionRerunV1({
   environmentId,
   scenarioId,
   idempotencyKey,
+  purpose = null,
   deps = {},
 } = {}) {
   if (!sourceRunId) {
@@ -175,6 +176,7 @@ export async function createEvolutionRerunV1({
       testDesignVersionId,
       environmentId,
       scenarioIds: [scenarioId],
+      ...(purpose==='LEARNING'?{purpose:'LEARNING'}:{}),
       // User confirmation is intentionally not forged. The internal reuse
       // token is what authorizes the previously confirmed discovered target.
       confirmDiscoveredRuntime: false,

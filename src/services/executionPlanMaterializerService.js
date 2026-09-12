@@ -1,5 +1,6 @@
 import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion } from '../coverageAssertions.js';
 import { assessExploratoryLearning, buildExploratoryLearningAdmission } from '../learningScenarioEligibility.js';
+import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { prepareExploratoryLearningData } from './exploratoryLearningData.js';
 import { baselineLearningEligibility, baselineEffectiveResponse } from '../baselineContract.js';
 import { materializeObservedBaselineRequests, verifyObservedBaselineSchemas } from './observedBaselineRuntime.js';
@@ -600,7 +601,8 @@ export async function materializeExecutionPlanV1({
   let selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId, purpose, baselineNow);
   // LEARNING performs a private preparation, not a version/readiness mutation.
   // Reuse these settings below; no parallel resolver or observed-values store.
-  const prepareConfirmed = s => purpose === 'LEARNING' || ['HYPOTHESIS_CONFIRMATION','ASSERTION_COVERAGE_EXTENSION'].includes(s.learning?.kind);
+  for(const scenario of selectedScenarios){const gate=negativePreparationGate(scenario);if(!gate.allowed)runError('O cenário não representa a condição negativa pretendida.',gate.reason,409,{scenarioId:scenario.scenarioId});}
+  const prepareConfirmed = s => purpose === 'LEARNING' || Boolean(s.spec?.negativeStrategy) || ['HYPOTHESIS_CONFIRMATION','ASSERTION_COVERAGE_EXTENSION','NEGATIVE_REQUEST_REPAIR'].includes(s.learning?.kind);
   const learningConfiguredBindings = selectedScenarios.some(prepareConfirmed) && selectedScenarios.some(s => s.generationClass !== 'OBSERVED_BASELINE' &&
     ((s.spec?.testData?.bindings || []).length || /\{[^}]+\}/.test(s.spec?.target?.path || '')))
     ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId) : null;

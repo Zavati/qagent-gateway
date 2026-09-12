@@ -1,0 +1,590 @@
+{
+  "contractVersion": "qagent.test-design.v1",
+  "specificationVersion": "qagent.test-spec.v1",
+  "source": {
+    "type": "CATALOG_ENDPOINT",
+    "organizationId": "org_negative",
+    "projectId": "prj_negative",
+    "endpointId": "cep_negative"
+  },
+  "title": "Cenários de Teste para API de Campos Personalizados de Funcionários",
+  "objective": "Validar o comportamento do endpoint que retorna campos personalizados de funcionários, garantindo que as respostas estejam de acordo com o contrato e que a autenticação seja tratada corretamente.",
+  "assumptions": [],
+  "summary": {
+    "scenarioCount": 7,
+    "readyCount": 3,
+    "byCategory": {
+      "HAPPY_PATH": 2,
+      "NEGATIVE": 3,
+      "AUTHORIZATION": 1,
+      "STATUS_BEHAVIOR": 1
+    },
+    "byReadiness": {
+      "READY": 3,
+      "NEEDS_DATA": 3,
+      "REVIEW_REQUIRED": 1
+    },
+    "byGrounding": {
+      "INFERRED": 6,
+      "ASSUMED": 1
+    }
+  },
+  "scenarios": [
+    {
+      "scenarioId": "get_custom_fields_valid_employee",
+      "title": "Obter campos personalizados de um funcionário válido",
+      "objective": "Verificar se o endpoint retorna os campos personalizados corretamente para um funcionário existente.",
+      "category": "HAPPY_PATH",
+      "priority": "HIGH",
+      "confidence": "MEDIUM",
+      "grounding": {
+        "level": "INFERRED",
+        "rationale": [
+          "O endpoint foi observado retornando dados válidos para um funcionário existente.",
+          "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_fixture"
+        ],
+        "schemaRefs": [
+          "cst_fixture"
+        ]
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_negative"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              200
+            ]
+          },
+          {
+            "type": "SCHEMA",
+            "schemaRef": "cst_fixture"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "PATH_PARAM",
+              "selector": "id",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "PATH_PARAM:id@6:0"
+            },
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "get_custom_fields_invalid_employee",
+      "title": "Tentar obter campos personalizados de um funcionário inválido",
+      "objective": "Verificar se o endpoint retorna um erro ao solicitar campos personalizados de um funcionário que não existe.",
+      "category": "NEGATIVE",
+      "priority": "HIGH",
+      "confidence": "MEDIUM",
+      "grounding": {
+        "level": "INFERRED",
+        "rationale": [
+          "Esperado erro 404 para funcionário não existente.",
+          "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_fixture"
+        ],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "NEEDS_DATA",
+        "blockers": [
+          "O status HTTP 404 não foi observado nas evidências selecionadas para este endpoint. O cenário será executado em modo LEARNING para capturar comportamento real antes de promover novas expectativas.",
+          "O status HTTP 404 não foi observado nas evidências selecionadas para este endpoint.",
+          "Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_negative"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              404
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "get_custom_fields_no_auth",
+      "title": "Tentar obter campos personalizados sem autenticação",
+      "objective": "Verificar se o endpoint nega acesso quando não autenticado.",
+      "category": "AUTHORIZATION",
+      "priority": "HIGH",
+      "confidence": "LOW",
+      "grounding": {
+        "level": "ASSUMED",
+        "rationale": [
+          "A autenticação é necessária, mas não foi testada sem credenciais.",
+          "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime."
+        ],
+        "evidenceRefs": [],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "REVIEW_REQUIRED",
+        "blockers": [
+          "O status HTTP 401 não foi observado nas evidências selecionadas para este endpoint.",
+          "Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "UNAUTHENTICATED",
+          "authProfileRef": null
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              401
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "get_custom_fields_with_query_param",
+      "title": "Obter campos personalizados com parâmetro de consulta",
+      "objective": "Verificar se o endpoint aceita parâmetros de consulta e retorna os dados corretos.",
+      "category": "HAPPY_PATH",
+      "priority": "MEDIUM",
+      "confidence": "MEDIUM",
+      "grounding": {
+        "level": "INFERRED",
+        "rationale": [
+          "O endpoint foi observado retornando dados com parâmetros de consulta.",
+          "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_fixture"
+        ],
+        "schemaRefs": [
+          "cst_fixture"
+        ]
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_negative"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              200
+            ]
+          },
+          {
+            "type": "SCHEMA",
+            "schemaRef": "cst_fixture"
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "PATH_PARAM",
+              "selector": "id",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "PATH_PARAM:id@6:0"
+            },
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "get_custom_fields_missing_id",
+      "title": "Tentar obter campos personalizados sem ID",
+      "objective": "Verificar se o endpoint retorna um erro ao não fornecer um ID.",
+      "category": "NEGATIVE",
+      "priority": "MEDIUM",
+      "confidence": "MEDIUM",
+      "grounding": {
+        "level": "INFERRED",
+        "rationale": [
+          "Esperado erro 400 para solicitação malformada.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_fixture"
+        ],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "NEEDS_DATA",
+        "blockers": [
+          "O status HTTP 400 não foi observado nas evidências selecionadas para este endpoint. O cenário será executado em modo LEARNING para capturar comportamento real antes de promover novas expectativas.",
+          "O status HTTP 400 não foi observado nas evidências selecionadas para este endpoint.",
+          "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_negative"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              400
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "get_custom_fields_invalid_query_param",
+      "title": "Tentar obter campos personalizados com parâmetro de consulta inválido",
+      "objective": "Verificar se o endpoint retorna um erro ao fornecer um parâmetro de consulta inválido.",
+      "category": "NEGATIVE",
+      "priority": "MEDIUM",
+      "confidence": "MEDIUM",
+      "grounding": {
+        "level": "INFERRED",
+        "rationale": [
+          "Esperado erro 400 para parâmetros de consulta inválidos.",
+          "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_fixture"
+        ],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "NEEDS_DATA",
+        "blockers": [
+          "O status HTTP 400 não foi observado nas evidências selecionadas para este endpoint. O cenário será executado em modo LEARNING para capturar comportamento real antes de promover novas expectativas.",
+          "O status HTTP 400 não foi observado nas evidências selecionadas para este endpoint.",
+          "Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "Test Data: configure FIXED para PATH_PARAM id no escopo apropriado."
+        ],
+        "evolutionState": "BLOCKED"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_negative"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              400
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenarioId": "get_custom_fields_response_content_type",
+      "title": "Verificar o tipo de conteúdo da resposta",
+      "objective": "Assegurar que o tipo de conteúdo da resposta é 'application/json'.",
+      "category": "STATUS_BEHAVIOR",
+      "priority": "HIGH",
+      "confidence": "MEDIUM",
+      "grounding": {
+        "level": "INFERRED",
+        "rationale": [
+          "O tipo de conteúdo foi observado como 'application/json'.",
+          "QAgent Guard: Valores de path params precisam ser fornecidos por massa de teste/runtime.",
+          "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+        ],
+        "evidenceRefs": [
+          "cev_fixture"
+        ],
+        "schemaRefs": []
+      },
+      "automation": {
+        "readiness": "READY",
+        "blockers": [],
+        "evolutionState": "STABLE"
+      },
+      "preconditions": [],
+      "spec": {
+        "dslVersion": "qagent.api-test-dsl.v1",
+        "type": "api",
+        "target": {
+          "catalogEndpointId": "cep_negative",
+          "apiServiceKey": "svc_negative",
+          "method": "GET",
+          "path": "/web/index.php/api/v2/pim/employees/{id}/custom-fields"
+        },
+        "auth": {
+          "requirement": "REQUIRED",
+          "authProfileRef": "authp_negative"
+        },
+        "request": {
+          "pathParams": {},
+          "query": {},
+          "headers": {}
+        },
+        "assertions": [
+          {
+            "type": "STATUS",
+            "expectedStatusCodes": [
+              200
+            ]
+          },
+          {
+            "type": "HEADER_EXISTS",
+            "name": "Content-Type"
+          },
+          {
+            "type": "CONTENT_TYPE",
+            "expected": [
+              "application/json"
+            ]
+          }
+        ],
+        "extract": [],
+        "testData": {
+          "contractVersion": "qagent.test-data-bindings.v1",
+          "bindings": [
+            {
+              "target": "PATH_PARAM",
+              "selector": "id",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "PATH_PARAM:id@6:0"
+            },
+            {
+              "target": "QUERY",
+              "selector": "screen",
+              "source": "OBSERVED",
+              "provenance": {
+                "origin": "OBSERVED"
+              },
+              "valueType": "STRING",
+              "bindingKey": "QUERY:screen"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "generation": {
+    "mode": "AI",
+    "provider": "fixture",
+    "model": "synthetic",
+    "generatedAt": "2026-09-11T14:59:58.369Z",
+    "contextFingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

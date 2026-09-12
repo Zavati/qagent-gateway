@@ -1,4 +1,5 @@
 /** Reuse the existing Test Data resolver for learning. Never append a Test Design here. */
+import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { pathPlaceholderDescriptors } from '../intelligence/testDataPlanner.js';
 import { assessExploratoryLearning } from '../learningScenarioEligibility.js';
 import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
@@ -29,6 +30,11 @@ export function prepareExploratoryLearningData(scenario, configuredBindings = []
   if (!assessment.allowed) fail(assessment.reason, scenario.scenarioId);
   const out = structuredClone(scenario), spec = out.spec;
   const configured = new Map(configuredBindings.map(b => [key(b), b]));
+  const negative=negativePreparationGate(out);
+  if(!negative.allowed)fail(negative.reason,out.scenarioId);
+  const strategy=negative.strategy;
+  // Explicit settings are never silently bypassed by an approved experiment.
+  if(strategy&&configured.has(`${strategy.target}:${strategy.selector}`))fail('NEGATIVE_REQUEST_EXPLICIT_CONFIGURATION_CONFLICT',out.scenarioId,strategy.selector);
   const bindings = spec.testData?.bindings || [];
   const fromConfig = (b) => {
     if (b.sourceType !== 'FIXED' && b.sourceType !== 'SECRET') fail('LEARNING_PATH_CONFIGURATION_UNSUPPORTED',out.scenarioId,b.selector);
@@ -49,6 +55,7 @@ export function prepareExploratoryLearningData(scenario, configuredBindings = []
     }
   }
   for (const descriptor of pathPlaceholderDescriptors(spec.target.path)) {
+    if(strategy?.operation==='OMIT_PATH_SEGMENT'&&strategy.segmentIndex===descriptor.segmentIndex&&strategy.selector===descriptor.selector)continue;
     if (has(spec.request?.pathParams,descriptor.selector)) continue;
     if (bindings.some(b => b.target==='PATH_PARAM' && b.selector===descriptor.selector &&
         (b.source!=='OBSERVED' || b.bindingKey===descriptor.bindingKey))) continue;

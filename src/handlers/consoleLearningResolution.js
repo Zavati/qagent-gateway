@@ -1,3 +1,4 @@
+import { NEGATIVE_REPAIR_CHANGE, validateNegativeStrategy, negativeEffectivePath, negativePreparationGate } from '../negativeRequestStrategy.js';
 import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion, validateCoverageEvaluation, assertionCoverageGaps } from '../coverageAssertions.js';
 import { assessExploratoryLearning, learningBlockerCodes, learningReadinessDiagnostics } from '../learningScenarioEligibility.js';
 import { prepareExploratoryLearningData, learningDataSummary } from '../services/exploratoryLearningData.js';
@@ -32,6 +33,10 @@ function safeDiff(diff){
   if(!plain(diff))return null;
   const project=(x)=>Object.fromEntries(Object.entries(x||{}).filter(([k,v])=>['path','type','format','fromType','toType','fromFormat','toFormat'].includes(k)&&typeof v==='string'&&v.length<=300));
   return {added:(diff.added||[]).slice(0,40).map(project),changed:(diff.changed||[]).slice(0,40).map(project),removed:(diff.removed||[]).slice(0,40).map(project),truncated:diff.truncated===true||(diff.added?.length||0)>40||(diff.changed?.length||0)>40};
+}
+function safeNegativeRepair(c){
+ const p=c.proposed?.repairProof,s=validateNegativeStrategy(p?.strategy);
+ return {operation:s.operation,target:s.target,selector:s.selector,sourcePath:s.sourcePath,effectivePath:negativeEffectivePath(s.sourcePath,s),...(s.operation==='QUERY_VALUE_PROBE'?{probeValue:s.probeValue}:{}),basis:s.basis,invalidityProven:false,assertionsUnchanged:true,readinessAfter:'REVIEW_REQUIRED',requiresVerification:true,addedBindings:(p.addedBindings||[]).map(b=>({target:b.target,selector:b.selector,source:b.source})),warning:s.operation==='OMIT_PATH_SEGMENT'?'Variante de rota revisada: remover o segmento não garante que a mesma rota lógica será atendida. O status continua hipótese.':'Valor de sondagem diferente do usado na execução fonte. Não é comprovadamente inválido; 2xx não autoriza aprender sucesso como rejeição.'};
 }
 function safeExtension(c){
   const proof=c.proposed?.coverageProof;
@@ -72,8 +77,9 @@ function safeProposal(p){
       learningMode:c.proposed?.learningMode||null,requiresHumanApproval:c.proposed?.requiresHumanApproval===true,
       // Deliberately no inferred literal/request values in this triage projection.
       confirmation:c.changeType==='SCENARIO_READINESS_CONFIRMATION'?{readinessBefore:c.current?.readiness,readinessAfter:'READY',assertionsUnchanged:true,assertionCount:c.observed?.assertionCount,actualStatusCode:c.observed?.actualStatusCode,completedAt:c.observed?.completedAt,environmentId:c.proposed?.confirmationProof?.environmentId,addedBindings:(c.proposed?.confirmationProof?.addedBindings||[]).map(b=>({target:b.target,selector:b.selector,source:b.source,bindingKey:b.bindingKey})),resolvedBlockers:codes(c.proposed?.confirmationProof?.resolvedBlockers)}:null,
+      repair:c.changeType===NEGATIVE_REPAIR_CHANGE?safeNegativeRepair(c):null,
       extension:c.changeType==='ASSERTION_COVERAGE_EXTENSION'?safeExtension(c):null,
-      summary:c.changeType==='ASSERTION_COVERAGE_EXTENSION'?'Acrescentar verificações sustentadas pela execução, preservando as assertions existentes. Verificar a nova versão antes de concluir a aprendizagem.':c.changeType==='SCENARIO_READINESS_CONFIRMATION'?'Confirmar as expectativas atendidas e incorporar o cenário à regressão, sem alterar assertions.':c.proposed?.learningMode==='ENRICHMENT'?'Completar estrutura desconhecida preservando regras conhecidas.':`Revisar alteração ${c.changeType}.`,
+      summary:c.changeType===NEGATIVE_REPAIR_CHANGE?'Reparar a construção do experimento negativo, preservando as assertions e a autenticação. A aprovação não comprova a rejeição.':c.changeType==='ASSERTION_COVERAGE_EXTENSION'?'Acrescentar verificações sustentadas pela execução, preservando as assertions existentes. Verificar a nova versão antes de concluir a aprendizagem.':c.changeType==='SCENARIO_READINESS_CONFIRMATION'?'Confirmar as expectativas atendidas e incorporar o cenário à regressão, sem alterar assertions.':c.proposed?.learningMode==='ENRICHMENT'?'Completar estrutura desconhecida preservando regras conhecidas.':`Revisar alteração ${c.changeType}.`,
       knownRulesPreserved:c.proposed?.learningMode==='ENRICHMENT'?c.proposed?.knownRulesPreserved===true:null,structuralDiff:safeDiff(c.observed?.diff),currentSchemaRef:c.current?.schemaRef||null,proposedSchemaHash:c.proposed?.schemaHash||null,
       currentStatusCodes:Array.isArray(c.current?.expectedStatusCodes)?c.current.expectedStatusCodes:[],proposedStatusCodes:Array.isArray(c.proposed?.expectedStatusCodes)?c.proposed.expectedStatusCodes:[]})),
     assessment:p.assessment?{classification:p.assessment.classification,decision:p.assessment.decision,confidence:p.assessment.confidence,reasonCodes:codes(p.assessment.reasonCodes),autoAction:p.assessment.autoAction}:null,
@@ -104,7 +110,7 @@ export async function postConsoleLearningResolutionAnalyze(req,env,{projectId},d
       if(!scenario)fail('LEARNING_SCENARIO_NOT_FOUND',404);
       let candidate=learningCandidate(scenario,input.environmentId);
       const inheritedId=scenario.baseline?.enrichment?.proposalId||scenario.learning?.proposalId;
-      if(inheritedId){const p=await(deps.getProposal||getEvolutionProposal)({...common,proposalId:inheritedId});items.push({...base,status:'APPLIED',proposal:safeProposal(p),learning:{allowed:false,reason:'LEARNING_ALREADY_APPLIED',requiresRuntimePreflight:true}});continue;}
+      if(inheritedId&&scenario.learning?.kind!==NEGATIVE_REPAIR_CHANGE){const p=await(deps.getProposal||getEvolutionProposal)({...common,proposalId:inheritedId});items.push({...base,status:'APPLIED',proposal:safeProposal(p),learning:{allowed:false,reason:'LEARNING_ALREADY_APPLIED',requiresRuntimePreflight:true}});continue;}
       const list=await memo(lists,target.endpointId,()=> (deps.listResults||listResultsProjectResultSets)({...common,endpointId:target.endpointId,environmentId:input.environmentId,limit:5}));
       let proposal=null,lastReason=null,examined=0,noChangeEvidence=null;
       for(const ref of (list.items||[]).filter(x=>x.endpointId===target.endpointId&&x.environmentId===input.environmentId&&x.testDesignVersionId===target.testDesignVersionId)){
@@ -121,7 +127,7 @@ export async function postConsoleLearningResolutionAnalyze(req,env,{projectId},d
           }
           continue;
         }
-        if(examined>1&&match.changes?.some(c=>['SCENARIO_READINESS_CONFIRMATION','ASSERTION_COVERAGE_EXTENSION'].includes(c.changeType))){lastReason='LEARNING_CONFIRMATION_NEWER_EVIDENCE_PRESENT';continue;}
+        if(examined>1&&match.changes?.some(c=>['SCENARIO_READINESS_CONFIRMATION','ASSERTION_COVERAGE_EXTENSION',NEGATIVE_REPAIR_CHANGE].includes(c.changeType))){lastReason='LEARNING_CONFIRMATION_NEWER_EVIDENCE_PRESENT';continue;}
         proposal=await(deps.createProposal||createEvolutionProposal)({...common,input:{resultSetId:ref.resultSetId,scenarioResultId:found.scenarioResultId}});
         if(['REJECTED','STALE'].includes(proposal.status)){lastReason=`EVOLUTION_PROPOSAL_${proposal.status}`;proposal=null;continue;}
         if(proposal.status==='PENDING_REVIEW'){
@@ -149,8 +155,15 @@ export async function postConsoleLearningResolutionAnalyze(req,env,{projectId},d
           candidate={...candidate,allowed:false,reason:code(error),blockers:[code(error)],dataResolution:{status:'UNRESOLVED',noValuesExposed:true}};
         }
       }
+      if(proposal?.changes?.some(c=>c.changeType===NEGATIVE_REPAIR_CHANGE)){
+        const settings=await(deps.resolveTestDataBindings||resolveEndpointTestDataBindingsForRun)(env,common.organizationId,projectId,target.endpointId,input.environmentId);
+        for(const change of proposal.changes.filter(c=>c.changeType===NEGATIVE_REPAIR_CHANGE)){
+          const strategy=validateNegativeStrategy(change.proposed?.repairProof?.strategy);
+          if(settings.some(b=>b.target===strategy.target&&b.selector===strategy.selector))fail('NEGATIVE_REQUEST_EXPLICIT_CONFIGURATION_CONFLICT',409);
+        }
+      }
       items.push({...base,status:proposal?'PROPOSAL_AVAILABLE':noChangeEvidence?'NO_CHANGE_REQUIRED':candidate.allowed?'LEARNING_AVAILABLE':'BLOCKED',proposal:safeProposal(proposal),
-        reason:proposal?(proposal.changes?.some(c=>c.changeType==='SCENARIO_READINESS_CONFIRMATION')?'LEARNING_HYPOTHESIS_CONFIRMED':proposal.changes?.some(c=>c.changeType==='ASSERTION_COVERAGE_EXTENSION')?'LEARNING_ASSERTION_EXTENSION_AVAILABLE':null):noChangeEvidence?'LEARNING_READY_EXECUTION_PASSED':(!candidate.allowed?candidate.reason:(lastReason||candidate.reason))||'NO_COMPATIBLE_EXECUTION_EVIDENCE',examinedResultCount:examined,
+        reason:proposal?(proposal.changes?.some(c=>c.changeType===NEGATIVE_REPAIR_CHANGE)?'NEGATIVE_REQUEST_REPAIR_AVAILABLE':proposal.changes?.some(c=>c.changeType==='SCENARIO_READINESS_CONFIRMATION')?'LEARNING_HYPOTHESIS_CONFIRMED':proposal.changes?.some(c=>c.changeType==='ASSERTION_COVERAGE_EXTENSION')?'LEARNING_ASSERTION_EXTENSION_AVAILABLE':null):noChangeEvidence?'LEARNING_READY_EXECUTION_PASSED':(!candidate.allowed?candidate.reason:(lastReason||candidate.reason))||'NO_COMPATIBLE_EXECUTION_EVIDENCE',examinedResultCount:examined,
         search:{maxRecentResultSets:5,hasMore:list.page?.hasMore===true||list.hasMore===true},
         learning:{...candidate,allowed:proposal||noChangeEvidence?false:candidate.allowed,requiresRuntimePreflight:true},blockers:candidate.blockers || learningBlockerCodes(scenario),knowledgeWarnings:candidate.knowledgeWarnings || [],semanticDiagnostics:learningReadinessDiagnostics(scenario),evidence:noChangeEvidence});
     }catch(error){items.push({...base,status:'ERROR',errorCode:code(error),learning:{allowed:false,requiresRuntimePreflight:true},proposal:null});}
@@ -185,7 +198,7 @@ export async function postConsoleLearningResolutionVerify(req,env,{projectId},de
     const detail=await(deps.getResult||getResultsProjectResultSet)({...common,resultSetId:p.source.resultSetId}),rs=detail.resultSet,s=detail.scenarios?.find(x=>x.scenarioResultId===p.source.scenarioResultId);
     if(!rs||rs.organizationId!==common.organizationId||rs.projectId!==projectId||rs.endpointId!==p.source.endpointId||rs.testDesignVersionId!==p.source.testDesignVersionId||s?.scenarioId!==p.source.scenarioId)fail('LEARNING_RESULT_SCOPE_MISMATCH',502);
     if(!SAFE.has(s?.http?.method))fail('LEARNING_MUTATION_VERIFICATION_REQUIRES_EXISTING_POLICY',409);
-    const created=await(deps.createRerun||createEvolutionRerunV1)({...common,sourceRunId:rs.runId,testDesignVersionId:p.result.testDesignVersionId,environmentId:rs.environmentId,scenarioId:p.source.scenarioId,idempotencyKey:`test-evolution-rerun:${proposalId}:${p.result.testDesignVersionId}`});
+    const created=await(deps.createRerun||createEvolutionRerunV1)({...common,sourceRunId:rs.runId,testDesignVersionId:p.result.testDesignVersionId,environmentId:rs.environmentId,scenarioId:p.source.scenarioId,...(p.changes.some(c=>c.changeType===NEGATIVE_REPAIR_CHANGE)||s?.evidence?.request?.negativeRequest?{purpose:'LEARNING'}:{}),idempotencyKey:`test-evolution-rerun:${proposalId}:${p.result.testDesignVersionId}`});
     items.push({proposalId,status:'CREATED',runId:created.run?.runId,runStatus:created.run?.status,testDesignVersionId:p.result.testDesignVersionId});
   }catch(error){items.push({proposalId,status:'ERROR',errorCode:code(error)});}
   return {status:'ok',data:{contractVersion:VERSION,projectId,operation:'VERIFY',items}};

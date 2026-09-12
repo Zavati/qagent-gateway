@@ -2,6 +2,7 @@
  * Pure, shared with Runner. No credential access, execution, or readiness mutation.
  * Unknown review reasons fail closed. Never use model text as authorization.
  */
+import { negativePreparationGate } from './negativeRequestStrategy.js';
 import { assertionCoverageGaps, assertionCoverageRequirements } from './coverageAssertions.js';
 export const EXPLORATORY_LEARNING_ADMISSION = 'qagent.exploratory-learning-admission.v1';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -53,6 +54,8 @@ export function assessExploratoryLearning(scenario) {
   // An unauthenticated probe must stay unauthenticated, not borrow login/cookies.
   if (spec.auth?.requirement === 'UNAUTHENTICATED' && spec.auth.authProfileRef) return deny('LEARNING_AUTH_INTENT_CONFLICT');
   if (blockers.includes('LEARNING_AUTH_STRATEGY_NOT_MODELED')) return deny('LEARNING_AUTH_STRATEGY_NOT_MODELED');
+  const negative = negativePreparationGate(scenario);
+  if (!negative.allowed) return deny(negative.reason);
   const condition = blockers.find(x => CONDITIONAL.has(x));
   if (condition) return deny(condition);
   if (blockers.some(x => !DEFERRED.has(x))) return deny('LEARNING_REVIEW_REASON_UNCLASSIFIED');
@@ -91,7 +94,9 @@ export function learningReadinessDiagnostics(scenario) {
  const assessment=assessExploratoryLearning(scenario);
  const codes=learningBlockerCodes(scenario);
  const gaps=assertionCoverageGaps(scenario);
+ const negative=negativePreparationGate(scenario);
  const items=codes.map(code=>({code,kind:DEFERRED.has(code)?(code==='LEARNING_PATH_DATA_TO_RESOLVE'?'DATA_DEPENDENCY':code==='LEARNING_ASSERTION_COVERAGE_GAP'?'ASSERTION_COVERAGE':'EXPECTATION_KNOWLEDGE'):code==='LEARNING_AUTH_STRATEGY_NOT_MODELED'?'AUTH_STRATEGY':'OPERATIONAL_BLOCKER'}));
+ if(negative.required)items.push({code:negative.allowed?'NEGATIVE_REQUEST_STRATEGY_MODELED':negative.reason,kind:'NEGATIVE_CONDITION',invalidityProven:false});
  for(const gap of gaps)items.push({code:gap.kind==='PAGINATION_BOUND'?'LEARNING_PAGINATION_ASSERTION_REQUIRED':'LEARNING_TYPE_ASSERTION_REVIEW',...gap,coverageKind:gap.kind,kind:'ASSERTION_COVERAGE'});
  return {contractVersion:'qagent.semantic-readiness-diagnostics.v1',basis:'SYSTEM_DSL_AND_LEGACY_REASON_ANALYSIS',currentReadiness:scenario?.automation?.readiness||null,canInvestigate:assessment.allowed,issues:items.slice(0,30),coverageLimited:gaps.length>0};
 }

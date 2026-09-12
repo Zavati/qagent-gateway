@@ -1,3 +1,4 @@
+import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { learningReadinessDiagnostics } from '../learningScenarioEligibility.js';
 import { validateObservedBaseline, observedBaselineReady, validateObservedBaselineScenario } from '../baselineContract.js';
 import { discoveredRuntimeServiceKey, normalizeObservedOrigin } from './discoveredRuntime.js';
@@ -1634,7 +1635,15 @@ export function buildTestSpecificationV1({ context, modelOutput, generation, tes
     };
   });
 
-  for(const s of scenarios)s.automation.diagnostics=learningReadinessDiagnostics(s);
+  for (const s of scenarios) {
+    const gate = negativePreparationGate(s);
+    if (!gate.allowed) {
+      if (!['NEEDS_AUTH', 'NEEDS_ENVIRONMENT'].includes(s.automation.readiness)) s.automation.readiness = 'NEEDS_DATA';
+      s.automation.evolutionState = 'BLOCKED';
+      s.automation.blockers = [...new Set([...s.automation.blockers, gate.reason])];
+    }
+    s.automation.diagnostics = learningReadinessDiagnostics(s);
+  }
   return {
     contractVersion: TEST_DESIGN_CONTRACT_VERSION,
     specificationVersion: TEST_SPECIFICATION_VERSION,
