@@ -43,15 +43,23 @@ export function prepareExploratoryLearningData(scenario, configuredBindings = []
     if (isSensitiveTestDataSelector(b.target,b.selector) && b.sourceType !== 'SECRET') fail('RUN_TEST_DATA_SECRET_SOURCE_REQUIRED',out.scenarioId,b.selector);
     return {target:b.target,selector:b.selector,source:b.sourceType,valueType:b.valueType,bindingKey:key(b),provenance:{origin:b.origin || 'LEGACY_UNKNOWN'}};
   };
-  // Explicit configuration takes priority over an OBSERVED fallback. It is not rewritten.
+  // Scenario-first precedence: a USER_DEFINED policy in this scenario wins over shared config.
+  // Planner-created OBSERVED policies remain eligible for the historical shared override behavior.
   for (let i=0; i<bindings.length; i++) {
     const binding=bindings[i], c=configured.get(key(binding));
-    if (binding.source === 'OBSERVED' && c) bindings[i]=fromConfig(c);
-    else if (binding.source === 'FIXED' || binding.source === 'SECRET') {
+    const scenarioOverride=String(binding?.provenance?.origin||'').toUpperCase()==='USER_DEFINED';
+    if (binding.source === 'OBSERVED' && c && !scenarioOverride) bindings[i]=fromConfig(c);
+    else if (binding.source === 'FIXED') {
+      if (Object.prototype.hasOwnProperty.call(binding,'fixedValue')) continue;
       if (!c) fail('RUN_TEST_DATA_BINDING_MISSING',out.scenarioId,binding.selector);
-      if (c.sourceType !== binding.source) fail('RUN_TEST_DATA_BINDING_SOURCE_MISMATCH',out.scenarioId,binding.selector);
-      if (binding.source === 'FIXED' && !fixedUsable(c)) fail('RUN_TEST_DATA_FIXED_INVALID',out.scenarioId,binding.selector);
-      if (binding.source === 'SECRET' && !c.secretId) fail('RUN_TEST_DATA_SECRET_NOT_CONFIGURED',out.scenarioId,binding.selector);
+      if (binding.sharedBindingId && c.bindingId !== binding.sharedBindingId) fail('RUN_TEST_DATA_SHARED_BINDING_MISMATCH',out.scenarioId,binding.selector);
+      if (c.sourceType !== 'FIXED') fail('RUN_TEST_DATA_BINDING_SOURCE_MISMATCH',out.scenarioId,binding.selector);
+      if (!fixedUsable(c)) fail('RUN_TEST_DATA_FIXED_INVALID',out.scenarioId,binding.selector);
+    } else if (binding.source === 'SECRET') {
+      if (!c) fail('RUN_TEST_DATA_BINDING_MISSING',out.scenarioId,binding.selector);
+      if (binding.sharedBindingId && c.bindingId !== binding.sharedBindingId) fail('RUN_TEST_DATA_SHARED_BINDING_MISMATCH',out.scenarioId,binding.selector);
+      if (c.sourceType !== 'SECRET') fail('RUN_TEST_DATA_BINDING_SOURCE_MISMATCH',out.scenarioId,binding.selector);
+      if (!c.secretId) fail('RUN_TEST_DATA_SECRET_NOT_CONFIGURED',out.scenarioId,binding.selector);
     }
   }
   for (const descriptor of pathPlaceholderDescriptors(spec.target.path)) {

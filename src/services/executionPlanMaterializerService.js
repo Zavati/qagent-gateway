@@ -648,7 +648,11 @@ export async function materializeExecutionPlanV1({
       };
 
   const requiresConfiguredTestData = selectedScenarios.some((scenario) =>
-    (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'FIXED' || binding?.source === 'SECRET')
+    (scenario?.spec?.testData?.bindings || []).some((binding) =>
+      binding?.source === 'SECRET'
+      || (binding?.source === 'FIXED' && !Object.prototype.hasOwnProperty.call(binding, 'fixedValue'))
+      || Boolean(binding?.sharedBindingId)
+    )
   );
   const hasObservedBaselines = selectedScenarios.some(s=>s.generationClass==='OBSERVED_BASELINE');
   const configuredTestDataBindings = learningConfiguredBindings ?? ((requiresConfiguredTestData || hasObservedBaselines)
@@ -657,12 +661,21 @@ export async function materializeExecutionPlanV1({
   const baselineRequests = hasObservedBaselines ? await materializeObservedBaselineRequests({env,organizationId,projectId,endpointId:artifact.endpointId,environmentId,scenarios:selectedScenarios,
     configuredBindings:configuredTestDataBindings,loadSource:loadBaselineSource,now:baselineNow,purpose}) : new Map();
   const configuredByKey = new Map(configuredTestDataBindings.map((item) => [`${item.target}:${item.selector}`, item]));
+  const configuredById = new Map(configuredTestDataBindings.map((item) => [item.bindingId, item]));
   const frozenFixed = {};
   const frozenSecrets = {};
   const referencedTestDataKeys = new Set();
   for (const scenario of selectedScenarios) {
     for (const binding of scenario?.spec?.testData?.bindings || []) {
-      if (binding?.source === 'GENERATED') continue;
+      if (binding?.source === 'GENERATED') {
+        if (binding?.sharedBindingId) {
+          const configured = configuredById.get(binding.sharedBindingId);
+          if (!configured || configured.sourceType !== 'GENERATED' || configured.target !== binding.target || configured.selector !== binding.selector) {
+            runError('Shared GENERATED Test Data binding is unavailable or changed.', 'RUN_TEST_DATA_SHARED_BINDING_MISMATCH', 409, { scenarioId: scenario?.scenarioId || null, sharedBindingId: binding.sharedBindingId });
+          }
+        }
+        continue;
+      }
       const bindingKey = String(binding?.bindingKey || `${binding?.target}:${binding?.selector}`).trim();
       referencedTestDataKeys.add(bindingKey);
 
@@ -725,13 +738,24 @@ export async function materializeExecutionPlanV1({
         continue;
       }
 
-      const configured = configuredByKey.get(bindingKey);
-      if (!configured) {
+      if (binding.source === 'FIXED' && Object.prototype.hasOwnProperty.call(binding, 'fixedValue')) {
+        frozenFixed[bindingKey] = {
+          bindingId: null, scopeType: 'SCENARIO', target: binding.target, selector: binding.selector,
+          valueType: binding.valueType, value: clone(binding.fixedValue),
+        };
+        continue;
+      }
+      const configured = binding?.sharedBindingId ? configuredById.get(binding.sharedBindingId) : configuredByKey.get(bindingKey);
+      if (!configured || configured.target !== binding.target || configured.selector !== binding.selector) {
         runError('Test Data binding requerido não está configurado no Environment selecionado.', 'RUN_TEST_DATA_BINDING_MISSING', 409, {
           scenarioId: scenario?.scenarioId || null,
           bindingKey,
+          sharedBindingId: binding?.sharedBindingId || null,
           source: binding?.source || null,
         });
+      }
+      if (binding?.sharedBindingId && configured.bindingId !== binding.sharedBindingId) {
+        runError('Shared Test Data binding changed or is no longer effective.', 'RUN_TEST_DATA_SHARED_BINDING_MISMATCH', 409, { scenarioId: scenario?.scenarioId || null, sharedBindingId: binding.sharedBindingId });
       }
       if (configured.sourceType !== binding.source) {
         runError('Test Data binding possui source divergente do Test Design.', 'RUN_TEST_DATA_BINDING_SOURCE_MISMATCH', 409, {
@@ -840,6 +864,14 @@ export async function materializeExecutionPlanV1({
       spec?.target?.path;
 
     for (const binding of spec?.testData?.bindings || []) {
+      if (binding?.source === 'GENERATED' && binding?.sharedBindingId) {
+        const configured = configuredById.get(binding.sharedBindingId);
+        if (!configured || configured.sourceType !== 'GENERATED' || configured.target !== binding.target || configured.selector !== binding.selector) {
+          runError('Shared GENERATED Test Data binding is unavailable or changed.', 'RUN_TEST_DATA_SHARED_BINDING_MISMATCH', 409, { scenarioId: scenario?.scenarioId || null, sharedBindingId: binding.sharedBindingId });
+        }
+        binding.generator = { kind: configured.generatorKind || 'AUTO', config: clone(configured.generatorConfig || {}) };
+      }
+      if (binding?.source === 'FIXED' && Object.prototype.hasOwnProperty.call(binding, 'fixedValue')) delete binding.fixedValue;
       if (binding?.source !== 'OBSERVED') continue;
 
       const key =

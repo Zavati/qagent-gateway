@@ -207,6 +207,12 @@ export function resolveGatewayRoute(method, pathname) {
       }
     }
 
+    // Scenario-first request management. Save creates a new immutable Test Design version; it never executes.
+    // /v1/console/projects/:projectId/intelligence/endpoints/:endpointId/test-design/scenario-request
+    if (segs.length === 9 && segs[4] === 'intelligence' && segs[5] === 'endpoints' && segs[7] === 'test-design' && segs[8] === 'scenario-request' && normalizedMethod === 'POST') {
+      return { name: 'consoleScenarioRequestEditPost', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
+    }
+
     // Foundation 07.7.10-A - Suite Definition + Zero-Config Project Test Inventory
     // /v1/console/projects/:projectId/automation/test-inventory
     if (segs.length === 6 && segs[4] === 'automation' && segs[5] === 'test-inventory' && normalizedMethod === 'GET') {

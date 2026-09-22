@@ -6,6 +6,7 @@ import { getOrganizationProject } from '../services/projectService.js';
 import { buildCatalogTestDesignContextV1 } from '../intelligence/catalogContextBuilder.js';
 import { generateAndPersistCatalogTestDesignV1 } from '../intelligence/testDesignPersistence.js';
 import { loadLatestPersistedTestDesignV1 } from '../intelligence/testDesignRetrieval.js';
+import { createScenarioRequestEditV1 } from '../services/scenarioRequestEditService.js';
 
 export async function getConsoleTestDesignContext(req, env, { projectId, endpointId }) {
   const tenant = await requireConsoleTenant(req, env);
@@ -87,5 +88,30 @@ export async function postConsoleTestDesign(req, env, { projectId, endpointId },
   return {
     status: 'ok',
     data: result,
+  };
+}
+
+
+export async function postConsoleScenarioRequestEdit(req, env, { projectId, endpointId }, deps = {}) {
+  const tenant = await (deps.requireTenant || requireConsoleTenant)(req, env);
+  await (deps.getProject || getOrganizationProject)(env, tenant.organizationId, projectId);
+  if (!['owner', 'admin', 'member'].includes(tenant.organizationRole)) {
+    const error = new Error('Sem permissão para editar a request deste cenário.');
+    error.status = 403; error.code = 'SCENARIO_REQUEST_EDIT_FORBIDDEN'; throw error;
+  }
+  let input;
+  try { input = JSON.parse(await req.text()); }
+  catch { const error = new Error('JSON inválido.'); error.status = 400; error.code = 'SCENARIO_REQUEST_EDIT_JSON_INVALID'; throw error; }
+  return {
+    status: 'ok',
+    data: await (deps.createScenarioRequestEdit || createScenarioRequestEditV1)({
+      env,
+      organizationId: tenant.organizationId,
+      projectId,
+      endpointId,
+      userId: tenant.user?.userId || tenant.accountId || null,
+      input,
+      deps: deps.editDeps || {},
+    }),
   };
 }

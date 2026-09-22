@@ -150,7 +150,9 @@
     "test:f08-1-6-fix2-3": "node --test test/semantic-readiness-08.1.6-fix2-3.test.mjs",
     "check:08.1.6-fix2-3": "npm run check:08.1.6-fix2-2 && npm run test:f08-1-6-fix2-3",
     "test:f08-1-6-fix2-4": "node --test test/negative-request-08.1.6-fix2-4.test.mjs",
-    "check:08.1.6-fix2-4": "npm run check:08.1.6-fix2-3 && npm run test:f08-1-6-fix2-4"
+    "check:08.1.6-fix2-4": "npm run check:08.1.6-fix2-3 && npm run test:f08-1-6-fix2-4",
+    "test:f08-1-6-fix3": "node test/test-foundation-08-1-6-fix3-scenario-request-edit.js && node test/test-foundation-08-1-6-fix3-scenario-runtime.js",
+    "check:08.1.6-fix3": "npm run check:08.1.6-fix2-4 && npm run test:f08-1-6-fix3 && npm run test:router"
   },
   "keywords": [],
   "author": "",
