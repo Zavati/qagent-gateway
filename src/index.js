@@ -304,7 +304,7 @@ import {
   getConsoleCatalogEndpointSchemas,
   listConsoleCatalogEndpointLifecycleHistory,
 } from './handlers/consoleCatalog.js';
-import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign, postConsoleScenarioRequestEdit } from './handlers/consoleIntelligence.js';
+import { getConsoleTestDesign, getConsoleTestDesignContext, postConsoleTestDesign, postConsoleScenarioRequestEdit, postConsoleScenarioLifecycle } from './handlers/consoleIntelligence.js';
 import {
   postConsoleProjectTestDesignGenerationJob,
   getConsoleProjectTestDesignGenerationJob,
@@ -2082,6 +2082,7 @@ const gatewayRouteHandlers = {
   consoleIntelligenceTestDesignGet: async (req, env, _ctx, params) => json(await getConsoleTestDesign(req, env, params), { headers: corsHeaders(req, env) }),
   consoleIntelligenceTestDesignPost: async (req, env, _ctx, params) => json(await postConsoleTestDesign(req, env, params, { rateLimiter: ({ key, windowMs, max }) => rateLimitOrThrow({ key, windowMs, max }) }), { headers: corsHeaders(req, env) }),
   consoleScenarioRequestEditPost: async (req, env, _ctx, params) => json(await postConsoleScenarioRequestEdit(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
+  consoleScenarioLifecyclePost: async (req, env, _ctx, params) => json(await postConsoleScenarioLifecycle(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobCreate: async (req, env, _ctx, params) => json(await postConsoleProjectTestDesignGenerationJob(req, env, params), { status: 202, headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestDesignGenerationJob(req, env, params), { headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobItemsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobItems(req, env, params), { headers: corsHeaders(req, env) }),

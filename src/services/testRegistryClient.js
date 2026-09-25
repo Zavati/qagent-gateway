@@ -437,6 +437,17 @@ export async function createScenarioRequestEditVersion({
   return body.data;
 }
 
+export async function createScenarioLifecycleVersion({ env, organizationId, projectId, payload, fetchImpl = null } = {}) {
+  const binding = env?.TEST_REGISTRY_SERVICE;
+  if (!fetchImpl && (!binding || typeof binding.fetch !== 'function')) throw new TestRegistryClientError('Test Registry service binding is not configured.', { code: 'TEST_REGISTRY_NOT_CONFIGURED', status: 503, retryable: true });
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), resolveTimeoutMs(env));
+  const request = new Request(`${INTERNAL_BASE_URL}/internal/v1/test-registry/test-designs/scenario-lifecycle`, { method:'POST', headers:{Accept:'application/json','Content-Type':'application/json; charset=utf-8','X-QAgent-Organization-Id':organizationId,'X-QAgent-Project-Id':projectId}, body:JSON.stringify(payload), signal:controller.signal });
+  let response; try { response = fetchImpl ? await fetchImpl(request) : await binding.fetch(request); } catch(error){ const isTimeout=error?.name==='AbortError'; throw new TestRegistryClientError(isTimeout?'Test Registry scenario lifecycle timed out.':'Test Registry service is unavailable.',{code:isTimeout?'TEST_REGISTRY_UPSTREAM_TIMEOUT':'TEST_REGISTRY_UPSTREAM_UNAVAILABLE',status:isTimeout?504:503,retryable:true,cause:error}); } finally { clearTimeout(timer); }
+  const body=safeParseJson(await response.text());
+  if(!response.ok||body?.status!=='ok'||body?.data?.contractVersion!=='qagent.scenario-lifecycle-registry-result.v1') throw new TestRegistryClientError('Test Registry rejected scenario lifecycle operation.',{code:body?.code||'TEST_REGISTRY_SCENARIO_LIFECYCLE_REJECTED',status:response.status>=500?503:response.status,retryable:response.status>=500,upstreamStatus:response.status,upstreamCode:body?.code||null});
+  return body.data;
+}
+
 export async function getRunnerTestArtifact({
   env,
   organizationId,

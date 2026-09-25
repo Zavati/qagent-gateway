@@ -213,6 +213,10 @@ export function resolveGatewayRoute(method, pathname) {
       return { name: 'consoleScenarioRequestEditPost', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
     }
 
+    if (segs.length === 9 && segs[4] === 'intelligence' && segs[5] === 'endpoints' && segs[7] === 'test-design' && segs[8] === 'scenario-lifecycle' && normalizedMethod === 'POST') {
+      return { name: 'consoleScenarioLifecyclePost', params: { projectId: decodeURIComponent(segs[3]), endpointId: decodeURIComponent(segs[6]) } };
+    }
+
     // Foundation 07.7.10-A - Suite Definition + Zero-Config Project Test Inventory
     // /v1/console/projects/:projectId/automation/test-inventory
     if (segs.length === 6 && segs[4] === 'automation' && segs[5] === 'test-inventory' && normalizedMethod === 'GET') {

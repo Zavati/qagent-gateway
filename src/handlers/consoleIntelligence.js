@@ -7,6 +7,7 @@ import { buildCatalogTestDesignContextV1 } from '../intelligence/catalogContextB
 import { generateAndPersistCatalogTestDesignV1 } from '../intelligence/testDesignPersistence.js';
 import { loadLatestPersistedTestDesignV1 } from '../intelligence/testDesignRetrieval.js';
 import { createScenarioRequestEditV1 } from '../services/scenarioRequestEditService.js';
+import { createScenarioLifecycleV1 } from '../services/scenarioLifecycleService.js';
 
 export async function getConsoleTestDesignContext(req, env, { projectId, endpointId }) {
   const tenant = await requireConsoleTenant(req, env);
@@ -114,4 +115,11 @@ export async function postConsoleScenarioRequestEdit(req, env, { projectId, endp
       deps: deps.editDeps || {},
     }),
   };
+}
+
+export async function postConsoleScenarioLifecycle(req, env, { projectId, endpointId }, deps = {}) {
+  const tenant=await (deps.requireTenant||requireConsoleTenant)(req,env); await (deps.getProject||getOrganizationProject)(env,tenant.organizationId,projectId);
+  if(!['owner','admin','member'].includes(tenant.organizationRole)){const e=new Error('Sem permissão para gerenciar cenários.');e.status=403;e.code='SCENARIO_LIFECYCLE_FORBIDDEN';throw e;}
+  let input;try{input=JSON.parse(await req.text());}catch{const e=new Error('JSON inválido.');e.status=400;e.code='SCENARIO_LIFECYCLE_JSON_INVALID';throw e;}
+  return {status:'ok',data:await (deps.createScenarioLifecycle||createScenarioLifecycleV1)({env,organizationId:tenant.organizationId,projectId,endpointId,userId:tenant.user?.userId||tenant.accountId||null,input,deps:deps.lifecycleDeps||{}})};
 }
