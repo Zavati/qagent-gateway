@@ -131,7 +131,7 @@
 		},
 		"traces": {
 			"enabled": true,
-			"persist": true,
+			"persist": false,
 			"head_sampling_rate": 1
 		}
 	}
