@@ -1,3 +1,5 @@
+import { structuredPlannerIssue } from './structuredReadiness.js';
+import { normalizeReadinessIssues } from '../readiness/readinessIssues.js';
 import { isSensitiveTestDataSelector, sanitizeTestDataGeneratorConfig, scopeRank } from '../lib/testDataPolicy.js';
 
 export const TEST_DATA_PLANNER_VERSION = 'qagent.test-data-planner.v1.3.0';
@@ -1359,6 +1361,7 @@ export function applyTestDataPlannerV1(
     requestSchema(context);
 
   const plansByScenarioId = {};
+  const readinessIssuesByScenarioId = {};
 
   const baselineBodySelectors =
     baselineObservedSelectors(
@@ -2871,6 +2874,7 @@ export function applyTestDataPlannerV1(
       }
 
       for (const item of unresolved) {
+        (readinessIssuesByScenarioId[scenario.scenarioId] ||= []).push(structuredPlannerIssue(item));
         diagnostics.unresolvedCount += 1;
 
         diagnostics.unresolvedPaths.push(
@@ -2914,6 +2918,7 @@ export function applyTestDataPlannerV1(
       }
 
       for (const item of runtimePending) {
+        (readinessIssuesByScenarioId[scenario.scenarioId] ||= []).push(structuredPlannerIssue(item, { runtimePending: true }));
         diagnostics.observedRuntimePendingCount += 1;
 
         addReason(
@@ -2979,6 +2984,7 @@ export function applyTestDataPlannerV1(
   return {
     output,
     plansByScenarioId,
+    readinessIssuesByScenarioId: Object.fromEntries(Object.entries(readinessIssuesByScenarioId).map(([id, xs]) => [id, normalizeReadinessIssues(xs)])),
     diagnostics,
   };
 }

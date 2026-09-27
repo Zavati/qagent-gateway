@@ -39,3 +39,6 @@ CATALOG_QUERY_HMAC_SECRET=
 
 # 07.8-B - must match qagent-test-generation-orchestrator. Never commit the real value.
 TEST_GENERATION_INTERNAL_HMAC_SECRET=
+
+# 08.1.7-A: additive readiness only; Learning admission stays legacy.
+SCENARIO_READINESS_V2_ENABLED=false

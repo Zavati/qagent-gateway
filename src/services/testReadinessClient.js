@@ -1,3 +1,4 @@
+import { scenarioReadinessV2Enabled } from '../readiness/scenarioReadinessV2.js';
 import { buildTestReadinessQuery, validateTestReadinessEnvelope, readinessError } from '../contracts/testReadiness.js';
 const BASE = 'https://qagent-test-registry.internal';
 const SAFE_ERRORS = {
@@ -65,7 +66,9 @@ async function requestReadiness({env,organizationId,projectId,endpointId=null,qu
       if(known)throw readinessError(body.code,known[1],known[0]);
       throw readinessError(response.status===404?'TEST_READINESS_UPSTREAM_INCOMPATIBLE':'TEST_READINESS_UPSTREAM_UNAVAILABLE',response.status===404?'Publique o Test Registry compatível com a consulta de prontidão.':'O Test Registry não concluiu a consulta de prontidão.',503);
     }
-    return validateTestReadinessEnvelope(body,{organizationId,projectId,endpointId,testDesignVersionId:query.testDesignVersionId},{detail,query});
+    const validated = validateTestReadinessEnvelope(body,{organizationId,projectId,endpointId,testDesignVersionId:query.testDesignVersionId},{detail,query});
+    if (detail && !scenarioReadinessV2Enabled(env)) for (const item of validated.items || []) delete item.readinessV2;
+    return validated;
   } catch(error){
     if(error?.name==='TestReadinessError')throw error;
     throw readinessError(error?.name==='AbortError'?'TEST_READINESS_UPSTREAM_TIMEOUT':'TEST_READINESS_UPSTREAM_UNAVAILABLE',error?.name==='AbortError'?'A consulta de prontidão excedeu o tempo limite.':'Test Registry indisponível para consulta de prontidão.',error?.name==='AbortError'?504:503);

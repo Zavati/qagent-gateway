@@ -1,0 +1,507 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.scenario-readiness.v2.schema.json",
+  "title": "qagent.scenario-readiness.v2",
+  "description": "Phase A additive TEST_DESIGN_ONLY projection. Cross-field safety, issue ordering and legacy coherence are additionally validated by scenarioReadinessV2.js. Reserved VERIFIED/CONTRADICTED/PROPOSAL_AVAILABLE do not authorize writes in A.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "basis",
+    "evaluationScope",
+    "execution",
+    "expectation",
+    "coverage",
+    "review",
+    "regression",
+    "issues"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "qagent.scenario-readiness.v2"
+    },
+    "basis": {
+      "enum": [
+        "NATIVE_V2",
+        "LEGACY_PROJECTION"
+      ]
+    },
+    "evaluationScope": {
+      "const": "TEST_DESIGN_ONLY"
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reasonCodes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "READY",
+            "BLOCKED"
+          ]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "RUNTIME_TARGET_MISSING",
+              "ENVIRONMENT_UNAVAILABLE",
+              "REQUEST_MODEL_INVALID",
+              "NEGATIVE_CONDITION_NOT_MODELED",
+              "MUTATION_POLICY_BLOCKED",
+              "NETWORK_POLICY_BLOCKED",
+              "OPERATIONAL_BLOCKER",
+              "LEGACY_REASON_UNCLASSIFIED",
+              "LEGACY_READINESS_UNKNOWN",
+              "READINESS_SOURCE_INCOMPLETE",
+              "PATH_PARAM_UNRESOLVED",
+              "BODY_VALUE_REQUIRED",
+              "QUERY_VALUE_REQUIRED",
+              "SHARED_BINDING_MISSING",
+              "OBSERVED_VALUE_UNAVAILABLE",
+              "OBSERVED_RUNTIME_VALUE_PENDING",
+              "SECRET_REQUIRED",
+              "EXPECTATION_STATUS_NOT_OBSERVED",
+              "EXPECTATION_CONTENT_TYPE_NOT_OBSERVED",
+              "EXPECTATION_LITERAL_UNVERIFIED",
+              "EXPECTATION_HYPOTHESIS_UNVERIFIED",
+              "EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED",
+              "EXPECTATION_UNKNOWN",
+              "EXPECTATION_REVALIDATION_REQUIRED",
+              "ASSERTION_TYPE_REQUIRED",
+              "ASSERTION_PATH_REQUIRED",
+              "ASSERTION_PAGINATION_BOUND_REQUIRED",
+              "ASSERTION_STATUS_REQUIRED",
+              "ASSERTION_CONTENT_TYPE_REQUIRED",
+              "ASSERTION_SCHEMA_INCOMPLETE",
+              "AUTH_PROFILE_REQUIRED",
+              "AUTH_STRATEGY_NOT_MODELED",
+              "AUTH_OBSERVATION_MIXED",
+              "INVALID_AUTH_STRATEGY_REQUIRED",
+              "AUTH_INTENT_CONFLICT",
+              "UNSUPPORTED_FAULT_INJECTION",
+              "UNSUPPORTED_METHOD_MUTATION",
+              "UNSUPPORTED_PATH_MUTATION",
+              "UNSUPPORTED_ASSERTION_SELECTOR",
+              "UNSUPPORTED_LATENCY_ASSERTION",
+              "UNSUPPORTED_BUSINESS_RELATION_ASSERTION",
+              "HUMAN_BUSINESS_RULE_REQUIRED",
+              "HUMAN_BASELINE_POLICY_REVIEW",
+              "HUMAN_CONFLICT_RESOLUTION_REQUIRED",
+              "HUMAN_HIGH_RISK_REQUEST_CHANGE",
+              "SENSITIVE_INTENT_REQUIRES_REVIEW",
+              "OBSERVED_BASELINE_REQUEST_INCOMPLETE",
+              "OBSERVED_BASELINE_SOURCE_EXPIRED",
+              "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
+              "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
+              "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
+              "OBSERVED_BASELINE_PROVENANCE_INVALID",
+              "EXECUTION_BLOCKED",
+              "EXPECTATION_NOT_MATURE",
+              "COVERAGE_INCOMPLETE"
+            ]
+          },
+          "maxItems": 131,
+          "uniqueItems": true
+        }
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "basis"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "EVIDENCED",
+            "HYPOTHESIS",
+            "UNKNOWN",
+            "VERIFIED",
+            "CONTRADICTED"
+          ]
+        },
+        "basis": {
+          "enum": [
+            "OBSERVED_EVIDENCE",
+            "OBSERVED_BASELINE",
+            "AI_ASSUMED",
+            "UNOBSERVED_EXPECTATION",
+            "LEGACY_OBSERVED_EVIDENCE",
+            "LEGACY_ASSUMED",
+            "LEGACY_UNVERIFIED",
+            "DERIVATION_PENDING_VERIFICATION",
+            "UNDETERMINED",
+            "VERSION_VERIFICATION",
+            "COMPATIBLE_CONTRADICTION"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "basis": {
+              "const": "OBSERVED_EVIDENCE"
+            },
+            "status": {
+              "const": "EVIDENCED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "OBSERVED_BASELINE"
+            },
+            "status": {
+              "const": "EVIDENCED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "AI_ASSUMED"
+            },
+            "status": {
+              "const": "HYPOTHESIS"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "UNOBSERVED_EXPECTATION"
+            },
+            "status": {
+              "const": "HYPOTHESIS"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "LEGACY_OBSERVED_EVIDENCE"
+            },
+            "status": {
+              "const": "EVIDENCED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "LEGACY_ASSUMED"
+            },
+            "status": {
+              "const": "HYPOTHESIS"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "LEGACY_UNVERIFIED"
+            },
+            "status": {
+              "const": "HYPOTHESIS"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "DERIVATION_PENDING_VERIFICATION"
+            },
+            "status": {
+              "const": "HYPOTHESIS"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "UNDETERMINED"
+            },
+            "status": {
+              "const": "UNKNOWN"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "VERSION_VERIFICATION"
+            },
+            "status": {
+              "const": "VERIFIED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "COMPATIBLE_CONTRADICTION"
+            },
+            "status": {
+              "const": "CONTRADICTED"
+            }
+          }
+        }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "gapCodes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNSUPPORTED"
+          ]
+        },
+        "gapCodes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "RUNTIME_TARGET_MISSING",
+              "ENVIRONMENT_UNAVAILABLE",
+              "REQUEST_MODEL_INVALID",
+              "NEGATIVE_CONDITION_NOT_MODELED",
+              "MUTATION_POLICY_BLOCKED",
+              "NETWORK_POLICY_BLOCKED",
+              "OPERATIONAL_BLOCKER",
+              "LEGACY_REASON_UNCLASSIFIED",
+              "LEGACY_READINESS_UNKNOWN",
+              "READINESS_SOURCE_INCOMPLETE",
+              "PATH_PARAM_UNRESOLVED",
+              "BODY_VALUE_REQUIRED",
+              "QUERY_VALUE_REQUIRED",
+              "SHARED_BINDING_MISSING",
+              "OBSERVED_VALUE_UNAVAILABLE",
+              "OBSERVED_RUNTIME_VALUE_PENDING",
+              "SECRET_REQUIRED",
+              "EXPECTATION_STATUS_NOT_OBSERVED",
+              "EXPECTATION_CONTENT_TYPE_NOT_OBSERVED",
+              "EXPECTATION_LITERAL_UNVERIFIED",
+              "EXPECTATION_HYPOTHESIS_UNVERIFIED",
+              "EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED",
+              "EXPECTATION_UNKNOWN",
+              "EXPECTATION_REVALIDATION_REQUIRED",
+              "ASSERTION_TYPE_REQUIRED",
+              "ASSERTION_PATH_REQUIRED",
+              "ASSERTION_PAGINATION_BOUND_REQUIRED",
+              "ASSERTION_STATUS_REQUIRED",
+              "ASSERTION_CONTENT_TYPE_REQUIRED",
+              "ASSERTION_SCHEMA_INCOMPLETE",
+              "AUTH_PROFILE_REQUIRED",
+              "AUTH_STRATEGY_NOT_MODELED",
+              "AUTH_OBSERVATION_MIXED",
+              "INVALID_AUTH_STRATEGY_REQUIRED",
+              "AUTH_INTENT_CONFLICT",
+              "UNSUPPORTED_FAULT_INJECTION",
+              "UNSUPPORTED_METHOD_MUTATION",
+              "UNSUPPORTED_PATH_MUTATION",
+              "UNSUPPORTED_ASSERTION_SELECTOR",
+              "UNSUPPORTED_LATENCY_ASSERTION",
+              "UNSUPPORTED_BUSINESS_RELATION_ASSERTION",
+              "HUMAN_BUSINESS_RULE_REQUIRED",
+              "HUMAN_BASELINE_POLICY_REVIEW",
+              "HUMAN_CONFLICT_RESOLUTION_REQUIRED",
+              "HUMAN_HIGH_RISK_REQUEST_CHANGE",
+              "SENSITIVE_INTENT_REQUIRES_REVIEW",
+              "OBSERVED_BASELINE_REQUEST_INCOMPLETE",
+              "OBSERVED_BASELINE_SOURCE_EXPIRED",
+              "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
+              "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
+              "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
+              "OBSERVED_BASELINE_PROVENANCE_INVALID"
+            ]
+          },
+          "maxItems": 128,
+          "uniqueItems": true
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reasonCodes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NONE",
+            "LEARNING_AVAILABLE",
+            "PROPOSAL_AVAILABLE",
+            "HUMAN_REQUIRED"
+          ]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "RUNTIME_TARGET_MISSING",
+              "ENVIRONMENT_UNAVAILABLE",
+              "REQUEST_MODEL_INVALID",
+              "NEGATIVE_CONDITION_NOT_MODELED",
+              "MUTATION_POLICY_BLOCKED",
+              "NETWORK_POLICY_BLOCKED",
+              "OPERATIONAL_BLOCKER",
+              "LEGACY_REASON_UNCLASSIFIED",
+              "LEGACY_READINESS_UNKNOWN",
+              "READINESS_SOURCE_INCOMPLETE",
+              "PATH_PARAM_UNRESOLVED",
+              "BODY_VALUE_REQUIRED",
+              "QUERY_VALUE_REQUIRED",
+              "SHARED_BINDING_MISSING",
+              "OBSERVED_VALUE_UNAVAILABLE",
+              "OBSERVED_RUNTIME_VALUE_PENDING",
+              "SECRET_REQUIRED",
+              "EXPECTATION_STATUS_NOT_OBSERVED",
+              "EXPECTATION_CONTENT_TYPE_NOT_OBSERVED",
+              "EXPECTATION_LITERAL_UNVERIFIED",
+              "EXPECTATION_HYPOTHESIS_UNVERIFIED",
+              "EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED",
+              "EXPECTATION_UNKNOWN",
+              "EXPECTATION_REVALIDATION_REQUIRED",
+              "ASSERTION_TYPE_REQUIRED",
+              "ASSERTION_PATH_REQUIRED",
+              "ASSERTION_PAGINATION_BOUND_REQUIRED",
+              "ASSERTION_STATUS_REQUIRED",
+              "ASSERTION_CONTENT_TYPE_REQUIRED",
+              "ASSERTION_SCHEMA_INCOMPLETE",
+              "AUTH_PROFILE_REQUIRED",
+              "AUTH_STRATEGY_NOT_MODELED",
+              "AUTH_OBSERVATION_MIXED",
+              "INVALID_AUTH_STRATEGY_REQUIRED",
+              "AUTH_INTENT_CONFLICT",
+              "UNSUPPORTED_FAULT_INJECTION",
+              "UNSUPPORTED_METHOD_MUTATION",
+              "UNSUPPORTED_PATH_MUTATION",
+              "UNSUPPORTED_ASSERTION_SELECTOR",
+              "UNSUPPORTED_LATENCY_ASSERTION",
+              "UNSUPPORTED_BUSINESS_RELATION_ASSERTION",
+              "HUMAN_BUSINESS_RULE_REQUIRED",
+              "HUMAN_BASELINE_POLICY_REVIEW",
+              "HUMAN_CONFLICT_RESOLUTION_REQUIRED",
+              "HUMAN_HIGH_RISK_REQUEST_CHANGE",
+              "SENSITIVE_INTENT_REQUIRES_REVIEW",
+              "OBSERVED_BASELINE_REQUEST_INCOMPLETE",
+              "OBSERVED_BASELINE_SOURCE_EXPIRED",
+              "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
+              "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
+              "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
+              "OBSERVED_BASELINE_PROVENANCE_INVALID",
+              "EXECUTION_BLOCKED",
+              "EXPECTATION_NOT_MATURE",
+              "COVERAGE_INCOMPLETE"
+            ]
+          },
+          "maxItems": 131,
+          "uniqueItems": true
+        }
+      }
+    },
+    "regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reasonCodes"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "READY",
+            "BLOCKED"
+          ]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "RUNTIME_TARGET_MISSING",
+              "ENVIRONMENT_UNAVAILABLE",
+              "REQUEST_MODEL_INVALID",
+              "NEGATIVE_CONDITION_NOT_MODELED",
+              "MUTATION_POLICY_BLOCKED",
+              "NETWORK_POLICY_BLOCKED",
+              "OPERATIONAL_BLOCKER",
+              "LEGACY_REASON_UNCLASSIFIED",
+              "LEGACY_READINESS_UNKNOWN",
+              "READINESS_SOURCE_INCOMPLETE",
+              "PATH_PARAM_UNRESOLVED",
+              "BODY_VALUE_REQUIRED",
+              "QUERY_VALUE_REQUIRED",
+              "SHARED_BINDING_MISSING",
+              "OBSERVED_VALUE_UNAVAILABLE",
+              "OBSERVED_RUNTIME_VALUE_PENDING",
+              "SECRET_REQUIRED",
+              "EXPECTATION_STATUS_NOT_OBSERVED",
+              "EXPECTATION_CONTENT_TYPE_NOT_OBSERVED",
+              "EXPECTATION_LITERAL_UNVERIFIED",
+              "EXPECTATION_HYPOTHESIS_UNVERIFIED",
+              "EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED",
+              "EXPECTATION_UNKNOWN",
+              "EXPECTATION_REVALIDATION_REQUIRED",
+              "ASSERTION_TYPE_REQUIRED",
+              "ASSERTION_PATH_REQUIRED",
+              "ASSERTION_PAGINATION_BOUND_REQUIRED",
+              "ASSERTION_STATUS_REQUIRED",
+              "ASSERTION_CONTENT_TYPE_REQUIRED",
+              "ASSERTION_SCHEMA_INCOMPLETE",
+              "AUTH_PROFILE_REQUIRED",
+              "AUTH_STRATEGY_NOT_MODELED",
+              "AUTH_OBSERVATION_MIXED",
+              "INVALID_AUTH_STRATEGY_REQUIRED",
+              "AUTH_INTENT_CONFLICT",
+              "UNSUPPORTED_FAULT_INJECTION",
+              "UNSUPPORTED_METHOD_MUTATION",
+              "UNSUPPORTED_PATH_MUTATION",
+              "UNSUPPORTED_ASSERTION_SELECTOR",
+              "UNSUPPORTED_LATENCY_ASSERTION",
+              "UNSUPPORTED_BUSINESS_RELATION_ASSERTION",
+              "HUMAN_BUSINESS_RULE_REQUIRED",
+              "HUMAN_BASELINE_POLICY_REVIEW",
+              "HUMAN_CONFLICT_RESOLUTION_REQUIRED",
+              "HUMAN_HIGH_RISK_REQUEST_CHANGE",
+              "SENSITIVE_INTENT_REQUIRES_REVIEW",
+              "OBSERVED_BASELINE_REQUEST_INCOMPLETE",
+              "OBSERVED_BASELINE_SOURCE_EXPIRED",
+              "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
+              "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
+              "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
+              "OBSERVED_BASELINE_PROVENANCE_INVALID",
+              "EXECUTION_BLOCKED",
+              "EXPECTATION_NOT_MATURE",
+              "COVERAGE_INCOMPLETE"
+            ]
+          },
+          "maxItems": 131,
+          "uniqueItems": true
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "qagent.readiness-issue.v1.schema.json"
+      },
+      "maxItems": 128,
+      "uniqueItems": true
+    }
+  }
+}

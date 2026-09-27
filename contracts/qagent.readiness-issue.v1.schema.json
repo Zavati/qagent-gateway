@@ -1,0 +1,1727 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qagent.readiness-issue.v1.schema.json",
+  "title": "qagent.readiness-issue.v1",
+  "description": "Closed system-owned issue. Fixed safety flags cannot be weakened; no free text or request values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "code",
+    "source",
+    "kind",
+    "severity",
+    "blocksExecution",
+    "blocksRegression",
+    "humanRequired",
+    "resolution"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "qagent.readiness-issue.v1"
+    },
+    "code": {
+      "enum": [
+        "RUNTIME_TARGET_MISSING",
+        "ENVIRONMENT_UNAVAILABLE",
+        "REQUEST_MODEL_INVALID",
+        "NEGATIVE_CONDITION_NOT_MODELED",
+        "MUTATION_POLICY_BLOCKED",
+        "NETWORK_POLICY_BLOCKED",
+        "OPERATIONAL_BLOCKER",
+        "LEGACY_REASON_UNCLASSIFIED",
+        "LEGACY_READINESS_UNKNOWN",
+        "READINESS_SOURCE_INCOMPLETE",
+        "PATH_PARAM_UNRESOLVED",
+        "BODY_VALUE_REQUIRED",
+        "QUERY_VALUE_REQUIRED",
+        "SHARED_BINDING_MISSING",
+        "OBSERVED_VALUE_UNAVAILABLE",
+        "OBSERVED_RUNTIME_VALUE_PENDING",
+        "SECRET_REQUIRED",
+        "EXPECTATION_STATUS_NOT_OBSERVED",
+        "EXPECTATION_CONTENT_TYPE_NOT_OBSERVED",
+        "EXPECTATION_LITERAL_UNVERIFIED",
+        "EXPECTATION_HYPOTHESIS_UNVERIFIED",
+        "EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED",
+        "EXPECTATION_UNKNOWN",
+        "EXPECTATION_REVALIDATION_REQUIRED",
+        "ASSERTION_TYPE_REQUIRED",
+        "ASSERTION_PATH_REQUIRED",
+        "ASSERTION_PAGINATION_BOUND_REQUIRED",
+        "ASSERTION_STATUS_REQUIRED",
+        "ASSERTION_CONTENT_TYPE_REQUIRED",
+        "ASSERTION_SCHEMA_INCOMPLETE",
+        "AUTH_PROFILE_REQUIRED",
+        "AUTH_STRATEGY_NOT_MODELED",
+        "AUTH_OBSERVATION_MIXED",
+        "INVALID_AUTH_STRATEGY_REQUIRED",
+        "AUTH_INTENT_CONFLICT",
+        "UNSUPPORTED_FAULT_INJECTION",
+        "UNSUPPORTED_METHOD_MUTATION",
+        "UNSUPPORTED_PATH_MUTATION",
+        "UNSUPPORTED_ASSERTION_SELECTOR",
+        "UNSUPPORTED_LATENCY_ASSERTION",
+        "UNSUPPORTED_BUSINESS_RELATION_ASSERTION",
+        "HUMAN_BUSINESS_RULE_REQUIRED",
+        "HUMAN_BASELINE_POLICY_REVIEW",
+        "HUMAN_CONFLICT_RESOLUTION_REQUIRED",
+        "HUMAN_HIGH_RISK_REQUEST_CHANGE",
+        "SENSITIVE_INTENT_REQUIRES_REVIEW",
+        "OBSERVED_BASELINE_REQUEST_INCOMPLETE",
+        "OBSERVED_BASELINE_SOURCE_EXPIRED",
+        "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
+        "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
+        "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
+        "OBSERVED_BASELINE_PROVENANCE_INVALID"
+      ]
+    },
+    "source": {
+      "enum": [
+        "SEMANTIC_GUARD",
+        "AUTH_BRIDGE",
+        "TEST_DATA_PLANNER",
+        "SECRET_GUARD",
+        "NEGATIVE_INTENT_GUARD",
+        "READINESS_EVALUATOR",
+        "LEGACY_ADAPTER",
+        "REGISTRY_COMPATIBILITY"
+      ]
+    },
+    "kind": {
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "ERROR",
+        "WARNING"
+      ]
+    },
+    "blocksExecution": {
+      "type": "boolean"
+    },
+    "blocksRegression": {
+      "const": true
+    },
+    "humanRequired": {
+      "type": "boolean"
+    },
+    "resolution": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "RUNTIME_TARGET_MISSING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "ENVIRONMENT_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ENVIRONMENT_UNAVAILABLE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "ENVIRONMENT_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "REQUEST_MODEL_INVALID"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "REQUEST_DESIGNER"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "NEGATIVE_CONDITION_NOT_MODELED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "REQUEST_DESIGNER"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "MUTATION_POLICY_BLOCKED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "POLICY_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "NETWORK_POLICY_BLOCKED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "POLICY_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OPERATIONAL_BLOCKER"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "LEGACY_REASON_UNCLASSIFIED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "LEGACY_READINESS_UNKNOWN"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "READINESS_SOURCE_INCOMPLETE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "PATH_PARAM_UNRESOLVED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "REQUEST_DESIGNER"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "BODY_VALUE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "REQUEST_DESIGNER"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "QUERY_VALUE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "REQUEST_DESIGNER"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "SHARED_BINDING_MISSING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "TEST_DATA_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_VALUE_UNAVAILABLE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "TEST_DATA_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_RUNTIME_VALUE_PENDING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "TEST_DATA_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "SECRET_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "SECRET_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_STATUS_NOT_OBSERVED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_CONTENT_TYPE_NOT_OBSERVED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_LITERAL_UNVERIFIED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_HYPOTHESIS_UNVERIFIED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_UNKNOWN"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_REVALIDATION_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_TYPE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_PATH_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_PAGINATION_BOUND_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_STATUS_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_CONTENT_TYPE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_SCHEMA_INCOMPLETE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "AUTH_PROFILE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "AUTH_STRATEGY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "AUTH_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "AUTH_STRATEGY_NOT_MODELED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "AUTH_STRATEGY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "AUTH_OBSERVATION_MIXED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "AUTH_STRATEGY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "INVALID_AUTH_STRATEGY_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "AUTH_STRATEGY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "AUTH_INTENT_CONFLICT"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "AUTH_STRATEGY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "UNSUPPORTED_FAULT_INJECTION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UNSUPPORTED_CAPABILITY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "UNSUPPORTED_METHOD_MUTATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UNSUPPORTED_CAPABILITY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "UNSUPPORTED_PATH_MUTATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UNSUPPORTED_CAPABILITY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "UNSUPPORTED_ASSERTION_SELECTOR"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UNSUPPORTED_CAPABILITY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "UNSUPPORTED_LATENCY_ASSERTION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UNSUPPORTED_CAPABILITY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "UNSUPPORTED_BUSINESS_RELATION_ASSERTION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "UNSUPPORTED_CAPABILITY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "HUMAN_BUSINESS_RULE_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "HUMAN_POLICY_REVIEW"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "HUMAN_BASELINE_POLICY_REVIEW"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "HUMAN_POLICY_REVIEW"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "HUMAN_CONFLICT_RESOLUTION_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "HUMAN_POLICY_REVIEW"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "HUMAN_HIGH_RISK_REQUEST_CHANGE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "HUMAN_POLICY_REVIEW"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "SENSITIVE_INTENT_REQUIRES_REVIEW"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "HUMAN_POLICY_REVIEW"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_BASELINE_REQUEST_INCOMPLETE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "TEST_DATA_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_BASELINE_SOURCE_EXPIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "TEST_DATA_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_BASELINE_SOURCE_UNAVAILABLE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "TEST_DATA_CONFIGURATION"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_BASELINE_RESPONSE_INCOMPLETE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "DATA_DEPENDENCY"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "OBSERVED_BASELINE_PROVENANCE_INVALID"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "OPERATIONAL_BLOCKER"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    }
+  ]
+}

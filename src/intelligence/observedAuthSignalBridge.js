@@ -1,3 +1,4 @@
+import { buildReadinessIssue } from '../readiness/readinessIssues.js';
 export const OBSERVED_AUTH_SIGNAL_BRIDGE_VERSION = 'qagent.observed-auth-signal-bridge.v1.1';
 
 function cloneJson(value) {
@@ -81,6 +82,7 @@ export function applyObservedAuthSignalBridgeV1(modelOutput, context) {
   let optionalPublicScenarioCount = 0;
   let optionalAuthenticatedScenarioCount = 0;
   const mutations = [];
+  const readinessIssuesByScenarioId = {};
 
   for (const scenario of output.scenarios || []) {
     const beforeRequirement = scenario.authRequirement;
@@ -154,6 +156,11 @@ export function applyObservedAuthSignalBridgeV1(modelOutput, context) {
       hints.reasons = uniqueStrings([...(hints.reasons || []), mixedRationale()], 10);
     }
 
+    const structuredIssues = [];
+    if (status === 'MIXED') structuredIssues.push(buildReadinessIssue('AUTH_OBSERVATION_MIXED', 'AUTH_BRIDGE'));
+    if (scenario.authRequirement === 'REQUIRED' && !context?.runtime?.defaultAuthProfileRef) structuredIssues.push(buildReadinessIssue('AUTH_PROFILE_REQUIRED', 'AUTH_BRIDGE'));
+    readinessIssuesByScenarioId[scenario.scenarioId] = structuredIssues;
+
     if (changed) {
       changedScenarioCount += 1;
       mutations.push({
@@ -169,6 +176,7 @@ export function applyObservedAuthSignalBridgeV1(modelOutput, context) {
 
   return {
     output,
+    readinessIssuesByScenarioId,
     diagnostics: {
       bridgeVersion: OBSERVED_AUTH_SIGNAL_BRIDGE_VERSION,
       observationStatus: status,

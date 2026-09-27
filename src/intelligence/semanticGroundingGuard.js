@@ -1,3 +1,4 @@
+import { structuredSemanticIssues } from './structuredReadiness.js';
 import { schemaTypeProves } from '../coverageAssertions.js';
 export const SEMANTIC_GROUNDING_GUARD_VERSION = 'qagent.semantic-grounding-guard.v1.5';
 
@@ -70,8 +71,8 @@ function addHintReason(scenario, reason) {
 }
 
 function issueCollector(scenarioId, issues, scenarioIssues) {
-  return function addIssue({ code, path, severity, reason, action = null }) {
-    const issue = { scenarioId, code, path, severity, action };
+  return function addIssue({ code, path, severity, reason, action = null, readinessCode = null }) {
+    const issue = { scenarioId, code, path, severity, action, ...(readinessCode ? { readinessCode } : {}) };
     issues.push(issue);
     scenarioIssues.push(issue);
     if (reason) addHintReason(this, reason);
@@ -252,10 +253,11 @@ function schemaAssertionProvesNonEmpty(scenario, knowledge, responseTracks) {
   );
 }
 
-function addAssertionCapabilityGap({ scenario, index, addIssue, reason }) {
+function addAssertionCapabilityGap({ scenario, index, addIssue, reason, readinessCode = null }) {
   markReview(scenario, reason);
   addIssue({
     code: 'SEMANTIC_ASSERTION_CAPABILITY_GAP',
+    readinessCode,
     path: `modelOutput.scenarios[${index}].assertions`,
     severity: 'REVIEW',
     reason,
@@ -595,7 +597,7 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
     const reason = `O cenário exige alterar o HTTP Method, mas qagent.api-test-dsl.v1 fixa o method em '${String(context?.endpoint?.method || '').toUpperCase() || 'método observado'}'; target mutation ainda não é suportada.`;
     markAssumption(scenario, reason);
     markReview(scenario, reason);
-    addIssue({ code: 'SEMANTIC_TARGET_MUTATION_UNSUPPORTED', path: `modelOutput.scenarios[${index}].objective`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
+    addIssue({ code: 'SEMANTIC_TARGET_MUTATION_UNSUPPORTED', readinessCode: 'UNSUPPORTED_METHOD_MUTATION', path: `modelOutput.scenarios[${index}].objective`, severity: 'REVIEW', reason, action: 'REVIEW_REQUIRED' });
   }
 
   if (FAULT_INJECTION_RE.test(semanticText) && statuses.some((status) => Number(status) >= 500)) {
@@ -613,6 +615,7 @@ function semanticGuardScenario(scenario, index, context, knowledge, issues, muta
 
   if (COUNT_RELATION_INTENT_RE.test(semanticText)) {
     addAssertionCapabilityGap({
+      readinessCode: 'UNSUPPORTED_BUSINESS_RELATION_ASSERTION',
       scenario,
       index,
       addIssue,
@@ -746,6 +749,7 @@ export function applySemanticGroundingGuardV1(modelOutput, context) {
 
   return {
     output,
+    readinessIssuesByScenarioId: structuredSemanticIssues(issues),
     diagnostics: {
       guardVersion: SEMANTIC_GROUNDING_GUARD_VERSION,
       scenarioCount: Array.isArray(output?.scenarios) ? output.scenarios.length : 0,

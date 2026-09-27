@@ -1,3 +1,5 @@
+import { attachNativeScenarioReadiness } from './structuredReadiness.js';
+import { validateReadinessAgainstScenario } from '../readiness/scenarioReadinessFacts.js';
 import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { learningReadinessDiagnostics } from '../learningScenarioEligibility.js';
 import { validateObservedBaseline, observedBaselineReady, validateObservedBaselineScenario } from '../baselineContract.js';
@@ -1587,7 +1589,7 @@ function validateTestDataBindingsV1(testData, path) {
   });
 }
 
-export function buildTestSpecificationV1({ context, modelOutput, generation, testDataPlans = {} }) {
+export function buildTestSpecificationV1({ context, modelOutput, generation, testDataPlans = {}, readinessOptions = null }) {
   validateTestDesignModelOutputV1(modelOutput, context);
   assertPlainObject(generation, 'generation');
   assertKnownKeys(generation, new Set(['provider', 'model', 'generatedAt', 'contextFingerprint']), 'generation');
@@ -1642,6 +1644,12 @@ export function buildTestSpecificationV1({ context, modelOutput, generation, tes
       s.automation.evolutionState = 'BLOCKED';
       s.automation.blockers = [...new Set([...s.automation.blockers, gate.reason])];
     }
+    if (readinessOptions) attachNativeScenarioReadiness(s, context, {
+      ...readinessOptions,
+      semanticIssues: readinessOptions.semanticIssuesByScenarioId?.[s.scenarioId] || [],
+      authIssues: readinessOptions.authIssuesByScenarioId?.[s.scenarioId] || [],
+      plannerIssues: readinessOptions.plannerIssuesByScenarioId?.[s.scenarioId] || [],
+    });
     s.automation.diagnostics = learningReadinessDiagnostics(s);
   }
   return {
@@ -1706,7 +1714,7 @@ export function validateTestSpecificationV1(specification, context) {
     assertPlainObject(scenario, path);
     assertKnownKeys(scenario, new Set([
       'scenarioId', 'title', 'objective', 'category', 'priority', 'confidence', 'grounding',
-      'automation', 'preconditions', 'spec', 'generationClass', 'baseline',
+      'automation', 'preconditions', 'spec', 'generationClass', 'baseline', 'readinessV2',
     ]), path);
     assertString(scenario.scenarioId, `${path}.scenarioId`, { max: 80 });
     assertString(scenario.title, `${path}.title`, { max: 260 });
@@ -1758,6 +1766,7 @@ export function validateTestSpecificationV1(specification, context) {
       fail('Cenário ASSUMED não pode ser READY.', `${path}.automation.readiness`, 'TEST_DESIGN_READINESS_INCONSISTENT');
     }
 
+    validateReadinessAgainstScenario(scenario, { path, generation: true });
     validateRequestObject(scenario.spec.request, `${path}.spec.request`);
     if (scenario.spec.testData != null) validateTestDataBindingsV1(scenario.spec.testData, `${path}.spec.testData`);
     const assertions = assertArray(scenario.spec.assertions, `${path}.spec.assertions`, { max: 30 });

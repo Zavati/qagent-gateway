@@ -1,3 +1,5 @@
+import { scenarioReadinessV2Enabled } from '../readiness/scenarioReadinessV2.js';
+import { attachNativeScenarioReadiness } from './structuredReadiness.js';
 import { observedBaselineGenerationEnabled } from './observedBaselineFeature.js';
 import { structuralIsPartial } from '../activeLearningSchema.js';
 import { reviseObservedBaseline } from './observedBaselineRevision.js';
@@ -365,6 +367,7 @@ export async function generateExploratoryTestDesignV1({
     }
   }
 
+  const ignoredAiReviewHintCount = (modelOutput.scenarios || []).filter(s => s.automationHints?.reviewRequired === true).length;
   const semanticGuard = applySemanticGroundingGuardV1(modelOutput, context);
   modelOutput = semanticGuard.output;
   validateTestDesignModelOutputV1(modelOutput, context);
@@ -427,9 +430,20 @@ export async function generateExploratoryTestDesignV1({
     modelOutput,
     generation: { provider, model, generatedAt, contextFingerprint },
     testDataPlans: testDataPlanner.plansByScenarioId,
+    readinessOptions: scenarioReadinessV2Enabled(env) ? {
+      semanticIssuesByScenarioId: semanticGuard.readinessIssuesByScenarioId,
+      authIssuesByScenarioId: observedAuthBridge.readinessIssuesByScenarioId,
+      plannerIssuesByScenarioId: testDataPlanner.readinessIssuesByScenarioId,
+      plannerCompleted: true, secretSafeDiagnostics: secretSafeSanitizer, nowMs: Date.parse(generatedAt),
+    } : null,
   });
   validateTestSpecificationV1(specification, context);
 
+  if (scenarioReadinessV2Enabled(env)) log('scenario_readiness_v2_computed', {
+    contractVersion: 'qagent.scenario-readiness.v2', scenarioCount: specification.scenarios.length,
+    ignoredAiReviewHintCount, regressionReadyCount: specification.scenarios.filter(s => s.readinessV2?.regression.status === 'READY').length,
+    policy: 'LEGACY_ADMISSION_UNCHANGED',
+  });
   const durationMs = Math.max(0, Date.now() - startedAtMs);
   log('testDesign_ai_success', {
     engineVersion: AI_TEST_DESIGN_ENGINE_VERSION,
@@ -487,7 +501,14 @@ export async function generateCatalogTestDesignV1(input={}){
     (input.loadBaselines||listCatalogObservedBaselines)({env,organizationId,projectId,endpointId}),
     (input.loadPrevious||getLatestTestDesign)({env,organizationId,projectId,endpointId}),
   ]);
-  if(options.replace) return reviseObservedBaseline({previous,sources,context,contextFingerprint:contextResult.contextFingerprint,options,actor:input.baselineActorId,now});
+  if(options.replace) {
+    const revised = reviseObservedBaseline({previous,sources,context,contextFingerprint:contextResult.contextFingerprint,options,actor:input.baselineActorId,now});
+    if (scenarioReadinessV2Enabled(env)) {
+      for (const scenario of revised.specification.scenarios) if (scenario.generationClass === 'OBSERVED_BASELINE') attachNativeScenarioReadiness(scenario, context, { nowMs: now.getTime() });
+      revised.specification.summary = buildSummary(revised.specification.scenarios);
+    }
+    return revised;
+  }
   const carried=(previous?.testDesign?.specification?.scenarios||[]).filter(s=>s.generationClass==='OBSERVED_BASELINE');
   const byId=new Map(); const existingFamilies=new Set();
   for(const prior of carried){
@@ -522,6 +543,9 @@ export async function generateCatalogTestDesignV1(input={}){
       ? {automation:{...s.automation,evolutionState:'LEARNING'}} : {}) }));
   const reserved=new Set([...byId.values()].map(s=>s.scenarioId));
   specification.scenarios=[...byId.values(),...explored.filter(s=>!reserved.has(s.scenarioId)).slice(0,20-byId.size)];
+  if (scenarioReadinessV2Enabled(env)) for (const scenario of specification.scenarios) {
+    if (scenario.generationClass === 'OBSERVED_BASELINE') attachNativeScenarioReadiness(scenario, context, { nowMs: now.getTime() });
+  }
   specification.summary=buildSummary(specification.scenarios);
   specification.generation.mode=generated?'OBSERVED_WITH_AI':'OBSERVED_ONLY';
   if(!byId.size)specification.assumptions=[...specification.assumptions,'Nenhuma fonte de baseline elegível disponível: este pack contém somente exploração da IA. Explore com os dados disponíveis; novas evidências não substituem automaticamente uma baseline protegida.'].slice(0,20);

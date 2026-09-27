@@ -1,3 +1,4 @@
+import { validateScenarioReadinessV2 } from '../readiness/scenarioReadinessV2.js';
 /** 08.1.6 FIX-1: metadata-only readiness reads. No runtime decision or artifact mutation. */
 export const READINESS_CONTRACT = 'qagent.project-test-readiness.v1';
 export const READINESS_DETAIL_CONTRACT = 'qagent.test-readiness-scenarios.v1';
@@ -147,10 +148,11 @@ export function validateTestReadinessEnvelope(body, scope, { detail = false, que
     assert(d.endpointId===scope.endpointId&&d.testDesignVersionId===scope.testDesignVersionId&&isReadinessId(d.testDesignId)&&Number.isInteger(d.testDesignVersion)&&d.testDesignVersion>=1&&isReadinessId(d.latestTestDesignVersionId)&&typeof d.isLatest==='boolean'&&int(d.matchingScenarioCount));
     assert(nullableText(d.method,16)&&nullableText(d.path,2048)&&d.isLatest===(d.testDesignVersionId===d.latestTestDesignVersionId));
     for(const s of d.items){
-      assert(exact(s,['scenarioId','title','generationClass','readiness','baselineGap','baseline','blockers','requestReasons','responseReasons','diagnosticsOmitted','detailAvailable','sourceExpired','navigationAction']));
+      assert(exact(s,['scenarioId','title','generationClass','readiness','baselineGap','baseline','blockers','requestReasons','responseReasons','diagnosticsOmitted','detailAvailable','sourceExpired','navigationAction','readinessV2']));
       assert(isReadinessId(s.scenarioId)&&nullableText(s.title,200)&&GENERATION_CLASSES.concat('UNKNOWN').includes(s.generationClass)&&READINESS_STATES.concat('UNKNOWN').includes(s.readiness));
       assert(s.baselineGap===null||BASELINE_GAPS.includes(s.baselineGap));
       for(const [k,choices] of [['blockers',READINESS_BLOCKERS],['requestReasons',COVERAGE_REASONS],['responseReasons',COVERAGE_REASONS]])assert(Array.isArray(s[k])&&s[k].length<=24&&s[k].every(v=>choices.includes(v)));
+      if (Object.hasOwn(s, 'readinessV2')) { try { validateScenarioReadinessV2(s.readinessV2); } catch { assert(false); } }
       for(const k of ['diagnosticsOmitted','detailAvailable','sourceExpired'])assert(typeof s[k]==='boolean');
       assert(s.navigationAction==='OPEN_TEST_DESIGN');
       if(s.baseline!==null){
