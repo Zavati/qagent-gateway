@@ -1,7 +1,7 @@
 /** Reuse the existing Test Data resolver for learning. Never append a Test Design here. */
 import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { pathPlaceholderDescriptors } from '../intelligence/testDataPlanner.js';
-import { assessExploratoryLearning } from '../learningScenarioEligibility.js';
+import { assessLearningAdmission } from '../readiness/learningAdmissionV2.js';
 import { isSensitiveTestDataSelector } from '../lib/testDataPolicy.js';
 
 function fail(code, scenarioId, selector = null) {
@@ -25,9 +25,9 @@ const has = (o,k) => Object.prototype.hasOwnProperty.call(o || {}, k);
  * already supported by the planner/materializer. Special negative conditions are
  * NOT fulfilled by selecting the successful request's identifier.
  */
-export function prepareExploratoryLearningData(scenario, configuredBindings = []) {
-  const assessment = assessExploratoryLearning(scenario);
-  if (!assessment.allowed) fail(assessment.reason, scenario.scenarioId);
+export function prepareExploratoryLearningData(scenario, configuredBindings = [], { readinessV2Enabled = false } = {}) {
+  const assessment = assessLearningAdmission(scenario, { enabled: readinessV2Enabled });
+  if (!assessment.allowed && !assessment.preparationAllowed) fail(assessment.reason, scenario.scenarioId);
   const out = structuredClone(scenario), spec = out.spec;
   const configured = new Map(configuredBindings.map(b => [key(b), b]));
   const negative=negativePreparationGate(out);

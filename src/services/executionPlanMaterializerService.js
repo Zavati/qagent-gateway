@@ -1,5 +1,7 @@
 import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion } from '../coverageAssertions.js';
-import { assessExploratoryLearning, buildExploratoryLearningAdmission } from '../learningScenarioEligibility.js';
+import { assessExploratoryLearning } from '../learningScenarioEligibility.js';
+import { assessLearningAdmission, buildLearningAdmissionForRunner } from '../readiness/learningAdmissionV2.js';
+import { scenarioReadinessV2Enabled } from '../readiness/scenarioReadinessV2.js';
 import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { prepareExploratoryLearningData } from './exploratoryLearningData.js';
 import { baselineLearningEligibility, baselineEffectiveResponse } from '../baselineContract.js';
@@ -186,7 +188,7 @@ function validateArtifactScope(artifact, { organizationId, projectId }) {
   }
 }
 
-function selectScenarios(specification, requestedScenarioIds, environmentId, purpose = 'REGRESSION', now = Date.now()) {
+function selectScenarios(specification, requestedScenarioIds, environmentId, purpose = 'REGRESSION', now = Date.now(), readinessV2Enabled = false) {
   if(!['REGRESSION','LEARNING'].includes(purpose))runError('Propósito inválido.','RUN_PURPOSE_INVALID',400);
   if(purpose==='LEARNING'&&(!Array.isArray(requestedScenarioIds)||!requestedScenarioIds.length))runError('Selecione os cenários para aprender.','RUN_LEARNING_SELECTION_REQUIRED',400);
   const scenarios = Array.isArray(specification?.scenarios) ? specification.scenarios : [];
@@ -213,7 +215,9 @@ function selectScenarios(specification, requestedScenarioIds, environmentId, pur
   for (const scenario of selected) {
     const readiness = scenario?.automation?.readiness || 'UNKNOWN';
     if (purpose === 'LEARNING' && !['GET','HEAD','OPTIONS'].includes(scenario?.spec?.target?.method)) runError('Aprendizagem não autoriza mutações.', 'RUN_LEARNING_MUTATION_BLOCKED', 409);
-    if (readiness !== EXECUTABLE_READINESS && !(purpose === 'LEARNING' && (scenario.generationClass === 'OBSERVED_BASELINE' ? baselineLearningEligibility(scenario,now).allowed : assessExploratoryLearning(scenario).allowed))) {
+    const structuredLearning = purpose === 'LEARNING' && readinessV2Enabled && scenario.generationClass !== 'OBSERVED_BASELINE';
+    const admission = structuredLearning ? assessLearningAdmission(scenario, { enabled: true }) : null;
+    if (structuredLearning ? (!admission.allowed && !admission.preparationAllowed) : (readiness !== EXECUTABLE_READINESS && !(purpose === 'LEARNING' && (scenario.generationClass === 'OBSERVED_BASELINE' ? baselineLearningEligibility(scenario,now).allowed : assessExploratoryLearning(scenario).allowed)))) {
       runError(
         `O cenário '${scenario?.scenarioId || 'unknown'}' não está elegível para execução.`,
         'RUN_SCENARIO_NOT_EXECUTABLE',
@@ -221,7 +225,8 @@ function selectScenarios(specification, requestedScenarioIds, environmentId, pur
         {
           scenarioId: scenario?.scenarioId || null,
           readiness,
-          blockers: Array.isArray(scenario?.automation?.blockers) ? scenario.automation.blockers.slice(0, 10) : [],
+          blockers: structuredLearning ? admission.blockers : Array.isArray(scenario?.automation?.blockers) ? scenario.automation.blockers.slice(0, 10) : [],
+          ...(structuredLearning ? {admissionReason: admission.reason, admissionBasis: admission.admissionBasis} : {}),
         },
       );
     }
@@ -598,7 +603,9 @@ export async function materializeExecutionPlanV1({
   baselineNow = Date.now(),
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
-  let selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId, purpose, baselineNow);
+  const readinessV2Enabled = purpose === 'LEARNING' && scenarioReadinessV2Enabled(env);
+  let selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId, purpose, baselineNow, readinessV2Enabled);
+  const learningSources = new Map(selectedScenarios.map(s => [s.scenarioId, s]));
   // LEARNING performs a private preparation, not a version/readiness mutation.
   // Reuse these settings below; no parallel resolver or observed-values store.
   for(const scenario of selectedScenarios){const gate=negativePreparationGate(scenario);if(!gate.allowed)runError('O cenário não representa a condição negativa pretendida.',gate.reason,409,{scenarioId:scenario.scenarioId});}
@@ -606,8 +613,15 @@ export async function materializeExecutionPlanV1({
   const learningConfiguredBindings = selectedScenarios.some(prepareConfirmed) && selectedScenarios.some(s => s.generationClass !== 'OBSERVED_BASELINE' &&
     ((s.spec?.testData?.bindings || []).length || /\{[^}]+\}/.test(s.spec?.target?.path || '')))
     ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId) : null;
-  selectedScenarios = selectedScenarios.map(s => s.generationClass === 'OBSERVED_BASELINE' || !prepareConfirmed(s) ? s : prepareExploratoryLearningData(s, learningConfiguredBindings || []));
+  selectedScenarios = selectedScenarios.map(s => s.generationClass === 'OBSERVED_BASELINE' || !prepareConfirmed(s) ? s : prepareExploratoryLearningData(s, learningConfiguredBindings || [], {readinessV2Enabled}));
 
+  // Only ordinary PATH_PARAM issues may be cleared by private preparation. All
+  // other facts/guards remain authoritative, even for a legacy READY label.
+  if (readinessV2Enabled) for (const prepared of selectedScenarios) {
+    if (prepared.generationClass === 'OBSERVED_BASELINE') continue;
+    const admission = assessLearningAdmission(learningSources.get(prepared.scenarioId), {enabled:true,preparedScenario:prepared});
+    if (!admission.allowed) runError('Learning bloqueado após preparação.', 'RUN_SCENARIO_NOT_EXECUTABLE', 409, {scenarioId:prepared.scenarioId,blockers:admission.blockers,admissionReason:admission.reason});
+  }
   const runtimeConfig = await resolveRuntime(env, organizationId, projectId, environmentId);
   if (runtimeConfig?.environment?.environmentId !== environmentId) {
     runError('Runtime Config retornou um Environment divergente.', 'RUN_RUNTIME_SCOPE_MISMATCH', 502);
@@ -958,6 +972,10 @@ export async function materializeExecutionPlanV1({
         runtimePath;
     }
 
+    const learningAdmission = purpose === 'LEARNING' && scenario.generationClass !== 'OBSERVED_BASELINE'
+      ? buildLearningAdmissionForRunner(learningSources.get(scenario.scenarioId), scenario, {enabled:readinessV2Enabled}) : null;
+    if (purpose === 'LEARNING' && scenario.generationClass !== 'OBSERVED_BASELINE' && !learningAdmission) runError('Learning sem admissão válida.', 'RUN_LEARNING_ADMISSION_INVALID', 409, {scenarioId:scenario.scenarioId});
+    if(readinessV2Enabled && scenario.readinessV2?.basis==='NATIVE_V2')console.info(JSON.stringify({event:'scenario_learning_admission_v2',operation:'MATERIALIZE',projectId,scenarioId:scenario.scenarioId,allowed:true}));
     return {
       scenarioId: scenario.scenarioId,
       title: scenario.title,
@@ -967,9 +985,8 @@ export async function materializeExecutionPlanV1({
       groundingLevel: scenario?.grounding?.level || null,
       ...(scenario.generationClass?{generationClass:scenario.generationClass}:{}),
       ...(scenario.baseline?{baseline:clone(scenario.baseline)}:{}),
-      readiness: scenario.automation.readiness,
-      ...(purpose === 'LEARNING' && scenario.generationClass !== 'OBSERVED_BASELINE'
-        ? {learningAdmission: buildExploratoryLearningAdmission(scenario)} : {}),
+      readiness: learningAdmission?.sourceReadiness || scenario.automation.readiness,
+      ...(learningAdmission ? {learningAdmission} : {}),
       spec,
     };
   });

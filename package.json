@@ -153,7 +153,8 @@
     "check:08.1.6-fix2-4": "npm run check:08.1.6-fix2-3 && npm run test:f08-1-6-fix2-4",
     "test:f08-1-6-fix3": "node test/test-foundation-08-1-6-fix3-scenario-request-edit.js && node test/test-foundation-08-1-6-fix3-scenario-runtime.js",
     "check:08.1.6-fix3": "npm run check:08.1.6-fix2-4 && npm run test:f08-1-6-fix3 && npm run test:router",
-    "test:f08-1-7-a": "node --test test/structured-readiness-08.1.7-a.test.mjs test/structured-readiness-generation-08.1.7-a.test.mjs"
+    "test:f08-1-7-a": "node --test test/structured-readiness-08.1.7-a.test.mjs test/structured-readiness-generation-08.1.7-a.test.mjs",
+    "test:f08-1-7-b": "node --test test/structured-learning-admission-08.1.7-b.test.mjs test/structured-learning-integration-08.1.7-b.test.mjs"
   },
   "keywords": [],
   "author": "",

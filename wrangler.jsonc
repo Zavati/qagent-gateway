@@ -60,7 +60,7 @@
 		]
 	},
 	"vars": {
-        "SCENARIO_READINESS_V2_ENABLED": "true",
+    "SCENARIO_READINESS_V2_ENABLED": "true",
         "OBSERVED_BASELINE_GENERATION_ENABLED": "false",
         "OBSERVED_BASELINE_PROJECT_IDS": "",
 		// Environment
