@@ -1,0 +1,110 @@
+{
+  "title": "Cenários de Teste para Endpoint de Ações Permitidas de Candidatos",
+  "objective": "Validar o comportamento do endpoint que retorna as ações permitidas para candidatos na API de recrutamento.",
+  "scenarios": [
+    {
+      "scenarioId": "test_001",
+      "title": "Obter ações permitidas para candidato existente",
+      "objective": "Verificar se o endpoint retorna as ações permitidas para um candidato válido.",
+      "category": "HAPPY_PATH",
+      "priority": "HIGH",
+      "confidence": "HIGH",
+      "grounding": {"level": "OBSERVED", "rationale": ["O endpoint foi observado retornando 200 com dados válidos."], "evidenceRefs": ["cev_08e47fe24073b3d0d78ed9316cd51cfbcb3ab855"], "schemaRefs": ["csv_ee3a4ae9f486252ce637009bcd4c428bdc5d45d0"]},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [{"type": "STATUS", "expectedStatusCodes": [200]}, {"type": "SCHEMA", "schemaRef": "csv_ee3a4ae9f486252ce637009bcd4c428bdc5d45d0"}],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_002",
+      "title": "Obter ações permitidas para candidato inexistente",
+      "objective": "Verificar o comportamento do endpoint ao solicitar ações para um candidato que não existe.",
+      "category": "NEGATIVE",
+      "priority": "MEDIUM",
+      "confidence": "LOW",
+      "grounding": {"level": "INFERRED", "rationale": ["Esperado erro 404 para candidato não encontrado."], "evidenceRefs": [], "schemaRefs": []},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [{"type": "STATUS", "expectedStatusCodes": [404]}],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_003",
+      "title": "Verificar resposta sem autenticação",
+      "objective": "Testar o comportamento do endpoint quando não há autenticação.",
+      "category": "AUTHORIZATION",
+      "priority": "HIGH",
+      "confidence": "LOW",
+      "grounding": {"level": "ASSUMED", "rationale": ["Não foi observado comportamento sem autenticação."], "evidenceRefs": [], "schemaRefs": []},
+      "authRequirement": "UNAUTHENTICATED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_004",
+      "title": "Verificar estrutura da resposta",
+      "objective": "Validar se a estrutura da resposta está de acordo com o schema definido.",
+      "category": "SCHEMA_CONTRACT",
+      "priority": "HIGH",
+      "confidence": "HIGH",
+      "grounding": {"level": "OBSERVED", "rationale": ["A resposta observada corresponde ao schema esperado."], "evidenceRefs": ["cev_08e47fe24073b3d0d78ed9316cd51cfbcb3ab855"], "schemaRefs": ["csv_ee3a4ae9f486252ce637009bcd4c428bdc5d45d0"]},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [{"type": "SCHEMA", "schemaRef": "csv_ee3a4ae9f486252ce637009bcd4c428bdc5d45d0"}],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_005",
+      "title": "Verificar total de ações permitidas",
+      "objective": "Validar se o total de ações permitidas está correto na resposta.",
+      "category": "DATA_VARIATION",
+      "priority": "MEDIUM",
+      "confidence": "LOW",
+      "grounding": {"level": "ASSUMED", "rationale": ["Não foi observado o total de ações permitidas."], "evidenceRefs": [], "schemaRefs": []},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_006",
+      "title": "Verificar ações permitidas com ID inválido",
+      "objective": "Testar o comportamento do endpoint com um ID de candidato inválido.",
+      "category": "NEGATIVE",
+      "priority": "MEDIUM",
+      "confidence": "LOW",
+      "grounding": {"level": "INFERRED", "rationale": ["Esperado erro 400 para ID inválido."], "evidenceRefs": [], "schemaRefs": []},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [{"type": "STATUS", "expectedStatusCodes": [400]}],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_007",
+      "title": "Verificar cabeçalho Content-Type na resposta",
+      "objective": "Validar se o cabeçalho Content-Type está presente e correto na resposta.",
+      "category": "STATUS_BEHAVIOR",
+      "priority": "MEDIUM",
+      "confidence": "HIGH",
+      "grounding": {"level": "OBSERVED", "rationale": ["O cabeçalho Content-Type foi observado na resposta."], "evidenceRefs": ["cev_08e47fe24073b3d0d78ed9316cd51cfbcb3ab855"], "schemaRefs": []},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [{"type": "HEADER_EXISTS", "name": "Content-Type"}],
+      "automationHints": {"reasons": []}
+    },
+    {
+      "scenarioId": "test_008",
+      "title": "Verificar ações permitidas com múltiplos candidatos",
+      "objective": "Testar o comportamento do endpoint ao solicitar ações para múltiplos candidatos em sequência.",
+      "category": "BOUNDARY",
+      "priority": "LOW",
+      "confidence": "LOW",
+      "grounding": {"level": "ASSUMED", "rationale": ["Não foi observado comportamento com múltiplos candidatos."], "evidenceRefs": [], "schemaRefs": []},
+      "authRequirement": "REQUIRED",
+      "request": {"pathParams": {}, "query": {}, "headers": {}, "body": {}},
+      "assertions": [],
+      "automationHints": {"reasons": []}
+    }
+  ]
+}

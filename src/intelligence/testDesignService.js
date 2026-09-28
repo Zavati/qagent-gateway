@@ -1,3 +1,4 @@
+import { collectAssertionRepairDiagnostics, validateAssertionRepairIntegrity } from './testDesignRepairSupport.js';
 import { scenarioReadinessV2Enabled } from '../readiness/scenarioReadinessV2.js';
 import { attachNativeScenarioReadiness } from './structuredReadiness.js';
 import { observedBaselineGenerationEnabled } from './observedBaselineFeature.js';
@@ -59,7 +60,7 @@ function wrapAiTimeout(error, { stage, timeoutMs } = {}) {
 }
 
 
-function wrapInvalidModelOutput(error, { repairAttempts = 0 } = {}) {
+function wrapInvalidModelOutput(error, { repairAttempts = 0, assertionDiagnostics = null } = {}) {
   const wrapped = new Error('A IA retornou um Test Design incompatível com o contrato qagent.test-design.v1.');
   wrapped.status = 502;
   wrapped.code = 'AI_TEST_DESIGN_OUTPUT_INVALID';
@@ -68,6 +69,8 @@ function wrapInvalidModelOutput(error, { repairAttempts = 0 } = {}) {
     validationCode: error?.code || 'TEST_DESIGN_CONTRACT_INVALID',
     validationPath: error?.path || null,
   };
+  if (assertionDiagnostics) wrapped.details.assertionDiagnostics = assertionDiagnostics;
+  if (Array.isArray(error?.details?.repairIssues)) wrapped.details.repairIssues = error.details.repairIssues.slice(0, 40);
   if (Array.isArray(error?.details?.allowed)) wrapped.details.expectedValues = error.details.allowed.slice(0, 20);
   if (typeof error?.details?.receivedType === 'string') wrapped.details.receivedType = error.details.receivedType;
   if (['string', 'number', 'boolean'].includes(typeof error?.details?.receivedValue)) wrapped.details.receivedValue = error.details.receivedValue;
@@ -75,7 +78,7 @@ function wrapInvalidModelOutput(error, { repairAttempts = 0 } = {}) {
   return wrapped;
 }
 
-function contractRepairInstruction(error) {
+function contractRepairInstruction(error, assertionDiagnostics) {
   const code = error?.code || 'TEST_DESIGN_CONTRACT_INVALID';
   const path = error?.path || 'unknown';
   const rule = String(error?.message || 'Contrato inválido.').slice(0, 500);
@@ -84,7 +87,10 @@ function contractRepairInstruction(error) {
     : '';
   return `A resposta anterior viola o TestDesignModelOutputV1 (${code} em ${path}).
 Regra violada: ${rule}${secretRule}
-Reescreva o objeto COMPLETO, respeitando estritamente OUTPUT_JSON_SCHEMA, os formatos exatos de assertion e CATALOG_CONTEXT_JSON.
+ASSERTION_DIAGNOSTICS_JSON (códigos/índices do sistema; não inclui valores de request):
+${JSON.stringify(assertionDiagnostics)}
+Corrija todas as listas inválidas em uma única tentativa. Não apague cenários, não altere suas intenções, não injete STATUS genérico e não invente evidências. Uma hipótese ASSUMED pode ter assertion explícita sem se tornar OBSERVED.
+Reescreva o objeto COMPLETO, respeitando estritamente OUTPUT_JSON_SCHEMA, os formatos exatos de assertion e os fatos limitados de REPAIR_CONTEXT_JSON.
 Para confidence use EXATAMENTE uma destas strings: HIGH, MEDIUM, LOW. Nunca use número, percentual, score ou VERY_HIGH/VERY_LOW.
 Não adicione campos extras. Não invente refs. Use somente IDs existentes no contexto. Retorne somente JSON válido.`;
 }
@@ -173,6 +179,7 @@ export async function generateExploratoryTestDesignV1({
   let repairAttempts = 0;
   let firstValidationError = null;
   const secretSafeSanitizer = emptySecretSafeDiagnostics();
+  const assertionRepair = { initial: null, remaining: null, integrityChecked: false };
 
   log('testDesign_ai_start', {
     engineVersion: AI_TEST_DESIGN_ENGINE_VERSION,
@@ -284,12 +291,24 @@ export async function generateExploratoryTestDesignV1({
   } catch (error) {
     if (!(error instanceof TestDesignContractError)) throw error;
     firstValidationError = error;
+    const assertionDiagnostics = collectAssertionRepairDiagnostics(modelOutput);
+    assertionRepair.initial = assertionDiagnostics;
+    assertionRepair.remaining = assertionDiagnostics;
+    // Snapshot after the existing sanitizer: removed secret material never enters
+    // the contextual repair nor the integrity comparison.
+    const assertionRepairSource = assertionDiagnostics.issueCount ? structuredClone(modelOutput) : null;
     if (repairAttempts >= 1) {
-      throw wrapInvalidModelOutput(error, { repairAttempts });
+      log('testDesign_ai_contract_failed', {
+        validationCode: error.code, validationPath: error.path || null, repairAttempts,
+        assertionDiagnostics, provider: aiConfig.provider, model: aiConfig.model,
+        endpointId: context.endpoint.endpointId, contextFingerprint,
+      });
+      throw wrapInvalidModelOutput(error, { repairAttempts, assertionDiagnostics });
     }
     repairAttempts += 1;
 
     log('testDesign_ai_contract_repair', {
+      assertionDiagnostics,
       validationCode: error.code,
       validationPath: error.path || null,
       provider: out?.provider || aiConfig.provider,
@@ -306,7 +325,7 @@ export async function generateExploratoryTestDesignV1({
         systemPrompt: repairPrompt.systemPrompt,
         originalPrompt: repairPrompt.userPrompt,
         rawText: JSON.stringify(modelOutput),
-        repairInstruction: contractRepairInstruction(error),
+        repairInstruction: contractRepairInstruction(error, assertionDiagnostics),
         retries: 0,
         timeoutMs: repairTimeoutMs,
         maxOutputTokens,
@@ -348,11 +367,18 @@ export async function generateExploratoryTestDesignV1({
         });
       }
     }
+    assertionRepair.remaining = collectAssertionRepairDiagnostics(modelOutput);
     try {
       validateTestDesignModelOutputV1(modelOutput, context);
+      if (assertionRepairSource) {
+        const integrity = validateAssertionRepairIntegrity(assertionRepairSource, modelOutput, context, assertionDiagnostics);
+        assertionRepair.integrityChecked = integrity.checked;
+      }
     } catch (repairError) {
       if (repairError instanceof TestDesignContractError) {
         log('testDesign_ai_contract_failed', {
+          assertionDiagnostics: assertionRepair.remaining,
+          repairIssues: repairError.details?.repairIssues || [],
           validationCode: repairError.code,
           validationPath: repairError.path || null,
           repairAttempts,
@@ -361,7 +387,7 @@ export async function generateExploratoryTestDesignV1({
           endpointId: context.endpoint.endpointId,
           contextFingerprint,
         });
-        throw wrapInvalidModelOutput(repairError, { repairAttempts });
+        throw wrapInvalidModelOutput(repairError, { repairAttempts, assertionDiagnostics: assertionRepair.remaining });
       }
       throw repairError;
     }
@@ -471,6 +497,7 @@ export async function generateExploratoryTestDesignV1({
       scenarioCountRequested: scenarioCount,
       scenarioCountGenerated: specification.summary.scenarioCount,
       repairAttempts,
+      assertionRepair,
       normalizationCount: normalizationPaths.length,
       normalizationPaths: normalizationPaths.slice(0, 20),
       secretSafeSanitizer,

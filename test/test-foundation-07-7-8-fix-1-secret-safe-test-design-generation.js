@@ -146,12 +146,12 @@ assert.equal(serializedSanitized.includes('fake-token'), false);
 assert.equal(serializedSanitized.includes('fake-client-secret'), false);
 
 const prompt = buildTestDesignPromptV1(context, { scenarioCount: 4 });
-assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6.3');
+assert.equal(TEST_DESIGN_PROMPT_VERSION, 'qagent.test-design-prompt.v6.4');
 assert.match(prompt.systemPrompt, /NÃO podem aparecer no request/i);
 assert.match(prompt.systemPrompt, /Nunca substitua um secret proibido/i);
 assert.match(prompt.systemPrompt, /automationHints\.needsData=true/);
 const repairPrompt = buildTestDesignRepairPromptV1(context, { scenarioCount: 4 });
-assert.equal(TEST_DESIGN_REPAIR_PROMPT_VERSION, 'qagent.test-design-repair-prompt.v1.1');
+assert.equal(TEST_DESIGN_REPAIR_PROMPT_VERSION, 'qagent.test-design-repair-prompt.v1.2');
 assert.match(repairPrompt.systemPrompt, /Remova completamente campos sensíveis/i);
 assert.match(repairPrompt.systemPrompt, /placeholder/i);
 
