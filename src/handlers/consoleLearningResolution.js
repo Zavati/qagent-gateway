@@ -1,3 +1,5 @@
+import { readinessReconciliationEnabled } from '../readiness/readinessReconciliation.js';
+import { getReadinessReconciliation } from '../services/readinessReconciliationClient.js';
 import { NEGATIVE_REPAIR_CHANGE, validateNegativeStrategy, negativeEffectivePath, negativePreparationGate } from '../negativeRequestStrategy.js';
 import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion, validateCoverageEvaluation, assertionCoverageGaps } from '../coverageAssertions.js';
 import { assessLearningAdmission, learningAdmissionDiagnostics } from '../readiness/learningAdmissionV2.js';
@@ -173,6 +175,17 @@ export async function postConsoleLearningResolutionAnalyze(req,env,{projectId},d
         search:{maxRecentResultSets:5,hasMore:list.page?.hasMore===true||list.hasMore===true},
         learning:{...candidate,allowed:proposal||noChangeEvidence?false:candidate.allowed,requiresRuntimePreflight:true},blockers:candidate.blockers || [],knowledgeWarnings:candidate.knowledgeWarnings || [],semanticDiagnostics:{...learningAdmissionDiagnostics(scenario,{enabled:readinessV2Enabled,preparedScenario:preparedForDiagnostics}),...(readinessV2Enabled?{canInvestigate:candidate.allowed}:{})},evidence:noChangeEvidence});
     }catch(error){items.push({...base,status:'ERROR',errorCode:code(error),learning:{allowed:false,requiresRuntimePreflight:true},proposal:null});}
+  }
+  if(readinessReconciliationEnabled(env)){
+    const groups=new Map();
+    for(const item of items){if(item.status==='ERROR')continue;const key=item.testDesignVersionId;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item);}
+    for(const [testDesignVersionId,selected] of groups){
+      try{
+        const projection=await(deps.reconcileReadiness||getReadinessReconciliation)({...common,testDesignVersionId,endpointId:selected[0].endpointId,environmentId:input.environmentId,scenarioIds:selected.map(i=>i.scenarioId)});
+        const byId=new Map(projection.items.map(i=>[i.scenarioId,i]));
+        for(const item of selected){const p=byId.get(item.scenarioId);if(p){item.readinessV2=p.readinessV2;item.readinessReconciliation=p.readinessReconciliation;}}
+      }catch(error){for(const item of selected)item.readinessReconciliation={status:'UNAVAILABLE',errorCode:code(error)};}
+    }
   }
   return {status:'ok',data:{contractVersion:VERSION,projectId,operation:'ANALYZE',items,executionStarted:false,appliedByThisOperation:false}};
 }

@@ -1,3 +1,4 @@
+import { postConsoleReadinessReconciliation, getConsoleReadinessReconciliationPreview } from './handlers/consoleReadinessReconciliation.js';
 import { postConsoleLearningResolutionAnalyze, postConsoleLearningResolutionApprove, postConsoleLearningResolutionVerify } from './handlers/consoleLearningResolution.js';
 import { getConsoleProjectTestReadiness, getConsoleEndpointTestReadinessScenarios } from './handlers/consoleTestReadiness.js';
 // QAgent Gateway (Cloudflare Worker)
@@ -2118,6 +2119,8 @@ const gatewayRouteHandlers = {
   consoleLearningCyclesList: async (req, env, _ctx, params) => json(await listConsoleLearningCycles(req, env, params), { headers: corsHeaders(req, env) }),
   consoleLearningAttentionList: async (req, env, _ctx, params) => json(await listConsoleLearningAttention(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleReadinessReconciliationPost: async (req, env, _ctx, params) => json(await postConsoleReadinessReconciliation(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
+  consoleReadinessReconciliationPreviewGet: async (req, env, _ctx, params) => json(await getConsoleReadinessReconciliationPreview(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleProjectTestReadinessGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestReadiness(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleEndpointTestReadinessScenariosGet: async (req, env, _ctx, params) => json(await getConsoleEndpointTestReadinessScenarios(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleAutomationTestInventoryGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestInventory(req, env, params), { headers: corsHeaders(req, env) }),

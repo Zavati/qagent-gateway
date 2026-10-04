@@ -25,6 +25,8 @@ const WIRE = Object.freeze({
   EXPECTATION_RESPONSE_KNOWLEDGE_REQUIRED: 'LEARNING_RESPONSE_KNOWLEDGE_REQUIRED',
   EXPECTATION_UNKNOWN: 'LEARNING_RESPONSE_KNOWLEDGE_REQUIRED',
   EXPECTATION_REVALIDATION_REQUIRED: 'LEARNING_HYPOTHESIS_UNVERIFIED',
+  EXPECTATION_APPROVAL_REQUIRED: 'LEARNING_HYPOTHESIS_UNVERIFIED',
+  ASSERTION_COVERAGE_VERIFICATION_REQUIRED: 'LEARNING_ASSERTION_COVERAGE_GAP',
   ASSERTION_TYPE_REQUIRED: 'LEARNING_ASSERTION_COVERAGE_GAP',
   ASSERTION_PATH_REQUIRED: 'LEARNING_ASSERTION_COVERAGE_GAP',
   ASSERTION_PAGINATION_BOUND_REQUIRED: 'LEARNING_ASSERTION_COVERAGE_GAP',
@@ -64,7 +66,10 @@ export function assessLearningAdmission(scenario, { enabled = false, preparedSce
   try {
     if (own(scenario, 'readinessV2')) {
       snapshot = validateScenarioReadinessV2(scenario.readinessV2);
-      native = snapshot.basis === 'NATIVE_V2';
+      // C also supplies an internally validated, hash-bound evidence overlay
+      // for old versions. Registry refuses persisting this evaluationScope;
+      // it never originates from a browser request or a model response.
+      native = snapshot.basis === 'NATIVE_V2' || snapshot.evaluationScope === 'EVIDENCE_RECONCILED';
     } else native = false;
     if (!native) snapshot = adaptLegacyScenarioReadiness(scenario);
     if (preparedScenario && !samePreparationSource(scenario, preparedScenario)) {

@@ -1,3 +1,5 @@
+import { readinessReconciliationEnabled } from '../readiness/readinessReconciliation.js';
+import { getReadinessReconciliation, applyReconciliationToArtifact } from './readinessReconciliationClient.js';
 import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion } from '../coverageAssertions.js';
 import { assessExploratoryLearning } from '../learningScenarioEligibility.js';
 import { assessLearningAdmission, buildLearningAdmissionForRunner } from '../readiness/learningAdmissionV2.js';
@@ -601,8 +603,19 @@ export async function materializeExecutionPlanV1({
   resolveObservedTestData = resolveObservedTestDataForRun,
   loadBaselineSource = undefined,
   baselineNow = Date.now(),
+  reconcileReadiness = getReadinessReconciliation,
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
+  if (readinessReconciliationEnabled(env)) {
+    const requested=Array.isArray(requestedScenarioIds)&&requestedScenarioIds.length?new Set(requestedScenarioIds):null;
+    // Protected baselines and mutations retain their existing execution path,
+    // including availability; they do not acquire a new Evolution dependency.
+    const reconciliationIds=artifact.specification.scenarios.filter(s=>(!requested||requested.has(s.scenarioId))&&['GET','HEAD','OPTIONS'].includes(s.spec?.target?.method)&&s.generationClass!=='OBSERVED_BASELINE'&&!s.baseline).map(s=>s.scenarioId);
+    if(reconciliationIds.length){
+      const projection=await reconcileReadiness({env,organizationId,projectId,endpointId:artifact.endpointId,testDesignVersionId:artifact.testDesignVersionId,environmentId,scenarioIds:reconciliationIds});
+      artifact=await applyReconciliationToArtifact(artifact,projection);
+    }
+  }
   const readinessV2Enabled = purpose === 'LEARNING' && scenarioReadinessV2Enabled(env);
   let selectedScenarios = selectScenarios(artifact.specification, requestedScenarioIds, environmentId, purpose, baselineNow, readinessV2Enabled);
   const learningSources = new Map(selectedScenarios.map(s => [s.scenarioId, s]));
@@ -613,7 +626,7 @@ export async function materializeExecutionPlanV1({
   const learningConfiguredBindings = selectedScenarios.some(prepareConfirmed) && selectedScenarios.some(s => s.generationClass !== 'OBSERVED_BASELINE' &&
     ((s.spec?.testData?.bindings || []).length || /\{[^}]+\}/.test(s.spec?.target?.path || '')))
     ? await resolveTestDataBindings(env, organizationId, projectId, artifact.endpointId, environmentId) : null;
-  selectedScenarios = selectedScenarios.map(s => s.generationClass === 'OBSERVED_BASELINE' || !prepareConfirmed(s) ? s : prepareExploratoryLearningData(s, learningConfiguredBindings || [], {readinessV2Enabled}));
+  selectedScenarios = selectedScenarios.map(s => s.generationClass === 'OBSERVED_BASELINE' || !prepareConfirmed(s) ? s : prepareExploratoryLearningData(s, learningConfiguredBindings || [], {readinessV2Enabled: readinessV2Enabled || (readinessReconciliationEnabled(env) && s.readinessV2?.evaluationScope === 'EVIDENCE_RECONCILED')}));
 
   // Only ordinary PATH_PARAM issues may be cleared by private preparation. All
   // other facts/guards remain authoritative, even for a legacy READY label.

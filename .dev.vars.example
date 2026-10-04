@@ -42,3 +42,6 @@ TEST_GENERATION_INTERNAL_HMAC_SECRET=
 
 # 08.1.7-A: additive readiness only; Learning admission stays legacy.
 SCENARIO_READINESS_V2_ENABLED=false
+
+# C: evidence reconciliation (requires SCENARIO_READINESS_V2_ENABLED=true)
+SCENARIO_READINESS_RECONCILIATION_ENABLED=false

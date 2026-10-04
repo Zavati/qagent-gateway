@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "qagent.scenario-readiness.v2.schema.json",
   "title": "qagent.scenario-readiness.v2",
-  "description": "Phase A additive TEST_DESIGN_ONLY projection. Cross-field safety, issue ordering and legacy coherence are additionally validated by scenarioReadinessV2.js. Reserved VERIFIED/CONTRADICTED/PROPOSAL_AVAILABLE do not authorize writes in A.",
+  "description": "Static immutable snapshot or C evidence-reconciled read projection. Persistence rejects evidence overlays; verification is version/environment bound.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,7 +27,10 @@
       ]
     },
     "evaluationScope": {
-      "const": "TEST_DESIGN_ONLY"
+      "enum": [
+        "TEST_DESIGN_ONLY",
+        "EVIDENCE_RECONCILED"
+      ]
     },
     "execution": {
       "type": "object",
@@ -101,7 +104,10 @@
               "OBSERVED_BASELINE_PROVENANCE_INVALID",
               "EXECUTION_BLOCKED",
               "EXPECTATION_NOT_MATURE",
-              "COVERAGE_INCOMPLETE"
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_APPROVAL_REQUIRED",
+              "ASSERTION_COVERAGE_VERIFICATION_REQUIRED",
+              "EXPECTATION_CONTRADICTION_REQUIRES_REVIEW"
             ]
           },
           "maxItems": 131,
@@ -138,7 +144,8 @@
             "DERIVATION_PENDING_VERIFICATION",
             "UNDETERMINED",
             "VERSION_VERIFICATION",
-            "COMPATIBLE_CONTRADICTION"
+            "COMPATIBLE_CONTRADICTION",
+            "COMPATIBLE_EXECUTION"
           ]
         }
       },
@@ -252,6 +259,16 @@
               "const": "CONTRADICTED"
             }
           }
+        },
+        {
+          "properties": {
+            "basis": {
+              "const": "COMPATIBLE_EXECUTION"
+            },
+            "status": {
+              "const": "EVIDENCED"
+            }
+          }
         }
       ]
     },
@@ -325,7 +342,10 @@
               "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
               "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
               "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
-              "OBSERVED_BASELINE_PROVENANCE_INVALID"
+              "OBSERVED_BASELINE_PROVENANCE_INVALID",
+              "EXPECTATION_APPROVAL_REQUIRED",
+              "ASSERTION_COVERAGE_VERIFICATION_REQUIRED",
+              "EXPECTATION_CONTRADICTION_REQUIRES_REVIEW"
             ]
           },
           "maxItems": 128,
@@ -407,7 +427,10 @@
               "OBSERVED_BASELINE_PROVENANCE_INVALID",
               "EXECUTION_BLOCKED",
               "EXPECTATION_NOT_MATURE",
-              "COVERAGE_INCOMPLETE"
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_APPROVAL_REQUIRED",
+              "ASSERTION_COVERAGE_VERIFICATION_REQUIRED",
+              "EXPECTATION_CONTRADICTION_REQUIRES_REVIEW"
             ]
           },
           "maxItems": 131,
@@ -487,7 +510,10 @@
               "OBSERVED_BASELINE_PROVENANCE_INVALID",
               "EXECUTION_BLOCKED",
               "EXPECTATION_NOT_MATURE",
-              "COVERAGE_INCOMPLETE"
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_APPROVAL_REQUIRED",
+              "ASSERTION_COVERAGE_VERIFICATION_REQUIRED",
+              "EXPECTATION_CONTRADICTION_REQUIRES_REVIEW"
             ]
           },
           "maxItems": 131,

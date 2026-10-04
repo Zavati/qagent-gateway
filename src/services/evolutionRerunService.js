@@ -1,3 +1,5 @@
+import { readinessReconciliationEnabled } from '../readiness/readinessReconciliation.js';
+import { getRunnerTestArtifact } from './testRegistryClient.js';
 import { getRunBundle } from '../repositories/runRepository.js';
 import { createRunV1 } from './runService.js';
 
@@ -165,6 +167,15 @@ export async function createEvolutionRerunV1({
     environmentId,
     scenarioId,
   });
+
+  // A C-derived version is verified with explicit Learning while its regression
+  // projection is still blocked. Runtime reuse does not reuse auth/test data.
+  if (readinessReconciliationEnabled(env) && purpose !== 'LEARNING') {
+    const artifact=await (deps.getArtifact||getRunnerTestArtifact)({env,organizationId,projectId,testDesignVersionId});
+    const scenario=artifact.specification.scenarios.find(s=>s.scenarioId===scenarioId);
+    if (['GET','HEAD','OPTIONS'].includes(scenario?.spec?.target?.method) && (scenario?.readinessV2?.expectation?.basis==='DERIVATION_PENDING_VERIFICATION'
+      || scenario?.learning?.phase==='PENDING_VERIFICATION' || scenario?.requestManagement?.phase==='PENDING_VERIFICATION')) purpose='LEARNING';
+  }
 
   const created = await createRun({
     env,

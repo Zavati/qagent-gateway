@@ -37,6 +37,10 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  const reconcileMatch=normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/intelligence\/test-readiness\/(reconciliation|reconciliation-preview)$/);
+  if(reconcileMatch && ((normalizedMethod==='POST'&&reconcileMatch[2]==='reconciliation')||(normalizedMethod==='GET'&&reconcileMatch[2]==='reconciliation-preview')))
+    return {name:reconcileMatch[2]==='reconciliation'?'consoleReadinessReconciliationPost':'consoleReadinessReconciliationPreviewGet',params:{projectId:decodeURIComponent(reconcileMatch[1])}};
+
   // 08.1.6 FIX-1 — read-only readiness; no collision with Catalog discovery or test generation.
   const readinessMatch = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/intelligence\/test-readiness(?:\/endpoints\/([^/]+)\/scenarios)?$/);
   if (normalizedMethod === 'GET' && readinessMatch) {

@@ -5,7 +5,7 @@ export const SCENARIO_READINESS_VERSION = 'qagent.scenario-readiness.v2';
 export const READINESS_EVALUATION_SCOPE = 'TEST_DESIGN_ONLY';
 export const READINESS_BASES = Object.freeze(['NATIVE_V2', 'LEGACY_PROJECTION']);
 export const EXPECTATION_BASES = Object.freeze({
-  OBSERVED_EVIDENCE: 'EVIDENCED', OBSERVED_BASELINE: 'EVIDENCED',
+  OBSERVED_EVIDENCE: 'EVIDENCED', OBSERVED_BASELINE: 'EVIDENCED', COMPATIBLE_EXECUTION: 'EVIDENCED',
   AI_ASSUMED: 'HYPOTHESIS', UNOBSERVED_EXPECTATION: 'HYPOTHESIS',
   LEGACY_OBSERVED_EVIDENCE: 'EVIDENCED', LEGACY_ASSUMED: 'HYPOTHESIS',
   LEGACY_UNVERIFIED: 'HYPOTHESIS', DERIVATION_PENDING_VERIFICATION: 'HYPOTHESIS',
@@ -48,16 +48,16 @@ function reviewFor(execution, expectation, coverage, issues, learningPolicyAllow
   return { status: 'NONE', reasonCodes: [] };
 }
 /** Pure reducer over SYSTEM-owned facts. No runtime/data access, AI decision or side effect.
- * VERIFIED / CONTRADICTED / PROPOSAL_AVAILABLE are reserved contracts; A does not produce them.
+ * C may project VERIFIED / CONTRADICTED / PROPOSAL_AVAILABLE only from validated, version-scoped evidence.
  * LEARNING_AVAILABLE describes a candidate, not an admission/authorization token.
  */
 export function evaluateScenarioReadinessV2({ issues = [], expectation = { status: 'UNKNOWN', basis: 'UNDETERMINED' },
-  basis = 'NATIVE_V2', learningPolicyAllows = false, proposalAvailable = false } = {}) {
+  basis = 'NATIVE_V2', learningPolicyAllows = false, proposalAvailable = false, evaluationScope = READINESS_EVALUATION_SCOPE } = {}) {
   const normalized = normalizeReadinessIssues(issues);
   const execution = { status: normalized.some(i => i.blocksExecution) ? 'BLOCKED' : 'READY',
     reasonCodes: unique(normalized.filter(i => i.blocksExecution).map(i => i.code)) };
   const coverage = coverageFor(normalized);
-  const value = { contractVersion: SCENARIO_READINESS_VERSION, basis, evaluationScope: READINESS_EVALUATION_SCOPE,
+  const value = { contractVersion: SCENARIO_READINESS_VERSION, basis, evaluationScope,
     execution, expectation: { ...expectation }, coverage,
     review: reviewFor(execution, expectation, coverage, normalized, learningPolicyAllows === true, proposalAvailable === true),
     regression: regressionFor(execution, expectation, coverage, normalized), issues: normalized };
@@ -76,7 +76,7 @@ export function validateScenarioReadinessV2(value, { path = 'readinessV2' } = {}
   const fail = suffix => { throw new ScenarioReadinessError(suffix ? `${path}.${suffix}` : path); };
   assertReadinessKeys(value, ['contractVersion', 'basis', 'evaluationScope', 'execution', 'expectation', 'coverage', 'review', 'regression', 'issues'], path);
   if (value.contractVersion !== SCENARIO_READINESS_VERSION || !READINESS_BASES.includes(value.basis)
-    || value.evaluationScope !== READINESS_EVALUATION_SCOPE) fail();
+    || !['TEST_DESIGN_ONLY', 'EVIDENCE_RECONCILED'].includes(value.evaluationScope)) fail();
   if (!Array.isArray(value.issues) || value.issues.length > 128) fail('issues');
   value.issues.forEach((i, n) => validateReadinessIssue(i, `${path}.issues[${n}]`));
   if (!same(value.issues, normalizeReadinessIssues(value.issues))) fail('issues');
@@ -109,7 +109,7 @@ export function validateScenarioReadinessAttachment(scenario, { path = 'scenario
     if (scenario?.grounding?.level === 'ASSUMED' && value.expectation.status !== 'HYPOTHESIS') throw new ScenarioReadinessError(`${path}.readinessV2.expectation`);
     if (value.review.status === 'LEARNING_AVAILABLE' && !['GET', 'HEAD', 'OPTIONS'].includes(scenario?.spec?.target?.method)) throw new ScenarioReadinessError(`${path}.readinessV2.review`);
   }
-  if (generation && (value.basis !== 'NATIVE_V2' || ['VERIFIED', 'CONTRADICTED'].includes(value.expectation.status)
+  if (generation && (value.evaluationScope !== 'TEST_DESIGN_ONLY' || value.basis !== 'NATIVE_V2' || ['VERIFIED', 'CONTRADICTED'].includes(value.expectation.status)
     || value.review.status === 'PROPOSAL_AVAILABLE')) throw new ScenarioReadinessError(`${path}.readinessV2`, 'SCENARIO_READINESS_V2_TRANSITION_UNSUPPORTED');
   return true;
 }

@@ -73,7 +73,10 @@
         "OBSERVED_BASELINE_SOURCE_UNAVAILABLE",
         "OBSERVED_BASELINE_RESPONSE_INCOMPLETE",
         "OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE",
-        "OBSERVED_BASELINE_PROVENANCE_INVALID"
+        "OBSERVED_BASELINE_PROVENANCE_INVALID",
+        "EXPECTATION_APPROVAL_REQUIRED",
+        "ASSERTION_COVERAGE_VERIFICATION_REQUIRED",
+        "EXPECTATION_CONTRADICTION_REQUIRES_REVIEW"
       ]
     },
     "source": {
@@ -85,7 +88,8 @@
         "NEGATIVE_INTENT_GUARD",
         "READINESS_EVALUATOR",
         "LEGACY_ADAPTER",
-        "REGISTRY_COMPATIBILITY"
+        "REGISTRY_COMPATIBILITY",
+        "EVIDENCE_RECONCILIATION"
       ]
     },
     "kind": {
@@ -1710,6 +1714,99 @@
           },
           "blocksExecution": {
             "const": true
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": true
+          },
+          "resolution": {
+            "const": "HUMAN_REVIEW"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_APPROVAL_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "ASSERTION_COVERAGE_VERIFICATION_REQUIRED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "ASSERTION_COVERAGE"
+          },
+          "severity": {
+            "const": "WARNING"
+          },
+          "blocksExecution": {
+            "const": false
+          },
+          "blocksRegression": {
+            "const": true
+          },
+          "humanRequired": {
+            "const": false
+          },
+          "resolution": {
+            "const": "LEARNING"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "EXPECTATION_CONTRADICTION_REQUIRES_REVIEW"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "EXPECTATION_KNOWLEDGE"
+          },
+          "severity": {
+            "const": "ERROR"
+          },
+          "blocksExecution": {
+            "const": false
           },
           "blocksRegression": {
             "const": true
