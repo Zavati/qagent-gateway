@@ -1,3 +1,5 @@
+import { parseEvolutionVerificationKey } from '../lib/evolutionVerificationRetry.js';
+import { assertLinkedVerificationRetry } from '../services/evolutionVerificationRetryService.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import {
@@ -156,7 +158,12 @@ export async function postConsoleEvolutionVerifyOutcome(req,env,{projectId,propo
   if(!rerunRunId){const e=new Error('rerunRunId é obrigatório para verificação manual.');e.status=400;e.code='TEST_EVOLUTION_OUTCOME_RUN_REQUIRED';throw e;}
   const run=await (deps.getRun||getRun)(env,t.organizationId,projectId,rerunRunId);
   if(!run){const e=new Error('Rerun não encontrado.');e.status=404;e.code='TEST_EVOLUTION_OUTCOME_RUN_NOT_FOUND';throw e;}
-  if(!String(run.idempotencyKey||'').startsWith(`test-evolution-rerun:${proposalId}:`)){const e=new Error('Run não pertence ao bounded rerun desta evolução.');e.status=409;e.code='TEST_EVOLUTION_OUTCOME_RUN_NOT_LINKED';throw e;}
+  const link=parseEvolutionVerificationKey(run.idempotencyKey);
+  if(!link||link.proposalId!==proposalId){const e=new Error('Run não pertence ao bounded rerun desta evolução.');e.status=409;e.code='TEST_EVOLUTION_OUTCOME_RUN_NOT_LINKED';throw e;}
+  if(link.attemptNumber>1){
+    if(!['owner','admin','member'].includes(t.organizationRole)){const e=new Error('Sem permissão para verificar esta tentativa.');e.status=403;e.code='LEARNING_RESOLUTION_FORBIDDEN';throw e;}
+    await(deps.assertRetryLink||assertLinkedVerificationRetry)({env,organizationId:t.organizationId,projectId,run,deps:deps.retryDeps||{}});
+  }
   return {status:'ok',data:await (deps.verifyOutcome||verifyEvolutionOutcome)({
     env,organizationId:t.organizationId,projectId,userId:actor(t),proposalId,input:{...input,rerunRunId},
   })};

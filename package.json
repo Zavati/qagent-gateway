@@ -156,7 +156,8 @@
     "test:f08-1-7-a": "node --test test/structured-readiness-08.1.7-a.test.mjs test/structured-readiness-generation-08.1.7-a.test.mjs",
     "test:f08-1-7-b": "node --test test/structured-learning-admission-08.1.7-b.test.mjs test/structured-learning-integration-08.1.7-b.test.mjs",
     "test:f08-1-7-b-fix1": "node --test test/test-foundation-08-1-7-b-fix-1-generation-repair.js",
-    "test:f08-1-7-c": "node --test test/readiness-reconciliation-08.1.7-c.test.mjs test/readiness-reconciliation-runtime-08.1.7-c.test.mjs"
+    "test:f08-1-7-c": "node --test test/readiness-reconciliation-08.1.7-c.test.mjs test/readiness-reconciliation-runtime-08.1.7-c.test.mjs",
+    "test:f08-1-7-c-fix1": "node --test test/evolution-verification-retry-08.1.7-c-fix1.test.mjs test/evolution-verification-retry-runtime-08.1.7-c-fix1.test.mjs test/evolution-verification-retry-routing-08.1.7-c-fix1.test.mjs"
   },
   "keywords": [],
   "author": "",

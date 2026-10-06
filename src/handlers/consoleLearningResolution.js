@@ -1,3 +1,5 @@
+import { normalizeVerificationRetryInput, parseEvolutionVerificationKey, verificationAttemptMetadata } from '../lib/evolutionVerificationRetry.js';
+import { retryEvolutionVerification, successfulVerification } from '../services/evolutionVerificationRetryService.js';
 import { readinessReconciliationEnabled } from '../readiness/readinessReconciliation.js';
 import { getReadinessReconciliation } from '../services/readinessReconciliationClient.js';
 import { NEGATIVE_REPAIR_CHANGE, validateNegativeStrategy, negativeEffectivePath, negativePreparationGate } from '../negativeRequestStrategy.js';
@@ -207,18 +209,27 @@ export async function postConsoleLearningResolutionApprove(req,env,{projectId},d
   return {status:'ok',data:{contractVersion:VERSION,projectId,operation:'APPROVE',items,executionStarted:false}};
 }
 export async function postConsoleLearningResolutionVerify(req,env,{projectId},deps={}){
-  const {common}=await auth(req,env,projectId,deps),input=await body(req);exact(input,['proposalIds','confirmExecution']);
+  const {common}=await auth(req,env,projectId,deps),input=await body(req);exact(input,['proposalIds','confirmExecution','retryOfRunId']);
   if(input.confirmExecution!==true||!Array.isArray(input.proposalIds)||input.proposalIds.length<1||input.proposalIds.length>10)fail('LEARNING_VERIFICATION_CONFIRMATION_REQUIRED');input.proposalIds.forEach(id);if(new Set(input.proposalIds).size!==input.proposalIds.length)fail('LEARNING_DUPLICATE_PROPOSAL');
+  const retryOfRunId=normalizeVerificationRetryInput(input);
   const items=[];
   for(const proposalId of input.proposalIds)try{
     const p=await(deps.getProposal||getEvolutionProposal)({...common,proposalId});
     if(p.status!=='APPLIED'||!p.result?.testDesignVersionId)fail('LEARNING_PROPOSAL_NOT_APPLIED',409);
-    if(p.outcomeVerification){items.push({proposalId,status:'VERIFIED',verification:safeProposal(p).outcomeVerification});continue;}
+    if(retryOfRunId){
+      const created=await(deps.retryVerification||retryEvolutionVerification)({...common,proposal:p,retryOfRunId,deps:deps.retryDeps||{}});
+      items.push({proposalId,status:created.idempotentReplay?'REUSED':'CREATED',runId:created.run?.runId,runStatus:created.run?.status,
+        testDesignVersionId:p.result.testDesignVersionId,verificationAttempt:created.verificationAttempt});
+      continue;
+    }
+    if(p.outcomeVerification){items.push({proposalId,status:successfulVerification(p.outcomeVerification)?'VERIFIED':'VERIFICATION_RECORDED',verification:safeProposal(p).outcomeVerification});continue;}
     const detail=await(deps.getResult||getResultsProjectResultSet)({...common,resultSetId:p.source.resultSetId}),rs=detail.resultSet,s=detail.scenarios?.find(x=>x.scenarioResultId===p.source.scenarioResultId);
     if(!rs||rs.organizationId!==common.organizationId||rs.projectId!==projectId||rs.endpointId!==p.source.endpointId||rs.testDesignVersionId!==p.source.testDesignVersionId||s?.scenarioId!==p.source.scenarioId)fail('LEARNING_RESULT_SCOPE_MISMATCH',502);
     if(!SAFE.has(s?.http?.method))fail('LEARNING_MUTATION_VERIFICATION_REQUIRES_EXISTING_POLICY',409);
     const created=await(deps.createRerun||createEvolutionRerunV1)({...common,sourceRunId:rs.runId,testDesignVersionId:p.result.testDesignVersionId,environmentId:rs.environmentId,scenarioId:p.source.scenarioId,...(p.changes.some(c=>c.changeType===NEGATIVE_REPAIR_CHANGE)||s?.evidence?.request?.negativeRequest?{purpose:'LEARNING'}:{}),idempotencyKey:`test-evolution-rerun:${proposalId}:${p.result.testDesignVersionId}`});
-    items.push({proposalId,status:'CREATED',runId:created.run?.runId,runStatus:created.run?.status,testDesignVersionId:p.result.testDesignVersionId});
-  }catch(error){items.push({proposalId,status:'ERROR',errorCode:code(error)});}
+    const link=parseEvolutionVerificationKey(`test-evolution-rerun:${proposalId}:${p.result.testDesignVersionId}`);
+    items.push({proposalId,status:created.idempotentReplay?'REUSED':'CREATED',runId:created.run?.runId,runStatus:created.run?.status,
+      testDesignVersionId:p.result.testDesignVersionId,verificationAttempt:verificationAttemptMetadata(link,{idempotentReplay:created.idempotentReplay})});
+  }catch(error){items.push({proposalId,status:'ERROR',errorCode:code(error),...(Number.isInteger(error?.publicDetails?.retryAfterSeconds)?{retryAfterSeconds:error.publicDetails.retryAfterSeconds}:{})});}
   return {status:'ok',data:{contractVersion:VERSION,projectId,operation:'VERIFY',items}};
 }

@@ -1,3 +1,5 @@
+import { parseEvolutionVerificationKey, isEvolutionVerificationNamespace } from '../lib/evolutionVerificationRetry.js';
+import { assertLinkedVerificationRetry } from '../services/evolutionVerificationRetryService.js';
 import { getOrganizationById } from '../repositories/organizationRepository.js';
 import {
   inspectResultEvolution,
@@ -26,14 +28,6 @@ export function normalizeTestEvolutionTrigger(body){
   return scenarioIds.length?{organizationId:body.organizationId,projectId:body.projectId,resultSetId:body.resultSetId,runId:validId(body.runId,'run_')?body.runId:null,endpointId:validId(body.endpointId,'cep_')?body.endpointId:null,method:normalizeMethod(body.method),path:normalizePath(body.path),environmentId:validId(body.environmentId,'env_')?body.environmentId:null,testDesignVersionId:validId(body.testDesignVersionId,'tdv_')?body.testDesignVersionId:null,testDesignVersion:Number.isFinite(Number(body.testDesignVersion))?Number(body.testDesignVersion):null,scenarioIds,scenarioSummaries}:null;
 }
 function retryable(error){if(error?.retryable===true)return true;const status=Number(error?.status||0);return status>=500||status===429;}
-function parseEvolutionRerunKey(value){
-  const text=String(value||'');
-  const parts=text.split(':');
-  if(parts.length!==3||parts[0]!=='test-evolution-rerun')return null;
-  const proposalId=parts[1];const testDesignVersionId=parts[2];
-  if(!proposalId.startsWith('tep_')||!testDesignVersionId.startsWith('tdv_'))return null;
-  return {proposalId,testDesignVersionId};
-}
 function parseHumanRepairRerunKey(value){
   const text=String(value||'');
   const parts=text.split(':');
@@ -97,8 +91,12 @@ async function processTrigger(env,trigger){
     log('human_request_repair_outcome_recorded',{repairId:humanRerunLink.repairId,resultSetId:trigger.resultSetId,runId:trigger.runId,outcome:summary?.outcome||null,statusCode:summary?.statusCode??null});
     return;
   }
-  const rerunLink=parseEvolutionRerunKey(sourceRun?.idempotencyKey);
+  const rerunLink=parseEvolutionVerificationKey(sourceRun?.idempotencyKey);
+  if(isEvolutionVerificationNamespace(sourceRun?.idempotencyKey)&&!rerunLink){
+    log('test_evolution_verification_link_invalid',{runId:trigger.runId});return;
+  }
   if(rerunLink){
+    if(rerunLink.attemptNumber>1)await assertLinkedVerificationRetry({...scope,run:sourceRun});
     const verification=await verifyEvolutionOutcome({...scope,proposalId:rerunLink.proposalId,input:{rerunRunId:trigger.runId,rerunResultSetId:trigger.resultSetId}});
     await recordLearningEvolutionVerification(env,{proposalId:rerunLink.proposalId,verification}).catch(()=>{});
     log('test_evolution_outcome_verified',{proposalId:rerunLink.proposalId,resultSetId:trigger.resultSetId,runId:trigger.runId,outcome:verification?.outcome||null,recoveryConfirmed:Boolean(verification?.recoveryConfirmed),reasonCode:verification?.reasonCode||null});

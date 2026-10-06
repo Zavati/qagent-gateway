@@ -1,3 +1,4 @@
+import { assertPublicRunIdempotencyKey } from '../lib/evolutionVerificationRetry.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import {
@@ -68,7 +69,7 @@ export async function postConsoleRun(
   await getProject(env, tenant.organizationId, projectId);
 
   const body = await readJson(req);
-  const idempotencyKey = normalizeIdempotencyKey(req.headers.get('Idempotency-Key'));
+  const idempotencyKey = assertPublicRunIdempotencyKey(normalizeIdempotencyKey(req.headers.get('Idempotency-Key')));
   const common = {
     env,
     organizationId: tenant.organizationId,
