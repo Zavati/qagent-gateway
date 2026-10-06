@@ -45,10 +45,10 @@ function safeNegativeRepair(c){
 }
 function safeExtension(c){
   const proof=c.proposed?.coverageProof;
-  return {readinessBefore:c.current?.readiness,readinessAfter:'READY',existingAssertionsPreserved:true,
+  return {...(proof?.statusCoverageContractVersion?{statusCoverageContractVersion:proof.statusCoverageContractVersion}:{}),readinessBefore:c.current?.readiness,readinessAfter:'READY',existingAssertionsPreserved:true,
     assertionsUnchanged:false,existingAssertionCount:proof?.execution?.assertionCount||0,
     addedAssertions:(proof?.additions||[]).slice(0,6).map(a=>a.type==='STATUS'?{type:'STATUS',expectedStatusCodes:a.expectedStatusCodes}:validateCoverageAssertion(a)),
-    observations:(proof?.observations||[]).slice(0,5).map(o=>o.kind==='JSON_TYPE'?{kind:o.kind,path:o.path,expectedType:o.expectedType,actualType:o.actualType}:{kind:o.kind,path:o.path,selector:o.selector,actualLength:o.actualLength,requestBound:o.requestBound}),
+    observations:(proof?.observations||[]).slice(0,5).map(o=>o.kind==='STATUS'?{kind:o.kind,actualStatusCode:o.actualStatusCode,schemaAssertionIndexes:o.schemaAssertionIndexes}:o.kind==='JSON_TYPE'?{kind:o.kind,path:o.path,expectedType:o.expectedType,actualType:o.actualType}:{kind:o.kind,path:o.path,selector:o.selector,actualLength:o.actualLength,requestBound:o.requestBound}),
     requiresVerification:true};
 }
 /** A no-change result is informational, not a readiness mutation or confirmation.

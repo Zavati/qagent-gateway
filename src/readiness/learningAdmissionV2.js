@@ -1,3 +1,4 @@
+import { missingStatusCoverageGap } from '../statusCoverage.js';
 /** 08.1.7-B. Admission policy, not an execution permit or maturity transition.
  * Inputs are authoritative Registry scenarios. Browser/model hints are not inputs.
  * Mirrored deliberately in Gateway/Evolution/Registry until the shared-policy debt
@@ -96,6 +97,9 @@ export function assessLearningAdmission(scenario, { enabled = false, preparedSce
     issues = issues.filter(i => i.code !== 'PATH_PARAM_UNRESOLVED');
   }
   const gaps = assertionCoverageGaps(scenario);
+  // Additive STATUS-only diagnostics. The old specialized detector/proof semantics stay intact.
+  const statusGap = native && !gaps.length ? missingStatusCoverageGap(scenario) : null;
+  if (statusGap) gaps.push(statusGap);
   const coveragePartial = snapshot.coverage.status === 'PARTIAL' || issues.some(i => i.kind === 'ASSERTION_COVERAGE');
   const mapped = unique([...snapshot.issues, ...facts].map(i => WIRE[i.code]).filter(Boolean));
   if (native && snapshot.expectation.status === 'HYPOTHESIS' && !mapped.some(c => c !== 'LEARNING_PATH_DATA_TO_RESOLVE' && c !== 'LEARNING_ASSERTION_COVERAGE_GAP')) mapped.push('LEARNING_HYPOTHESIS_UNVERIFIED');

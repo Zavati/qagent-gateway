@@ -1,0 +1,792 @@
+{
+  "id": "td_3210ca8e883f53525109206401ca0fed497c4df84f29287a7a051884b52bc8ae",
+  "versionId": "tdv_4599d10a-6598-4ae2-a580-3673ad83e3b5",
+  "version": 7,
+  "createdAt": "2026-10-04T02:31:10.004Z",
+  "contextFingerprint": "e962281ce81cb623fa9cec1f0f3105fd38d733feed39f8d3b17224b3f782e895",
+  "specification": {
+    "contractVersion": "qagent.test-design.v1",
+    "specificationVersion": "qagent.test-spec.v1",
+    "source": {
+      "type": "CATALOG_ENDPOINT",
+      "organizationId": "org_48601ac4-d727-48b3-8ab7-966859fe05f4",
+      "projectId": "prj_8b546c30-c6c1-4406-a126-9a05f5804fd4",
+      "endpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472"
+    },
+    "title": "Cenários de Teste para o Endpoint de Subunidades de Funcionários",
+    "objective": "Validar o comportamento do endpoint que retorna informações sobre subunidades de funcionários, incluindo a estrutura da resposta e o tratamento de autenticação.",
+    "assumptions": [
+      "A autenticação é obrigatória para acessar o endpoint.",
+      "Não há parâmetros de consulta disponíveis para este endpoint."
+    ],
+    "summary": {
+      "scenarioCount": 6,
+      "readyCount": 2,
+      "byCategory": {
+        "HAPPY_PATH": 2,
+        "SCHEMA_CONTRACT": 4
+      },
+      "byReadiness": {
+        "READY": 2,
+        "REVIEW_REQUIRED": 4
+      },
+      "byGrounding": {
+        "OBSERVED": 6
+      }
+    },
+    "scenarios": [
+      {
+        "scenarioId": "baseline_e081abddfa5d046ab3d9b2dbf4583f6c371d3d35",
+        "title": "Regressão observada · 200 · objetos observados",
+        "objective": "Proteger as regras selecionadas da observação de origem, sem mover a expectativa com o Catalog corrente.",
+        "category": "HAPPY_PATH",
+        "priority": "HIGH",
+        "confidence": "HIGH",
+        "generationClass": "OBSERVED_BASELINE",
+        "baseline": {
+          "contractVersion": "qagent.observed-baseline-source.v1",
+          "baselineId": "obl_e081abddfa5d046ab3d9b2dbf4583f6c371d3d35",
+          "generationClass": "OBSERVED_BASELINE",
+          "source": {
+            "authObserved": true,
+            "authScheme": "COOKIE",
+            "batchId": "batch_6197a6d3-72b9-40ba-941b-aff6dfc3a78c",
+            "contentType": "application/json",
+            "endpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "environmentId": "env_d3cf2d99-cea7-4c65-9d87-38c3291e05d2",
+            "eventId": "cat_evt_beeaf2dff370d158e762944b747141defc70e8ea",
+            "evidenceId": "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20",
+            "method": "GET",
+            "normalizedEventId": "oev_b7ec4d74-63c3-46bb-b0d5-fc4093879ba9",
+            "observationSessionId": "obs_c9cd9d02-6781-42c8-962d-d177c6c9ca91",
+            "observedAt": "2026-09-11T14:06:06.423Z",
+            "organizationId": "org_48601ac4-d727-48b3-8ab7-966859fe05f4",
+            "origin": "https://opensource-demo.orangehrmlive.com",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit",
+            "projectId": "prj_8b546c30-c6c1-4406-a126-9a05f5804fd4",
+            "statusCode": 200
+          },
+          "responseSchemaVersionId": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8",
+          "responseSchemaHash": "sch_442bd451df65e1543c9502f75a92d8c557c35853",
+          "requestFingerprint": "brq_22d78a526879bc4f5ee6cb4571cc9b02d3c91b3dcd8a4757a351b2e1b4fa954f",
+          "fingerprintScope": "CANONICAL_CAPTURED_REQUEST_DATA",
+          "requestBodyEncoding": "NONE",
+          "requestCoverage": {
+            "headers": "AUTH_RUNTIME_AND_CONFIG",
+            "reasons": [],
+            "status": "COMPLETE"
+          },
+          "responseCoverage": {
+            "reasons": [],
+            "status": "COMPLETE"
+          },
+          "inferenceVersion": "qagent.structural-inference.v2",
+          "arrayStates": [
+            {
+              "path": "$.data",
+              "state": "NON_EMPTY"
+            },
+            {
+              "path": "$.rels",
+              "state": "EMPTY"
+            }
+          ],
+          "selfCheck": "PASSED",
+          "expiresAt": "2026-10-11T14:06:06.423Z",
+          "familyKey": "bfm_6f5175efad7c9ace3dd1ef4cfe6c5f8710c4fd92",
+          "comparisonPolicy": {
+            "contractVersion": "qagent.observed-comparison.v1",
+            "mode": "STRUCTURE",
+            "protectObservedPresence": true,
+            "arrayStates": [
+              {
+                "path": "$.data",
+                "state": "NON_EMPTY"
+              },
+              {
+                "path": "$.rels",
+                "state": "EMPTY"
+              }
+            ],
+            "confirmedContext": null
+          }
+        },
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "Baseline construída deterministicamente a partir de uma transação monitorada; sua origem não é escolhida pela IA."
+          ],
+          "evidenceRefs": [
+            "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20"
+          ],
+          "schemaRefs": [
+            "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+          ]
+        },
+        "automation": {
+          "readiness": "READY",
+          "blockers": [],
+          "evolutionState": "STABLE"
+        },
+        "preconditions": [
+          "Ambiente de origem: env_d3cf2d99-cea7-4c65-9d87-38c3291e05d2.",
+          "Dados da fonte disponíveis até 2026-10-11T14:06:06.423Z.",
+          "Somente estrutura: diferenças vazio/preenchido são informadas, não são declaradas defeito sem contexto controlado.",
+          "Headers de negócio não capturados devem ser mantidos na configuração do serviço; autenticação pertence ao Auth Runtime."
+        ],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "apiServiceKey": "discovered-5a63a6b231b5a591",
+            "method": "GET",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit"
+          },
+          "auth": {
+            "requirement": "REQUIRED",
+            "authProfileRef": "authp_edcf4eec-56df-491d-998a-2a65c136aabb"
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {}
+          },
+          "assertions": [
+            {
+              "type": "STATUS",
+              "expectedStatusCodes": [
+                200
+              ]
+            },
+            {
+              "type": "CONTENT_TYPE",
+              "expected": [
+                "application/json"
+              ]
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+            }
+          ],
+          "extract": []
+        },
+        "readinessV2": {
+          "contractVersion": "qagent.scenario-readiness.v2",
+          "basis": "NATIVE_V2",
+          "evaluationScope": "TEST_DESIGN_ONLY",
+          "execution": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "expectation": {
+            "status": "EVIDENCED",
+            "basis": "OBSERVED_BASELINE"
+          },
+          "coverage": {
+            "status": "COMPLETE",
+            "gapCodes": []
+          },
+          "review": {
+            "status": "NONE",
+            "reasonCodes": []
+          },
+          "regression": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "issues": []
+        }
+      },
+      {
+        "scenarioId": "validar_retorno_subunidades",
+        "title": "Validação do retorno de subunidades com autenticação",
+        "objective": "Verificar se o endpoint retorna os dados corretos sobre subunidades de funcionários quando autenticado.",
+        "category": "HAPPY_PATH",
+        "priority": "HIGH",
+        "confidence": "HIGH",
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "O endpoint foi observado retornando um status 200 com dados válidos.",
+            "A autenticação foi observada como necessária.",
+            "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+          ],
+          "evidenceRefs": [
+            "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20"
+          ],
+          "schemaRefs": [
+            "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8",
+            "cst_2aa239a0d1f1f1bc481163cc6edb127f719c014f"
+          ]
+        },
+        "automation": {
+          "readiness": "READY",
+          "blockers": [],
+          "evolutionState": "STABLE",
+          "diagnostics": {
+            "contractVersion": "qagent.semantic-readiness-diagnostics.v1",
+            "basis": "SYSTEM_DSL_AND_LEGACY_REASON_ANALYSIS",
+            "currentReadiness": "READY",
+            "canInvestigate": true,
+            "issues": [],
+            "coverageLimited": false
+          }
+        },
+        "preconditions": [],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "apiServiceKey": "discovered-5a63a6b231b5a591",
+            "method": "GET",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit"
+          },
+          "auth": {
+            "requirement": "REQUIRED",
+            "authProfileRef": "authp_edcf4eec-56df-491d-998a-2a65c136aabb"
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {},
+            "body": {}
+          },
+          "assertions": [
+            {
+              "type": "STATUS",
+              "expectedStatusCodes": [
+                200
+              ]
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+            }
+          ],
+          "extract": []
+        },
+        "readinessV2": {
+          "contractVersion": "qagent.scenario-readiness.v2",
+          "basis": "NATIVE_V2",
+          "evaluationScope": "TEST_DESIGN_ONLY",
+          "execution": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "expectation": {
+            "status": "EVIDENCED",
+            "basis": "OBSERVED_EVIDENCE"
+          },
+          "coverage": {
+            "status": "COMPLETE",
+            "gapCodes": []
+          },
+          "review": {
+            "status": "NONE",
+            "reasonCodes": []
+          },
+          "regression": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "issues": []
+        },
+        "generationClass": "AI_EXPLORATORY"
+      },
+      {
+        "scenarioId": "validar_estrutura_meta",
+        "title": "Validação da estrutura do campo 'meta'",
+        "objective": "Verificar se o campo 'meta' está presente e possui a estrutura correta na resposta.",
+        "category": "SCHEMA_CONTRACT",
+        "priority": "MEDIUM",
+        "confidence": "HIGH",
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "O campo 'meta' foi observado na resposta com a estrutura esperada.",
+            "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+          ],
+          "evidenceRefs": [
+            "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20"
+          ],
+          "schemaRefs": [
+            "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8",
+            "cst_2aa239a0d1f1f1bc481163cc6edb127f719c014f"
+          ]
+        },
+        "automation": {
+          "readiness": "REVIEW_REQUIRED",
+          "blockers": [
+            "ASSERTION_STATUS_REQUIRED"
+          ],
+          "evolutionState": "BLOCKED",
+          "diagnostics": {
+            "contractVersion": "qagent.semantic-readiness-diagnostics.v1",
+            "basis": "SYSTEM_DSL_AND_LEGACY_REASON_ANALYSIS",
+            "currentReadiness": "REVIEW_REQUIRED",
+            "canInvestigate": false,
+            "issues": [
+              {
+                "code": "ASSERTION_STATUS_REQUIRED",
+                "kind": "OPERATIONAL_BLOCKER"
+              }
+            ],
+            "coverageLimited": false
+          }
+        },
+        "preconditions": [],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "apiServiceKey": "discovered-5a63a6b231b5a591",
+            "method": "GET",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit"
+          },
+          "auth": {
+            "requirement": "REQUIRED",
+            "authProfileRef": "authp_edcf4eec-56df-491d-998a-2a65c136aabb"
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {},
+            "body": {}
+          },
+          "assertions": [
+            {
+              "type": "JSON_PATH_EXISTS",
+              "path": "$.meta"
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+            }
+          ],
+          "extract": []
+        },
+        "readinessV2": {
+          "contractVersion": "qagent.scenario-readiness.v2",
+          "basis": "NATIVE_V2",
+          "evaluationScope": "TEST_DESIGN_ONLY",
+          "execution": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "expectation": {
+            "status": "UNKNOWN",
+            "basis": "UNDETERMINED"
+          },
+          "coverage": {
+            "status": "PARTIAL",
+            "gapCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "review": {
+            "status": "LEARNING_AVAILABLE",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "regression": {
+            "status": "BLOCKED",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED",
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_NOT_MATURE"
+            ]
+          },
+          "issues": [
+            {
+              "contractVersion": "qagent.readiness-issue.v1",
+              "code": "ASSERTION_STATUS_REQUIRED",
+              "source": "READINESS_EVALUATOR",
+              "kind": "ASSERTION_COVERAGE",
+              "severity": "WARNING",
+              "blocksExecution": false,
+              "blocksRegression": true,
+              "humanRequired": false,
+              "resolution": "LEARNING"
+            }
+          ]
+        },
+        "generationClass": "AI_EXPLORATORY"
+      },
+      {
+        "scenarioId": "validar_retorno_dados_subunidades",
+        "title": "Validação do retorno de dados de subunidades",
+        "objective": "Verificar se o campo 'data' contém informações sobre subunidades.",
+        "category": "SCHEMA_CONTRACT",
+        "priority": "MEDIUM",
+        "confidence": "HIGH",
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "O campo 'data' foi observado na resposta com a estrutura esperada.",
+            "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+          ],
+          "evidenceRefs": [
+            "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20"
+          ],
+          "schemaRefs": [
+            "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8",
+            "cst_2aa239a0d1f1f1bc481163cc6edb127f719c014f"
+          ]
+        },
+        "automation": {
+          "readiness": "REVIEW_REQUIRED",
+          "blockers": [
+            "ASSERTION_STATUS_REQUIRED"
+          ],
+          "evolutionState": "BLOCKED",
+          "diagnostics": {
+            "contractVersion": "qagent.semantic-readiness-diagnostics.v1",
+            "basis": "SYSTEM_DSL_AND_LEGACY_REASON_ANALYSIS",
+            "currentReadiness": "REVIEW_REQUIRED",
+            "canInvestigate": false,
+            "issues": [
+              {
+                "code": "ASSERTION_STATUS_REQUIRED",
+                "kind": "OPERATIONAL_BLOCKER"
+              }
+            ],
+            "coverageLimited": false
+          }
+        },
+        "preconditions": [],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "apiServiceKey": "discovered-5a63a6b231b5a591",
+            "method": "GET",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit"
+          },
+          "auth": {
+            "requirement": "REQUIRED",
+            "authProfileRef": "authp_edcf4eec-56df-491d-998a-2a65c136aabb"
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {},
+            "body": {}
+          },
+          "assertions": [
+            {
+              "type": "JSON_PATH_EXISTS",
+              "path": "$.data"
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+            }
+          ],
+          "extract": []
+        },
+        "readinessV2": {
+          "contractVersion": "qagent.scenario-readiness.v2",
+          "basis": "NATIVE_V2",
+          "evaluationScope": "TEST_DESIGN_ONLY",
+          "execution": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "expectation": {
+            "status": "UNKNOWN",
+            "basis": "UNDETERMINED"
+          },
+          "coverage": {
+            "status": "PARTIAL",
+            "gapCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "review": {
+            "status": "LEARNING_AVAILABLE",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "regression": {
+            "status": "BLOCKED",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED",
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_NOT_MATURE"
+            ]
+          },
+          "issues": [
+            {
+              "contractVersion": "qagent.readiness-issue.v1",
+              "code": "ASSERTION_STATUS_REQUIRED",
+              "source": "READINESS_EVALUATOR",
+              "kind": "ASSERTION_COVERAGE",
+              "severity": "WARNING",
+              "blocksExecution": false,
+              "blocksRegression": true,
+              "humanRequired": false,
+              "resolution": "LEARNING"
+            }
+          ]
+        },
+        "generationClass": "AI_EXPLORATORY"
+      },
+      {
+        "scenarioId": "validar_retorno_subunidade_id",
+        "title": "Validação do campo 'id' de subunidade",
+        "objective": "Verificar se o campo 'id' de cada subunidade está presente e é um inteiro.",
+        "category": "SCHEMA_CONTRACT",
+        "priority": "MEDIUM",
+        "confidence": "HIGH",
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "O campo 'id' foi observado na resposta com a estrutura esperada.",
+            "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+          ],
+          "evidenceRefs": [
+            "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20"
+          ],
+          "schemaRefs": [
+            "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8",
+            "cst_2aa239a0d1f1f1bc481163cc6edb127f719c014f"
+          ]
+        },
+        "automation": {
+          "readiness": "REVIEW_REQUIRED",
+          "blockers": [
+            "ASSERTION_STATUS_REQUIRED"
+          ],
+          "evolutionState": "BLOCKED",
+          "diagnostics": {
+            "contractVersion": "qagent.semantic-readiness-diagnostics.v1",
+            "basis": "SYSTEM_DSL_AND_LEGACY_REASON_ANALYSIS",
+            "currentReadiness": "REVIEW_REQUIRED",
+            "canInvestigate": false,
+            "issues": [
+              {
+                "code": "ASSERTION_STATUS_REQUIRED",
+                "kind": "OPERATIONAL_BLOCKER"
+              }
+            ],
+            "coverageLimited": false
+          }
+        },
+        "preconditions": [],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "apiServiceKey": "discovered-5a63a6b231b5a591",
+            "method": "GET",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit"
+          },
+          "auth": {
+            "requirement": "REQUIRED",
+            "authProfileRef": "authp_edcf4eec-56df-491d-998a-2a65c136aabb"
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {},
+            "body": {}
+          },
+          "assertions": [
+            {
+              "type": "JSON_PATH_EXISTS",
+              "path": "$.data[*].subunit.id"
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+            }
+          ],
+          "extract": []
+        },
+        "readinessV2": {
+          "contractVersion": "qagent.scenario-readiness.v2",
+          "basis": "NATIVE_V2",
+          "evaluationScope": "TEST_DESIGN_ONLY",
+          "execution": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "expectation": {
+            "status": "UNKNOWN",
+            "basis": "UNDETERMINED"
+          },
+          "coverage": {
+            "status": "PARTIAL",
+            "gapCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "review": {
+            "status": "LEARNING_AVAILABLE",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "regression": {
+            "status": "BLOCKED",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED",
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_NOT_MATURE"
+            ]
+          },
+          "issues": [
+            {
+              "contractVersion": "qagent.readiness-issue.v1",
+              "code": "ASSERTION_STATUS_REQUIRED",
+              "source": "READINESS_EVALUATOR",
+              "kind": "ASSERTION_COVERAGE",
+              "severity": "WARNING",
+              "blocksExecution": false,
+              "blocksRegression": true,
+              "humanRequired": false,
+              "resolution": "LEARNING"
+            }
+          ]
+        },
+        "generationClass": "AI_EXPLORATORY"
+      },
+      {
+        "scenarioId": "validar_retorno_subunidade_nome",
+        "title": "Validação do campo 'name' de subunidade",
+        "objective": "Verificar se o campo 'name' de cada subunidade está presente e é uma string.",
+        "category": "SCHEMA_CONTRACT",
+        "priority": "MEDIUM",
+        "confidence": "HIGH",
+        "grounding": {
+          "level": "OBSERVED",
+          "rationale": [
+            "O campo 'name' foi observado na resposta com a estrutura esperada.",
+            "QAgent Auth Bridge: autenticação COOKIE foi observada de forma sanitizada para este endpoint."
+          ],
+          "evidenceRefs": [
+            "cev_a2e5e609184083f9d22bdb7d3dc064c96b686a20"
+          ],
+          "schemaRefs": [
+            "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8",
+            "cst_2aa239a0d1f1f1bc481163cc6edb127f719c014f"
+          ]
+        },
+        "automation": {
+          "readiness": "REVIEW_REQUIRED",
+          "blockers": [
+            "ASSERTION_STATUS_REQUIRED"
+          ],
+          "evolutionState": "BLOCKED",
+          "diagnostics": {
+            "contractVersion": "qagent.semantic-readiness-diagnostics.v1",
+            "basis": "SYSTEM_DSL_AND_LEGACY_REASON_ANALYSIS",
+            "currentReadiness": "REVIEW_REQUIRED",
+            "canInvestigate": false,
+            "issues": [
+              {
+                "code": "ASSERTION_STATUS_REQUIRED",
+                "kind": "OPERATIONAL_BLOCKER"
+              }
+            ],
+            "coverageLimited": false
+          }
+        },
+        "preconditions": [],
+        "spec": {
+          "dslVersion": "qagent.api-test-dsl.v1",
+          "type": "api",
+          "target": {
+            "catalogEndpointId": "cep_0e5a1c6088ab27464916698890389ef5a59c0472",
+            "apiServiceKey": "discovered-5a63a6b231b5a591",
+            "method": "GET",
+            "path": "/web/index.php/api/v2/dashboard/employees/subunit"
+          },
+          "auth": {
+            "requirement": "REQUIRED",
+            "authProfileRef": "authp_edcf4eec-56df-491d-998a-2a65c136aabb"
+          },
+          "request": {
+            "pathParams": {},
+            "query": {},
+            "headers": {},
+            "body": {}
+          },
+          "assertions": [
+            {
+              "type": "JSON_PATH_EXISTS",
+              "path": "$.data[*].subunit.name"
+            },
+            {
+              "type": "SCHEMA",
+              "schemaRef": "csv_32471e6b793b1480a4f1c6ebe388d2caefd46ab8"
+            }
+          ],
+          "extract": []
+        },
+        "readinessV2": {
+          "contractVersion": "qagent.scenario-readiness.v2",
+          "basis": "NATIVE_V2",
+          "evaluationScope": "TEST_DESIGN_ONLY",
+          "execution": {
+            "status": "READY",
+            "reasonCodes": []
+          },
+          "expectation": {
+            "status": "UNKNOWN",
+            "basis": "UNDETERMINED"
+          },
+          "coverage": {
+            "status": "PARTIAL",
+            "gapCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "review": {
+            "status": "LEARNING_AVAILABLE",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED"
+            ]
+          },
+          "regression": {
+            "status": "BLOCKED",
+            "reasonCodes": [
+              "ASSERTION_STATUS_REQUIRED",
+              "COVERAGE_INCOMPLETE",
+              "EXPECTATION_NOT_MATURE"
+            ]
+          },
+          "issues": [
+            {
+              "contractVersion": "qagent.readiness-issue.v1",
+              "code": "ASSERTION_STATUS_REQUIRED",
+              "source": "READINESS_EVALUATOR",
+              "kind": "ASSERTION_COVERAGE",
+              "severity": "WARNING",
+              "blocksExecution": false,
+              "blocksRegression": true,
+              "humanRequired": false,
+              "resolution": "LEARNING"
+            }
+          ]
+        },
+        "generationClass": "AI_EXPLORATORY"
+      }
+    ],
+    "generation": {
+      "mode": "OBSERVED_WITH_AI",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "generatedAt": "2026-10-04T02:31:09.680Z",
+      "contextFingerprint": "e962281ce81cb623fa9cec1f0f3105fd38d733feed39f8d3b17224b3f782e895"
+    }
+  }
+}
