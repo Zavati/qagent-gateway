@@ -37,6 +37,9 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  const adaptiveMatch = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/intelligence\/test-readiness\/workspace$/);
+  if (normalizedMethod === 'GET' && adaptiveMatch) return { name: 'consoleAdaptiveReadinessWorkspaceGet', params: { projectId: decodeURIComponent(adaptiveMatch[1]) } };
+
   const reconcileMatch=normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/intelligence\/test-readiness\/(reconciliation|reconciliation-preview)$/);
   if(reconcileMatch && ((normalizedMethod==='POST'&&reconcileMatch[2]==='reconciliation')||(normalizedMethod==='GET'&&reconcileMatch[2]==='reconciliation-preview')))
     return {name:reconcileMatch[2]==='reconciliation'?'consoleReadinessReconciliationPost':'consoleReadinessReconciliationPreviewGet',params:{projectId:decodeURIComponent(reconcileMatch[1])}};

@@ -1,3 +1,4 @@
+import { getConsoleAdaptiveReadinessWorkspace } from './handlers/consoleAdaptiveReadinessWorkspace.js';
 import { postConsoleReadinessReconciliation, getConsoleReadinessReconciliationPreview } from './handlers/consoleReadinessReconciliation.js';
 import { postConsoleLearningResolutionAnalyze, postConsoleLearningResolutionApprove, postConsoleLearningResolutionVerify } from './handlers/consoleLearningResolution.js';
 import { getConsoleProjectTestReadiness, getConsoleEndpointTestReadinessScenarios } from './handlers/consoleTestReadiness.js';
@@ -2119,6 +2120,7 @@ const gatewayRouteHandlers = {
   consoleLearningCyclesList: async (req, env, _ctx, params) => json(await listConsoleLearningCycles(req, env, params), { headers: corsHeaders(req, env) }),
   consoleLearningAttentionList: async (req, env, _ctx, params) => json(await listConsoleLearningAttention(req, env, params), { headers: corsHeaders(req, env) }),
   consoleRunGet: async (req, env, _ctx, params) => json(await getConsoleRun(req, env, params), { headers: corsHeaders(req, env) }),
+  consoleAdaptiveReadinessWorkspaceGet: async (req, env, _ctx, params) => json(await getConsoleAdaptiveReadinessWorkspace(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleReadinessReconciliationPost: async (req, env, _ctx, params) => json(await postConsoleReadinessReconciliation(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleReadinessReconciliationPreviewGet: async (req, env, _ctx, params) => json(await getConsoleReadinessReconciliationPreview(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
   consoleProjectTestReadinessGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestReadiness(req, env, params), { headers: { ...corsHeaders(req, env), 'Cache-Control': 'private, no-store' } }),
