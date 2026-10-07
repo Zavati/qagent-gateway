@@ -6,6 +6,7 @@ import { readinessReconciliationEnabled } from '../readiness/readinessReconcilia
 import { normalizePolicy, normalizeCycleStart, identifier, exact, failure } from './contracts.js';
 import { autonomousClient, autonomousPath } from './client.js';
 import { learningGrant, snapshotLearningCycle, executeLearningStep } from './commands.js';
+import { resolveEnvironmentOrigins, materializeEnvironmentPolicy } from './environmentOrigins.js';
 async function readBody(req) {
     const declared = Number(req.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > 32768)
@@ -59,15 +60,23 @@ export async function consoleAutonomous(req, env, { projectId, resource, cycleId
     let data;
     if (resource === 'policy' && !cycleId) {
         const environmentId = identifier(u.searchParams.get('environmentId'));
-        await controlledEnvironment(scope, environmentId, deps);
+        const environment = await controlledEnvironment(scope, environmentId, deps);
+        const originScope = { ...scope, environmentId, environment };
         const path = autonomousPath(projectId, `policy?environmentId=${encodeURIComponent(environmentId)}`);
-        if (req.method === 'GET')
+        if (req.method === 'GET') {
             data = await client({ ...scope, path });
-        else if (req.method === 'PUT') {
-            const { input } = await readBody(req), p = normalizePolicy(input); // validates without trusting normalized/default fields supplied by browser
+            data = { ...data, environmentOrigins: await resolveEnvironmentOrigins(originScope, deps) };
+        } else if (req.method === 'PUT') {
+            const { input: rawInput } = await readBody(req);
+            // New UI sends only a reviewed fingerprint. The original explicit-list
+            // API remains compatible; it never silently inherits added hosts.
+            const derived = rawInput != null && Object.hasOwn(rawInput, 'originSelection')
+                ? await materializeEnvironmentPolicy(rawInput, originScope, deps) : null;
+            const input = derived?.input || rawInput, p = normalizePolicy(input);
             if (p.enabled && (typeof env.AUTONOMOUS_LEARNING_HMAC_SECRET !== 'string' || env.AUTONOMOUS_LEARNING_HMAC_SECRET.length < 32))
                 failure('AUTONOMOUS_APPROVAL_SIGNING_NOT_CONFIGURED', 503);
             data = await client({ ...scope, path, method: 'PUT', body: { policy: input, actorUserId: tenant.user.userId } });
+            if (derived) data = { ...data, environmentOrigins: derived.environmentOrigins };
         }
         else
             failure('AUTONOMOUS_METHOD_NOT_ALLOWED', 405);

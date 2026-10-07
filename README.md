@@ -441,3 +441,7 @@ Corrects Suite Run INSERT SQL arity and adds a real SQLite repository regression
 ## 08.1.2 — Evolution Outcome Verification & Recovery Attribution
 
 Bounded Test Evolution rerun Result triggers are no longer merely discarded for depth control: Gateway links them back to the originating Proposal and asks Test Evolution to persist the recovery verdict, without starting a second evolution chain. Authenticated backfill is available at `POST /v1/console/projects/:projectId/test-evolution/proposals/:proposalId/verify-outcome` with `rerunRunId`.
+
+## 08.1.8-FIX-1 — Origens derivadas do Environment
+
+A autonomia usa as URLs já configuradas no ambiente, sem digitação redundante. O resumo é lido e conferido pelo Gateway; salvar uma delegação continua explícito e não executa o ciclo. Veja [integração e limites](docs/08.1.8-FIX-1.md). Testes: `npm run test:f08-1-8-fix1`.

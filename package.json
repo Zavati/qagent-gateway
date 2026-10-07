@@ -160,7 +160,8 @@
     "test:f08-1-7-c-fix1": "node --test test/evolution-verification-retry-08.1.7-c-fix1.test.mjs test/evolution-verification-retry-runtime-08.1.7-c-fix1.test.mjs test/evolution-verification-retry-routing-08.1.7-c-fix1.test.mjs",
     "test:f08-1-7-c-fix2": "node --test test/status-coverage-08.1.7-c-fix2.test.mjs",
     "test:f08-1-7-d": "node --test test/adaptive-readiness-workspace-08.1.7-d.test.mjs",
-    "test:f08-1-8": "node --test test/autonomous-learning-08.1.8.test.mjs test/autonomous-runtime-08.1.8.test.mjs"
+    "test:f08-1-8": "node --test test/autonomous-learning-08.1.8.test.mjs test/autonomous-runtime-08.1.8.test.mjs",
+    "test:f08-1-8-fix1": "node --test test/autonomous-environment-origins-08.1.8-fix1.test.mjs test/autonomous-environment-origins-integration-08.1.8-fix1.test.mjs"
   },
   "keywords": [],
   "author": "",
