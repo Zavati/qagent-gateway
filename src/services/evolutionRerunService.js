@@ -149,6 +149,7 @@ export async function createEvolutionRerunV1({
   scenarioId,
   idempotencyKey,
   purpose = null,
+  executionAuthorization = null,
   deps = {},
 } = {}) {
   if (!sourceRunId) {
@@ -194,6 +195,7 @@ export async function createEvolutionRerunV1({
     },
     idempotencyKey,
     runtimeReuse,
+    executionAuthorization,
   });
 
   return {

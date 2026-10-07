@@ -105,7 +105,13 @@ function selected(input){
   const seen=new Set();return input.selections.map(x=>{exact(x,['endpointId','testDesignVersionId','scenarioId']);Object.values(x).forEach(id);const key=`${x.endpointId}:${x.testDesignVersionId}:${x.scenarioId}`;if(seen.has(key))fail('LEARNING_ANALYSIS_DUPLICATE_SELECTION');seen.add(key);return x;});
 }
 export async function postConsoleLearningResolutionAnalyze(req,env,{projectId},deps={}){
-  const {tenant,common}=await auth(req,env,projectId,deps),input=await body(req),selection=selected(input),items=[];
+  const {tenant,common}=await auth(req,env,projectId,deps);
+  return analyzeLearningResolution(common,await body(req),deps,{accountId:tenant.accountId});
+}
+/** Scoped use case. Internal callers supply a previously authorized scope, not a
+ * fabricated Console session. deterministicOnly is never a browser input. */
+export async function analyzeLearningResolution(common,input,deps={},options={}) {
+  const {env,projectId}=common,selection=selected(input),items=[];
   const readinessV2Enabled=scenarioReadinessV2Enabled(env);
   const versions=new Map(),lists=new Map(),details=new Map(),inspections=new Map();let policyPromise;
   const memo=async(map,key,load)=>{if(!map.has(key))map.set(key,Promise.resolve().then(load));return map.get(key);};
@@ -138,12 +144,12 @@ export async function postConsoleLearningResolutionAnalyze(req,env,{projectId},d
         if(examined>1&&match.changes?.some(c=>['SCENARIO_READINESS_CONFIRMATION','ASSERTION_COVERAGE_EXTENSION',NEGATIVE_REPAIR_CHANGE].includes(c.changeType))){lastReason='LEARNING_CONFIRMATION_NEWER_EVIDENCE_PRESENT';continue;}
         proposal=await(deps.createProposal||createEvolutionProposal)({...common,input:{resultSetId:ref.resultSetId,scenarioResultId:found.scenarioResultId}});
         if(['REJECTED','STALE'].includes(proposal.status)){lastReason=`EVOLUTION_PROPOSAL_${proposal.status}`;proposal=null;continue;}
-        if(proposal.status==='PENDING_REVIEW'){
+        if(proposal.status==='PENDING_REVIEW' && options.deterministicOnly!==true){
           policyPromise=policyPromise||Promise.resolve().then(()=>(deps.getPolicy||getEvolutionPolicy)(common));
           const policy=await policyPromise;if(policy.mode==='OFF')fail('TEST_EVOLUTION_PROJECT_DISABLED',409);
           const context=await(deps.getContext||getEvolutionProposalContext)({...common,proposalId:proposal.proposalId});
           if(proposal.assessment?.contextFingerprint===context.contextFingerprint)break;
-          const reasoning=await(deps.aiAssess||assessTestEvolutionWithAi)({env,accountId:tenant.accountId||null,context});
+          const reasoning=await(deps.aiAssess||assessTestEvolutionWithAi)({env,accountId:options.accountId||null,context});
           const assessed=await(deps.assess||assessEvolutionProposal)({...common,proposalId:proposal.proposalId,input:{contextFingerprint:context.contextFingerprint,assessment:reasoning.assessment,ai:reasoning.ai,analysisOnly:true}});
           proposal={...(assessed.proposal||proposal),assessment:assessed.assessment||(assessed.proposal||proposal).assessment||null};
         }
@@ -209,7 +215,11 @@ export async function postConsoleLearningResolutionApprove(req,env,{projectId},d
   return {status:'ok',data:{contractVersion:VERSION,projectId,operation:'APPROVE',items,executionStarted:false}};
 }
 export async function postConsoleLearningResolutionVerify(req,env,{projectId},deps={}){
-  const {common}=await auth(req,env,projectId,deps),input=await body(req);exact(input,['proposalIds','confirmExecution','retryOfRunId']);
+  const {common}=await auth(req,env,projectId,deps);
+  return verifyLearningResolution(common,await body(req),deps);
+}
+export async function verifyLearningResolution(common,input,deps={}) {
+  const {env,projectId}=common;exact(input,['proposalIds','confirmExecution','retryOfRunId']);
   if(input.confirmExecution!==true||!Array.isArray(input.proposalIds)||input.proposalIds.length<1||input.proposalIds.length>10)fail('LEARNING_VERIFICATION_CONFIRMATION_REQUIRED');input.proposalIds.forEach(id);if(new Set(input.proposalIds).size!==input.proposalIds.length)fail('LEARNING_DUPLICATE_PROPOSAL');
   const retryOfRunId=normalizeVerificationRetryInput(input);
   const items=[];

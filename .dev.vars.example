@@ -45,3 +45,7 @@ SCENARIO_READINESS_V2_ENABLED=false
 
 # C: evidence reconciliation (requires SCENARIO_READINESS_V2_ENABLED=true)
 SCENARIO_READINESS_RECONCILIATION_ENABLED=false
+
+# 08.1.8: provision the SAME independent secret (>=32 characters) on Gateway,
+# Test Evolution and Test Registry. Do not commit a production value.
+# AUTONOMOUS_LEARNING_HMAC_SECRET=

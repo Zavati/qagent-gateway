@@ -45,7 +45,7 @@ export function parseEvolutionVerificationKey(key) {
 
 /** Only used at the public Run boundary; internal creators retain their namespace. */
 export function assertPublicRunIdempotencyKey(key) {
-  if (isEvolutionVerificationNamespace(key)) verificationRetryError('RUN_IDEMPOTENCY_NAMESPACE_RESERVED', 400);
+  if (isEvolutionVerificationNamespace(key) || (typeof key==='string' && key.startsWith('autonomous-learning:'))) verificationRetryError('RUN_IDEMPOTENCY_NAMESPACE_RESERVED', 400);
   return key;
 }
 

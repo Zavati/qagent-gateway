@@ -16,3 +16,5 @@ export const assessEvolutionProposal=(x)=>call({...x,path:`/internal/v1/projects
 export const verifyEvolutionOutcome=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/${encodeURIComponent(x.proposalId)}/verify-outcome`,method:'POST',body:x.input});
 
 export const approveEvolutionProposalsBatch=(x)=>call({...x,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/approve-batch`,method:'POST',body:x.input});
+
+export const approveEvolutionProposalsByPolicy=(x)=>call({...x,userId:null,path:`/internal/v1/projects/${encodeURIComponent(x.projectId)}/test-evolution-proposals/approve-by-policy`,method:'POST',body:x.input});

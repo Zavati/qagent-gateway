@@ -112,6 +112,10 @@ export function resolveGatewayRoute(method, pathname) {
     }
   }
 
+  if(normalizedMethod==='POST'&&/^\/internal\/v1\/autonomous-learning\/(snapshot|step)$/.test(normalizedPath))return {name:'internalAutonomousLearningPost',params:{operation:normalizedPath.split('/').at(-1)}};
+  const autonomous=normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/autonomous-learning\/(policy|cycles)(?:\/([^/]+)(?:\/(control))?)?$/);
+  if(autonomous&&['GET','PUT','POST'].includes(normalizedMethod))return {name:'consoleAutonomousLearning',params:{projectId:decodeURIComponent(autonomous[1]),resource:autonomous[2],cycleId:autonomous[3]?decodeURIComponent(autonomous[3]):null,action:autonomous[4]||null}};
+
   // 07.8-B - internal shared Test Design generation use case (HMAC protected)
   if (normalizedPath.startsWith('/internal/v1/test-design-generation/endpoints/')) {
     const segs = normalizedPath.split('/').filter(Boolean);

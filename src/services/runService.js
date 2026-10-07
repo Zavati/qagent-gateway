@@ -199,6 +199,7 @@ export async function createRunV1({
   input,
   idempotencyKey,
   runtimeReuse = null,
+  executionAuthorization = null,
   deps = {},
 } = {}) {
   const log = logger(env);
@@ -251,6 +252,7 @@ export async function createRunV1({
     purpose: input.purpose || 'REGRESSION',
     confirmDiscoveredRuntime: input.confirmDiscoveredRuntime === true,
     confirmedRuntimeReuse: runtimeReuse,
+    executionAuthorization,
     runId,
     executionPlanId,
     runtimeSnapshotId,

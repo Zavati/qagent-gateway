@@ -84,6 +84,8 @@ async function processTrigger(env,trigger){
   if(!sourceRun){log('test_evolution_trigger_skipped',{resultSetId:trigger.resultSetId,runId:trigger.runId,reason:'RUN_METADATA_NOT_FOUND'});return;}
   if(sourceRun.organizationId!==trigger.organizationId||sourceRun.projectId!==trigger.projectId){log('test_evolution_trigger_skipped',{resultSetId:trigger.resultSetId,runId:trigger.runId,reason:'RUN_SCOPE_MISMATCH'});return;}
   const scope={env,organizationId:trigger.organizationId,projectId:trigger.projectId,userId:null};
+  // Learning cycles own their source analysis; do not fork legacy AI/auto-apply.
+  if(String(sourceRun.idempotencyKey||'').startsWith('autonomous-learning:')){log('autonomous_learning_source_result_available',{runId:trigger.runId,resultSetId:trigger.resultSetId});return;}
   const humanRerunLink=parseHumanRepairRerunKey(sourceRun?.idempotencyKey);
   if(humanRerunLink){
     const summary=(trigger.scenarioSummaries||[])[0]||{scenarioId:trigger.scenarioIds[0]};

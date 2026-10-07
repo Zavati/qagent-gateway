@@ -1,3 +1,4 @@
+import { assertExecutionAuthorization, assertOrigin } from '../autonomous/contracts.js';
 import { readinessReconciliationEnabled } from '../readiness/readinessReconciliation.js';
 import { getReadinessReconciliation, applyReconciliationToArtifact } from './readinessReconciliationClient.js';
 import { COVERAGE_ASSERTION_TYPES, validateCoverageAssertion } from '../coverageAssertions.js';
@@ -254,6 +255,7 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
   loadEndpoint = getCatalogEndpointForTestDesign,
   loadEvidence = getCatalogEvidenceForTestDesign,
   confirmedRuntimeReuse = null,
+  executionAuthorization = null,
 } = {}) {
   const referencedServiceKeys = uniqueStrings(selectedScenarios.map((scenario) => scenario?.spec?.target?.apiServiceKey));
   const apiServices = {};
@@ -359,7 +361,7 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
       });
     }
 
-    if (confirmDiscoveredRuntime !== true) {
+    if (confirmDiscoveredRuntime !== true && !executionAuthorization) {
       runError('Runtime descoberto exige confirmação explícita antes da criação do Run.', 'RUN_DISCOVERED_RUNTIME_CONFIRMATION_REQUIRED', 409, {
         serviceKey,
         baseUrl: discoveredCandidate.origin,
@@ -591,6 +593,7 @@ export async function materializeExecutionPlanV1({
   purpose = 'REGRESSION',
   confirmDiscoveredRuntime = false,
   confirmedRuntimeReuse = null,
+  executionAuthorization = null,
   runId,
   executionPlanId,
   runtimeSnapshotId,
@@ -606,6 +609,7 @@ export async function materializeExecutionPlanV1({
   reconcileReadiness = getReadinessReconciliation,
 } = {}) {
   validateArtifactScope(artifact, { organizationId, projectId });
+  if(executionAuthorization)assertExecutionAuthorization(executionAuthorization,{organizationId,projectId,environmentId,testDesignVersionId:artifact.testDesignVersionId,scenarioIds:requestedScenarioIds,purpose});
   if (readinessReconciliationEnabled(env)) {
     const requested=Array.isArray(requestedScenarioIds)&&requestedScenarioIds.length?new Set(requestedScenarioIds):null;
     // Protected baselines and mutations retain their existing execution path,
@@ -650,7 +654,13 @@ export async function materializeExecutionPlanV1({
     loadEndpoint,
     loadEvidence,
     confirmedRuntimeReuse,
+    executionAuthorization,
   });
+
+  if(executionAuthorization){
+    for(const scenario of selectedScenarios)if(!['GET','HEAD','OPTIONS'].includes(scenario.spec?.target?.method)||scenario.generationClass==='OBSERVED_BASELINE'||scenario.baseline)throw Object.assign(new Error('Autonomous execution is outside delegated profile.'),{code:'AUTONOMOUS_OPERATION_NOT_ALLOWED',status:403});
+    for(const service of Object.values(runtimeRefs.apiServices||{}))assertOrigin(service.baseUrl,executionAuthorization.allowedOrigins);
+  }
 
   const requiresObservedTestData = selectedScenarios.some((scenario) =>
     (scenario?.spec?.testData?.bindings || []).some((binding) => binding?.source === 'OBSERVED')

@@ -1,3 +1,4 @@
+import { consoleAutonomous, internalAutonomous } from './autonomous/handlers.js';
 import { getConsoleAdaptiveReadinessWorkspace } from './handlers/consoleAdaptiveReadinessWorkspace.js';
 import { postConsoleReadinessReconciliation, getConsoleReadinessReconciliationPreview } from './handlers/consoleReadinessReconciliation.js';
 import { postConsoleLearningResolutionAnalyze, postConsoleLearningResolutionApprove, postConsoleLearningResolutionVerify } from './handlers/consoleLearningResolution.js';
@@ -2089,6 +2090,8 @@ const gatewayRouteHandlers = {
   consoleProjectTestDesignGenerationJobGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestDesignGenerationJob(req, env, params), { headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobItemsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobItems(req, env, params), { headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobs(req, env, params), { headers: corsHeaders(req, env) }),
+  internalAutonomousLearningPost: async (req,env,_ctx,params)=>json(await internalAutonomous(req,env,params),{headers:{...corsHeaders(req,env),'Cache-Control':'private, no-store'}}),
+  consoleAutonomousLearning: async (req,env,_ctx,params)=>json(await consoleAutonomous(req,env,params),{headers:{...corsHeaders(req,env),'Cache-Control':'private, no-store'}}),
   internalEndpointTestDesignGenerationPost: async (req, env, _ctx, params) => json(await postInternalEndpointTestDesignGeneration(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunBundleGet: async (req, env, _ctx, params) => json(await getInternalRunnerRunBundle(req, env, params), { headers: corsHeaders(req, env) }),
   internalRunnerRunClaimPost: async (req, env, _ctx, params) => json(await postInternalRunnerClaim(req, env, params), { headers: corsHeaders(req, env) }),

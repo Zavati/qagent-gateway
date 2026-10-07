@@ -147,11 +147,11 @@ export async function assertLinkedVerificationRetry({ env, organizationId, proje
   return { link, proposal: p, bundle: current, retryOfRunId: chain.at(-2).run.runId };
 }
 
-export async function retryEvolutionVerification({ env, organizationId, projectId, userId, proposal, retryOfRunId, deps = {} }) {
+export async function retryEvolutionVerification({ env, organizationId, projectId, userId, proposal, retryOfRunId, executionAuthorization = null, deps = {} }) {
   retryEnabled(env);
   if (typeof userId !== 'string' || !/^usr_[A-Za-z0-9_-]+$/.test(userId)) fail('LEARNING_VERIFICATION_RETRY_ACTOR_REQUIRED', 403);
   appliedProposal(proposal);
-  const common = { env, organizationId, projectId, userId };
+  const common = { env, organizationId, projectId, userId, ...(executionAuthorization?{executionAuthorization}:{}) };
   const previous = await (deps.getRunBundle || getRunBundle)(env, organizationId, projectId, retryOfRunId);
   const link = parseEvolutionVerificationKey(previous?.run?.idempotencyKey);
   if (!link || previous.run.runId !== retryOfRunId || link.proposalId !== proposal.proposalId
