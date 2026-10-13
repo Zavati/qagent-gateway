@@ -8,6 +8,7 @@ const EXACT_ROUTES = new Map([
   ['GET /v1/auth/me', 'authMe'],
   ['POST /v1/plugin/session', 'pluginSessionCreate'],
   ['POST /v1/plugin/observation-grants', 'pluginObservationGrantCreate'],
+  ['POST /v1/plugin/ui-capture-grants', 'pluginUiCaptureGrantCreate'],
   ['GET /v1/console/license', 'consoleLicense'],
   ['GET /v1/console/payments', 'consolePayments'],
   ['GET /v1/console/ai-providers', 'consoleAiProvidersGet'],

@@ -3,6 +3,7 @@
 	"compatibility_date": "2026-01-14",
 	"main": "src/index.js",
 	"services": [
+		{ "binding": "OBSERVATION_SERVICE", "service": "qagent-observation" },
 		{
 			"binding": "CATALOG_QUERY_SERVICE",
 			"service": "qagent-catalog"
@@ -60,6 +61,7 @@
 		]
 	},
 	"vars": {
+    "UI_CAPTURE_ENABLED": "false",
     "SCENARIO_READINESS_V2_ENABLED": "true",
     "SCENARIO_READINESS_RECONCILIATION_ENABLED": "true",
         "OBSERVED_BASELINE_GENERATION_ENABLED": "true",
