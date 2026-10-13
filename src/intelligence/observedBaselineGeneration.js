@@ -18,8 +18,6 @@ export function buildObservedBaselineScenario(source, context, { mode = 'STRUCTU
         readiness = 'NEEDS_DATA';
         if (source.availability === 'EXPIRED')
             blockers.push('OBSERVED_BASELINE_SOURCE_UNAVAILABLE');
-        if (Date.parse(b.expiresAt) <= now.getTime())
-            blockers.push('OBSERVED_BASELINE_SOURCE_EXPIRED');
         if (b.requestCoverage.status !== 'COMPLETE')
             blockers.push('OBSERVED_BASELINE_REQUEST_INCOMPLETE');
         if (!['COMPLETE', 'NO_BODY'].includes(b.responseCoverage.status))
@@ -34,7 +32,7 @@ export function buildObservedBaselineScenario(source, context, { mode = 'STRUCTU
         category: 'HAPPY_PATH', priority: 'HIGH', confidence: 'HIGH', generationClass: 'OBSERVED_BASELINE', baseline: b,
         grounding: { level: 'OBSERVED', rationale: ['Baseline construída deterministicamente a partir de uma transação monitorada; sua origem não é escolhida pela IA.'], evidenceRefs: [b.source.evidenceId], schemaRefs: b.responseSchemaVersionId ? [b.responseSchemaVersionId] : [] },
         automation: { readiness, blockers, evolutionState: readiness === 'READY' ? 'STABLE' : 'BLOCKED' },
-        preconditions: [`Ambiente de origem: ${b.source.environmentId}.`, `Dados da fonte disponíveis até ${b.expiresAt}.`,
+        preconditions: [`Ambiente de origem: ${b.source.environmentId}.`, `Prazo histórico da fonte: ${b.expiresAt}; não limita a execução da baseline persistida.`,
             b.comparisonPolicy.mode === 'CONTROLLED_STATE' ? 'Contexto controlado confirmado: o estado vazio/preenchido dos arrays observados também é protegido.' : 'Somente estrutura: diferenças vazio/preenchido são informadas, não são declaradas defeito sem contexto controlado.',
             'Headers de negócio não capturados devem ser mantidos na configuração do serviço; autenticação pertence ao Auth Runtime.'],
         spec: { dslVersion: 'qagent.api-test-dsl.v1', type: 'api', target: { catalogEndpointId: b.source.endpointId, apiServiceKey: runtime.apiServiceKey || null, method: b.source.method, path: b.source.path },

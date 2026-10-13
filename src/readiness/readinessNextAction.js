@@ -7,17 +7,16 @@ export function readinessNextAction(source, item, { canWrite = false, now = Date
     const issues = v.issues, complete = m.complete === true;
     const baseline = source.generationClass === 'OBSERVED_BASELINE' || source.baseline != null;
     const safe = SAFE.has(source.spec?.target?.method);
-    const expired = baseline && source.baseline?.expiresAt && Date.parse(source.baseline.expiresAt) <= now;
     const commands = { analyze: false, regression: false, verify: false };
-    let type = 'NONE', workflow = 'IDLE', reasons = [], policyBlocked = !safe || Boolean(expired);
+    let type = 'NONE', workflow = 'IDLE', reasons = [], policyBlocked = !safe;
     if (!complete) {
         workflow = 'UNAVAILABLE';
         reasons = ['READINESS_EVIDENCE_UNAVAILABLE'];
     }
     else if (baseline) {
         workflow = 'PROTECTED';
-        reasons = [expired ? 'OBSERVED_BASELINE_SOURCE_EXPIRED' : 'OBSERVED_BASELINE_PROTECTED'];
-        commands.regression = canWrite && safe && !expired && v.regression.status === 'READY';
+        reasons = ['OBSERVED_BASELINE_PROTECTED'];
+        commands.regression = canWrite && safe && v.regression.status === 'READY';
         if (v.review.status === 'HUMAN_REQUIRED')
             type = 'HUMAN_REVIEW';
     }

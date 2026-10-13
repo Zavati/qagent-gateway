@@ -29,8 +29,7 @@ async function mapLimit(items,limit,worker){const out=[];let cursor=0;async func
 export function buildUnits(slice, policyResult, suiteRun) {
   const policyMap = new Map((policyResult?.decisions || []).map(p => [`${p.endpointId}|${p.method}`, p]));
   const units = [];
-  // Use the immutable run creation time for deterministic queue retries. Runtime rechecks expiration.
-  const at = Date.parse(suiteRun.createdAt || '') || Date.now();
+  // Source age does not invalidate a saved baseline. Runtime still validates its request and scope.
   for (const item of slice.items) {
     const method = String(item.method || '').toUpperCase();
     const origins = new Map((item.scenarioOrigins || []).map(s => [s.scenarioId, s]));
@@ -45,7 +44,6 @@ export function buildUnits(slice, policyResult, suiteRun) {
       let holdReason = null;
       if (source?.generationClass === 'OBSERVED_BASELINE') {
         if (source.environmentId !== suiteRun.environmentId) holdReason = 'OBSERVED_BASELINE_ENVIRONMENT_MISMATCH';
-        else if (!(Date.parse(source.expiresAt) > at)) holdReason = 'OBSERVED_BASELINE_SOURCE_EXPIRED';
       }
       if (!holdReason && isSafe(method)) { readIds.push(scenarioId); return; }
       if (!holdReason && isMutation(method)) {

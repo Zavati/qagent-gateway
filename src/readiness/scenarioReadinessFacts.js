@@ -44,7 +44,7 @@ export function collectScenarioReadinessIssues(scenario, { source = 'READINESS_E
   if (scenario?.generationClass === 'OBSERVED_BASELINE' || scenario?.baseline) {
     const b = scenario?.baseline;
     if (!b?.source?.evidenceId || !b?.baselineId || !Number.isFinite(Date.parse(b?.expiresAt || ''))) add('OBSERVED_BASELINE_PROVENANCE_INVALID');
-    if (b && Number.isFinite(nowMs) && Date.parse(b.expiresAt) <= nowMs) add('OBSERVED_BASELINE_SOURCE_EXPIRED');
+    // FIX-4: source age is provenance, not an execution/readiness blocker.
     if (b?.requestCoverage?.status !== 'COMPLETE') add('OBSERVED_BASELINE_REQUEST_INCOMPLETE');
     // Existing reviewed enrichment remains protected; this is not evidence reconciliation.
     const enriched = b?.enrichment?.selfCheck === 'PASSED';

@@ -49,7 +49,8 @@ export function reconcileReadinessFacts({ scenario, base = readScenarioReadiness
   validateScenarioReadinessV2(base);
   const protectedMutation = !isSafeReadinessMethod(scenario);
   const protectedBaseline = scenario?.generationClass === 'OBSERVED_BASELINE' || Boolean(scenario?.baseline);
-  let issues = normalizeReadinessIssues([...base.issues, ...collectScenarioReadinessIssues(scenario, { nowMs })]);
+  let issues = normalizeReadinessIssues([...base.issues, ...collectScenarioReadinessIssues(scenario, { nowMs })]
+    .filter(i => !(protectedBaseline && i.code === 'OBSERVED_BASELINE_SOURCE_EXPIRED')));
   let expectation = { ...base.expectation };
   let state = 'UNCHANGED';
   const pending = derivedVersion || base.expectation.basis === 'DERIVATION_PENDING_VERIFICATION' || scenario?.learning?.phase === 'PENDING_VERIFICATION'

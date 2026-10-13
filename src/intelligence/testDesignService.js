@@ -539,10 +539,10 @@ export async function generateCatalogTestDesignV1(input={}){
   const carried=(previous?.testDesign?.specification?.scenarios||[]).filter(s=>s.generationClass==='OBSERVED_BASELINE');
   const byId=new Map(); const existingFamilies=new Set();
   for(const prior of carried){
-    // Keep the protected source/policy; only recompute readiness against current runtime/expiry.
+    // Preserve protected source/policy. Time alone never replaces an existing baseline family.
     const updated=buildObservedBaselineScenario(prior.baseline,context,{now});
     updated.scenarioId=prior.scenarioId; // Preserve identity after an explicitly approved source replacement.
-    byId.set(updated.baseline.baselineId,updated);if (Date.parse(prior.baseline.expiresAt) > now.getTime()) existingFamilies.add(prior.baseline.familyKey);
+    byId.set(updated.baseline.baselineId,updated);existingFamilies.add(prior.baseline.familyKey);
   }
   let omitted=0;
   for(const source of sources?.items||[]){

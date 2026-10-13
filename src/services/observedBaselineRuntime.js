@@ -28,22 +28,31 @@ export async function materializeObservedBaselineRequests({ env, organizationId,
         const b = scenario.baseline;
         if (!observedBaselineReady(b, now) && !(purpose === 'LEARNING' && baselineLearningEligibility(scenario,now).allowed))
             stop('RUN_OBSERVED_BASELINE_SOURCE_UNAVAILABLE');
-        if (!cache.has(b.baselineId))
-            cache.set(b.baselineId, await loadSource({ env, organizationId, projectId, endpointId, baselineId: b.baselineId }));
-        const source = cache.get(b.baselineId);
-        if (!source || source.availability !== 'AVAILABLE' || !captureRequestSafe(source.request))
-            stop('RUN_OBSERVED_BASELINE_SOURCE_UNAVAILABLE');
-        const current = { ...baselineFromSource(source), comparisonPolicy: b.comparisonPolicy, ...(b.revision ? { revision: b.revision } : {}) };
-        const {enrichment, ...original} = b;
-        if (canonicalBaselineJson(current) !== canonicalBaselineJson(original))
-            stop('RUN_OBSERVED_BASELINE_PROVENANCE_MISMATCH');
-        if ('brq_' + await captureHash({ request: source.request, encoding: b.requestBodyEncoding }) !== b.requestFingerprint)
-            stop('RUN_OBSERVED_BASELINE_REQUEST_HASH_MISMATCH');
+        // Prefer a complete request already present in the immutable Test Design.
+        // This also recovers empty requests whose Catalog payload was previously purged.
+        // Equality of the captured fingerprint is mandatory: never fill missing values.
+        let request = scenario.spec?.request;
+        const storedRequestMatches = captureRequestSafe(request)
+            && 'brq_' + await captureHash({ request, encoding: b.requestBodyEncoding }) === b.requestFingerprint;
+        if (!storedRequestMatches) {
+            if (!cache.has(b.baselineId))
+                cache.set(b.baselineId, await loadSource({ env, organizationId, projectId, endpointId, baselineId: b.baselineId }));
+            const source = cache.get(b.baselineId);
+            if (!source || source.availability !== 'AVAILABLE' || !captureRequestSafe(source.request))
+                stop('RUN_OBSERVED_BASELINE_SOURCE_UNAVAILABLE');
+            const current = { ...baselineFromSource(source), comparisonPolicy: b.comparisonPolicy, ...(b.revision ? { revision: b.revision } : {}) };
+            const {enrichment, ...original} = b;
+            if (canonicalBaselineJson(current) !== canonicalBaselineJson(original))
+                stop('RUN_OBSERVED_BASELINE_PROVENANCE_MISMATCH');
+            request = source.request;
+            if ('brq_' + await captureHash({ request, encoding: b.requestBodyEncoding }) !== b.requestFingerprint)
+                stop('RUN_OBSERVED_BASELINE_REQUEST_HASH_MISMATCH');
+        }
         for (const configured of configuredBindings) {
             // Do not mutate shared settings, and do not silently override explicitly configured data.
             if (!['USER_DEFINED', 'LEGACY_UNKNOWN'].includes(configured.origin || 'LEGACY_UNKNOWN'))
                 continue;
-            const match = valueFor(source.request, configured);
+            const match = valueFor(request, configured);
             if (!match.exists)
                 continue;
             const same = configured.sourceType === 'FIXED' && (configured.target === 'BODY'
@@ -52,7 +61,7 @@ export async function materializeObservedBaselineRequests({ env, organizationId,
             if (!same)
                 stop('RUN_OBSERVED_BASELINE_USER_DATA_CONFLICT');
         }
-        requests.set(scenario.scenarioId, structuredClone(source.request));
+        requests.set(scenario.scenarioId, structuredClone(request));
     }
     return requests;
 }

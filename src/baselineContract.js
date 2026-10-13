@@ -93,7 +93,8 @@ export function baselineFromSource(source, policy = { mode: 'STRUCTURE' }, actor
     return validateObservedBaseline(b);
 }
 export function observedBaselineReady(b, now = Date.now()) {
-    return b.requestCoverage.status === 'COMPLETE' && Date.parse(b.expiresAt) > now
+    // FIX-4: expiresAt describes source retention history, not the lifetime of a saved test.
+    return b.requestCoverage.status === 'COMPLETE'
         && ((['COMPLETE', 'NO_BODY'].includes(b.responseCoverage.status) && ['PASSED', 'NO_BODY'].includes(b.selfCheck))
             || (b.enrichment != null && validateBaselineEnrichment(b.enrichment,b).selfCheck === 'PASSED'));
 }
@@ -148,13 +149,12 @@ export function isApprovedBaselineRevision(prior, successor, currentVersionId) {
 
 // Learning is an explicit execution purpose, never an implicit READY override.
 export const LEARNING_PURPOSE = 'LEARNING';
-const LEARNING_SOFT_BLOCKERS = new Set(['OBSERVED_BASELINE_RESPONSE_INCOMPLETE','OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE']);
+const LEARNING_SOFT_BLOCKERS = new Set(['OBSERVED_BASELINE_RESPONSE_INCOMPLETE','OBSERVED_BASELINE_SELF_CHECK_INCOMPLETE','OBSERVED_BASELINE_SOURCE_EXPIRED']);
 export function baselineLearningEligibility(scenario, now = Date.now()) {
     const b=scenario?.baseline;
     if(scenario?.generationClass!=='OBSERVED_BASELINE'||!b)return {allowed:false,reason:'NOT_OBSERVED_BASELINE'};
     try { validateObservedBaselineScenario(scenario); } catch(e) { return {allowed:false,reason:e.code}; }
     if(!['GET','HEAD','OPTIONS'].includes(b.source.method))return {allowed:false,reason:'LEARNING_MUTATION_REQUIRES_SEPARATE_AUTHORIZATION'};
-    if(Date.parse(b.expiresAt)<=now)return {allowed:false,reason:'OBSERVED_BASELINE_SOURCE_EXPIRED'};
     if(b.requestCoverage.status!=='COMPLETE')return {allowed:false,reason:'OBSERVED_BASELINE_REQUEST_INCOMPLETE'};
     if(b.responseCoverage.status!=='PARTIAL'||b.selfCheck!=='PARTIAL'||b.enrichment)return {allowed:false,reason:'BASELINE_NOT_PARTIAL_LEARNING_CANDIDATE'};
     if(!b.responseSchemaVersionId||!b.responseSchemaHash)return {allowed:false,reason:'OBSERVED_BASELINE_SCHEMA_REQUIRED'};
@@ -175,4 +175,27 @@ export function validateBaselineEnrichment(e,b) {
     if(!date(e.approvedAt)||!/^csv_[A-Za-z0-9_-]{1,120}$/.test(e.responseSchemaVersionId)||!/^sch_[a-f0-9]{40}$/.test(e.responseSchemaHash))fail('OBSERVED_BASELINE_ENRICHMENT_INVALID');
     if(b&&(b.responseCoverage.status!=='PARTIAL'||b.selfCheck!=='PARTIAL'||b.requestCoverage.status!=='COMPLETE'||b.source.environmentId!==e.environmentId||b.responseSchemaVersionId===e.responseSchemaVersionId))fail('OBSERVED_BASELINE_ENRICHMENT_INVALID');
     return e;
+}
+
+/** FIX-4: execution-only projection. Never edits the stored scenario or its hashes.
+ * An old NEEDS_DATA/REVIEW_REQUIRED label is lifted ONLY when age was the sole blocker.
+ */
+export function baselineExecutionReadiness(scenario) {
+    const previous = scenario?.automation?.readiness || 'UNKNOWN';
+    if (scenario?.generationClass !== 'OBSERVED_BASELINE' || !scenario.baseline
+        || !['NEEDS_DATA', 'REVIEW_REQUIRED'].includes(previous)) return previous;
+    const blockers = scenario.automation?.blockers;
+    const native = scenario.readinessV2;
+    const expiry = 'OBSERVED_BASELINE_SOURCE_EXPIRED';
+    if (!Array.isArray(blockers) || blockers.some(code => code !== expiry)) return previous;
+    if (native && !Array.isArray(native.issues)) return previous;
+    if (!blockers.includes(expiry) && !(native?.issues || []).some(i => i.code === expiry)) return previous;
+    if (native && (!Array.isArray(native.issues)
+        || native.issues.some(i => i.code !== expiry && (i.blocksExecution || i.blocksRegression || i.humanRequired))
+        || !['EVIDENCED', 'VERIFIED'].includes(native.expectation?.status)
+        || native.coverage?.status !== 'COMPLETE')) return previous;
+    try {
+        validateObservedBaselineScenario(scenario);
+        return observedBaselineReady(scenario.baseline) ? 'READY' : previous;
+    } catch { return previous; }
 }

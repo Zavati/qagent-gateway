@@ -29,13 +29,19 @@ const MAP = Object.freeze({
 export function adaptLegacyScenarioReadiness(scenario, { nowMs = null, derivedVersion = false } = {}) {
   const issues = collectScenarioReadinessIssues(scenario, { source: 'LEGACY_ADAPTER', nowMs });
   const add = code => issues.push(buildReadinessIssue(code, 'LEGACY_ADAPTER'));
-  for (const code of learningBlockerCodes(scenario)) add(MAP[code] || 'LEGACY_REASON_UNCLASSIFIED');
+  const oldCodes = learningBlockerCodes(scenario);
+  const ageOnlyRemoved = scenario?.generationClass === 'OBSERVED_BASELINE' && !!scenario.baseline
+    && oldCodes.includes('OBSERVED_BASELINE_SOURCE_EXPIRED');
+  for (const code of oldCodes) {
+    if (ageOnlyRemoved && code === 'OBSERVED_BASELINE_SOURCE_EXPIRED') continue;
+    add(MAP[code] || 'LEGACY_REASON_UNCLASSIFIED');
+  }
   const state = scenario?.automation?.readiness;
   if (!['READY', 'REVIEW_REQUIRED', 'NEEDS_DATA', 'NEEDS_AUTH', 'NEEDS_ENVIRONMENT'].includes(state)) add('LEGACY_READINESS_UNKNOWN');
   if (state === 'NEEDS_AUTH' && !issues.some(i => i.kind === 'AUTH_STRATEGY')) add('AUTH_PROFILE_REQUIRED');
   if (state === 'NEEDS_ENVIRONMENT' && !issues.some(i => ['RUNTIME_TARGET_MISSING', 'ENVIRONMENT_UNAVAILABLE'].includes(i.code))) add('RUNTIME_TARGET_MISSING');
-  if (state === 'NEEDS_DATA' && !issues.some(i => i.kind === 'DATA_DEPENDENCY' || i.blocksExecution || i.kind === 'EXPECTATION_KNOWLEDGE')) add('SHARED_BINDING_MISSING');
-  if (state === 'REVIEW_REQUIRED' && !issues.length && scenario?.grounding?.level !== 'ASSUMED') add('LEGACY_REASON_UNCLASSIFIED');
+  if (state === 'NEEDS_DATA' && !ageOnlyRemoved && !issues.some(i => i.kind === 'DATA_DEPENDENCY' || i.blocksExecution || i.kind === 'EXPECTATION_KNOWLEDGE')) add('SHARED_BINDING_MISSING');
+  if (state === 'REVIEW_REQUIRED' && !ageOnlyRemoved && !issues.length && scenario?.grounding?.level !== 'ASSUMED') add('LEGACY_REASON_UNCLASSIFIED');
   // Existing derivation provenance does not prove the changed expectation.
   // Read model supplies this fact from the immutable version origin, not from a client.
   if (derivedVersion) add('EXPECTATION_REVALIDATION_REQUIRED');
@@ -45,6 +51,16 @@ export function adaptLegacyScenarioReadiness(scenario, { nowMs = null, derivedVe
 }
 export function readScenarioReadinessV2(scenario, options = {}) {
   // Present-but-invalid v2 must fail closed, never silently downgrade to legacy.
-  if (Object.hasOwn(scenario || {}, 'readinessV2')) return structuredClone(validateScenarioReadinessV2(scenario.readinessV2));
+  if (Object.hasOwn(scenario || {}, 'readinessV2')) {
+    const value = structuredClone(validateScenarioReadinessV2(scenario.readinessV2));
+    if (scenario.generationClass === 'OBSERVED_BASELINE' && scenario.baseline
+      && value.issues.some(i => i.code === 'OBSERVED_BASELINE_SOURCE_EXPIRED')) {
+      return evaluateScenarioReadinessV2({ basis: value.basis, evaluationScope: value.evaluationScope,
+        issues: value.issues.filter(i => i.code !== 'OBSERVED_BASELINE_SOURCE_EXPIRED'),
+        expectation: value.expectation, learningPolicyAllows: false,
+        proposalAvailable: value.review.status === 'PROPOSAL_AVAILABLE' });
+    }
+    return value;
+  }
   return adaptLegacyScenarioReadiness(scenario, options);
 }

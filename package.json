@@ -161,7 +161,8 @@
     "test:f08-1-7-c-fix2": "node --test test/status-coverage-08.1.7-c-fix2.test.mjs",
     "test:f08-1-7-d": "node --test test/adaptive-readiness-workspace-08.1.7-d.test.mjs",
     "test:f08-1-8": "node --test test/autonomous-learning-08.1.8.test.mjs test/autonomous-runtime-08.1.8.test.mjs",
-    "test:f08-1-8-fix1": "node --test test/autonomous-environment-origins-08.1.8-fix1.test.mjs test/autonomous-environment-origins-integration-08.1.8-fix1.test.mjs"
+    "test:f08-1-8-fix1": "node --test test/autonomous-environment-origins-08.1.8-fix1.test.mjs test/autonomous-environment-origins-integration-08.1.8-fix1.test.mjs",
+    "test:f08-1-8-fix4": "node --test test/baseline-expiry-08.1.8-fix4.test.mjs"
   },
   "keywords": [],
   "author": "",

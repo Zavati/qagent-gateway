@@ -13,8 +13,8 @@ test('public provenance validates exact scope and contains no request data',()=>
  assert.throws(()=>validateObservedBaseline(b,{...scope,projectId:'other'}));
  assert.throws(()=>validateObservedBaselineScenario({...s,spec:{...s.spec,assertions:[{type:'STATUS',expectedStatusCodes:[422]}]}},scope));
 });
-test('source expiry / incomplete evidence never becomes ready',()=>{
- assert.equal(observedBaselineReady(b,now),true);assert.equal(observedBaselineReady(b,Date.parse(b.expiresAt)+1),false);
+test('saved baseline remains ready after source age; incomplete evidence still blocks',()=>{
+ assert.equal(observedBaselineReady(b,now),true);assert.equal(observedBaselineReady(b,Date.parse(b.expiresAt)+1),true);
  assert.equal(observedBaselineReady({...b,requestCoverage:{...b.requestCoverage,status:'PARTIAL'}},now),false);
 });
 test('ordinary repair cannot weaken baseline and explicit approval needs exact parent',()=>{

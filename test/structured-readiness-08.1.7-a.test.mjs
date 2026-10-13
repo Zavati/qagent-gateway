@@ -103,7 +103,7 @@ test('clones and pending request derivations do not inherit verified maturity',(
 });
 test('baseline protections/provenance are retained; no baseline Learning expansion',()=>{
  const s=scenario();s.generationClass='OBSERVED_BASELINE';s.baseline={baselineId:'obl1',source:{evidenceId:'ev1'},expiresAt:'2026-01-01T00:00:00Z',requestCoverage:{status:'COMPLETE'},responseCoverage:{status:'COMPLETE'},selfCheck:'PASSED'};
- const r=adapt(s,{nowMs:Date.parse('2026-09-27T00:00:00Z')});assert.equal(r.execution.status,'BLOCKED');assert.notEqual(r.review.status,'LEARNING_AVAILABLE');assert.ok(r.issues.some(i=>i.code==='OBSERVED_BASELINE_SOURCE_EXPIRED'));
+ const r=adapt(s,{nowMs:Date.parse('2026-09-27T00:00:00Z')});assert.equal(r.execution.status,'READY');assert.notEqual(r.review.status,'LEARNING_AVAILABLE');assert.ok(!r.issues.some(i=>i.code==='OBSERVED_BASELINE_SOURCE_EXPIRED'));
 });
 test('v2 attachment does not authorize or change existing Learning admission',()=>{
  const s=scenario();s.automation={readiness:'REVIEW_REQUIRED',blockers:['opaque human policy']};const old=assessExploratoryLearning(s);

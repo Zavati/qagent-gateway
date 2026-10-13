@@ -7,7 +7,7 @@ import { assessLearningAdmission, buildLearningAdmissionForRunner } from '../rea
 import { scenarioReadinessV2Enabled } from '../readiness/scenarioReadinessV2.js';
 import { negativePreparationGate } from '../negativeRequestStrategy.js';
 import { prepareExploratoryLearningData } from './exploratoryLearningData.js';
-import { baselineLearningEligibility, baselineEffectiveResponse } from '../baselineContract.js';
+import { baselineLearningEligibility, baselineEffectiveResponse, baselineExecutionReadiness } from '../baselineContract.js';
 import { materializeObservedBaselineRequests, verifyObservedBaselineSchemas } from './observedBaselineRuntime.js';
 import { getCatalogEndpointForTestDesign, getCatalogEvidenceForTestDesign, getCatalogSchemasForTestDesign } from '../intelligence/catalogKnowledgeClient.js';
 import { deriveDiscoveredRuntimeCandidate, isDiscoveredRuntimeServiceKey } from '../intelligence/discoveredRuntime.js';
@@ -207,7 +207,7 @@ function selectScenarios(specification, requestedScenarioIds, environmentId, pur
       return scenario;
     });
   } else {
-    selected = scenarios.filter((scenario) => scenario?.automation?.readiness === EXECUTABLE_READINESS
+    selected = scenarios.filter((scenario) => baselineExecutionReadiness(scenario) === EXECUTABLE_READINESS
       && (scenario.generationClass !== 'OBSERVED_BASELINE' || scenario.baseline?.source?.environmentId === environmentId));
   }
 
@@ -216,7 +216,7 @@ function selectScenarios(specification, requestedScenarioIds, environmentId, pur
   }
 
   for (const scenario of selected) {
-    const readiness = scenario?.automation?.readiness || 'UNKNOWN';
+    const readiness = baselineExecutionReadiness(scenario);
     if (purpose === 'LEARNING' && !['GET','HEAD','OPTIONS'].includes(scenario?.spec?.target?.method)) runError('Aprendizagem não autoriza mutações.', 'RUN_LEARNING_MUTATION_BLOCKED', 409);
     const structuredLearning = purpose === 'LEARNING' && readinessV2Enabled && scenario.generationClass !== 'OBSERVED_BASELINE';
     const admission = structuredLearning ? assessLearningAdmission(scenario, { enabled: true }) : null;
@@ -1008,7 +1008,7 @@ export async function materializeExecutionPlanV1({
       groundingLevel: scenario?.grounding?.level || null,
       ...(scenario.generationClass?{generationClass:scenario.generationClass}:{}),
       ...(scenario.baseline?{baseline:clone(scenario.baseline)}:{}),
-      readiness: learningAdmission?.sourceReadiness || scenario.automation.readiness,
+      readiness: learningAdmission?.sourceReadiness || baselineExecutionReadiness(scenario),
       ...(learningAdmission ? {learningAdmission} : {}),
       spec,
     };
