@@ -1,15 +1,16 @@
-import { UI_REVISION } from './uiCaptureGrantToken.js';
+import { UI_REVISION, UI_OBSERVED_REVISION, UI_REVISIONS } from './uiCaptureGrantToken.js';
 const CONTRACTS = ['qagent.ui-capture.v1', 'qagent.ui-capture-events.v1', 'qagent.ui-artifact.v1'];
 const EXPECTED_LIMITS = { artifactBytes: 1048576, artifactsPerCapture: 128, captureArtifactBytes: 67108864, eventBytes: 32768, batchBytes: 262144, batchEvents: 100, captureEvents: 2000, captureEventBytes: 8388608, controlBytes: 32768, sessionSeconds: 900 };
 const err = code => Object.assign(new Error(code), { code, status: 503 });
-export async function getObservationUiCapabilities(env, purpose) {
+export async function getObservationUiCapabilities(env, purpose, revision = UI_REVISION) {
+    if(!UI_REVISIONS.includes(revision)) throw err('UI_SERVICE_CAPABILITY_MISMATCH');
     if (!env.OBSERVATION_SERVICE?.fetch)
         throw err('UI_SERVICE_UNAVAILABLE');
     const controller = new AbortController();
     let timer;
     try {
         const operation = (async () => {
-            const response = await env.OBSERVATION_SERVICE.fetch(new Request('https://qagent-observation/v1/ui/capabilities', { method: 'GET', signal: controller.signal, redirect: 'error' }));
+            const response = await env.OBSERVATION_SERVICE.fetch(new Request(`https://qagent-observation/v1/ui/capabilities${revision===UI_REVISION?'':'?revision='+encodeURIComponent(revision)}`, { method: 'GET', signal: controller.signal, redirect: 'error' }));
             if (!response.ok || !response.headers.get('content-type')?.includes('application/json'))
                 throw err('UI_SERVICE_CAPABILITY_MISMATCH');
             const reader = response.body?.getReader();
@@ -35,11 +36,13 @@ export async function getObservationUiCapabilities(env, purpose) {
                 reader.releaseLock();
             }
             const c = JSON.parse(text);
-            if (c.contractVersion !== 'qagent.ui-capabilities.v1' || c.revision !== UI_REVISION || CONTRACTS.some(v => !c.contracts?.includes(v)) || Object.entries(EXPECTED_LIMITS).some(([k, v]) => c.limits?.[k] !== v))
+            if (c.contractVersion !== 'qagent.ui-capabilities.v1' || c.revision !== revision || CONTRACTS.some(v => !c.contracts?.includes(v)) || Object.entries(EXPECTED_LIMITS).some(([k, v]) => c.limits?.[k] !== v))
                 throw err('UI_SERVICE_CAPABILITY_MISMATCH');
             if (c.readEnabled !== true)
                 throw err('UI_STORAGE_OR_SCHEMA_UNAVAILABLE');
-            if (purpose === 'UI_CAPTURE' && (c.captureEnabled !== true || JSON.stringify(c.captureDataOrigins) !== '["SYNTHETIC_CONTROL"]' || JSON.stringify(c.artifactContentTypes) !== '["application/json"]'))
+            const origins = revision === UI_OBSERVED_REVISION ? ['SYNTHETIC_CONTROL','OBSERVED_SANITIZED'] : ['SYNTHETIC_CONTROL'];
+            const types = revision === UI_OBSERVED_REVISION ? ['application/json','image/png'] : ['application/json'];
+            if (purpose === 'UI_CAPTURE' && (c.captureEnabled !== true || JSON.stringify(c.captureDataOrigins) !== JSON.stringify(origins) || JSON.stringify(c.artifactContentTypes) !== JSON.stringify(types) || (revision === UI_OBSERVED_REVISION && (!c.capabilities?.includes('OBSERVED_CAPTURE') || !c.capabilities?.includes('MASKED_SCREENSHOTS')))))
                 throw err('UI_CAPTURE_UNAVAILABLE');
             return c;
         })();

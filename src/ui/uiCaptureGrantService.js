@@ -2,7 +2,7 @@ import { assertPremiumAllowed, getLicenseByKeyHash } from '../lib/licenseService
 import { getProjectEnvironment } from '../services/environmentService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import { requirePluginSession } from '../services/pluginAuthService.js';
-import { createUiCaptureGrantToken, UI_REVISION, UI_PURPOSES } from './uiCaptureGrantToken.js';
+import { createUiCaptureGrantToken, UI_REVISION, UI_REVISIONS, UI_PURPOSES } from './uiCaptureGrantToken.js';
 import { getObservationUiCapabilities } from './observationUiCapabilitiesClient.js';
 const fail = (code, status = 400) => { throw Object.assign(new Error(code), { status, code }); };
 async function input(req) {
@@ -50,7 +50,7 @@ async function input(req) {
             fail('UI_SCOPE_INVALID');
     if (!Object.hasOwn(UI_PURPOSES, v.purpose))
         fail('UI_PURPOSE_REQUIRED');
-    if (v.contractRevision !== UI_REVISION)
+    if (!UI_REVISIONS.includes(v.contractRevision))
         fail('UI_SERVICE_CAPABILITY_MISMATCH', 409);
     return v;
 }
@@ -82,9 +82,9 @@ export async function createUiCaptureGrant(req, env) {
     catch {
         fail('UI_WEB_ORIGIN_REQUIRED', 409);
     }
-    const capabilities = await getObservationUiCapabilities(env, v.purpose);
+    const capabilities = await getObservationUiCapabilities(env, v.purpose, v.contractRevision);
     const signed = await createUiCaptureGrantToken(env, { organizationId, projectId: project.projectId, environmentId: environment.environmentId,
-        pluginSessionId: session.pluginSessionId, purpose: v.purpose, origins: [web.origin], authorityExpiresAt: Math.floor(Math.min(now + 900000, ...dates) / 1000) });
+        pluginSessionId: session.pluginSessionId, contractRevision: v.contractRevision, purpose: v.purpose, origins: [web.origin], authorityExpiresAt: Math.floor(Math.min(now + 900000, ...dates) / 1000) });
     return { status: 'ok', grant: { token: signed.token, audience: 'qagent-observation-ui', purpose: v.purpose, expiresAt: signed.expiresAt, expiresInSeconds: signed.expiresInSeconds },
         context: { organizationId, projectId: project.projectId, environmentId: environment.environmentId, pluginSessionId: session.pluginSessionId, origins: [web.origin] }, capabilities };
 }
