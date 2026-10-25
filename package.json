@@ -164,7 +164,8 @@
     "test:f08-1-8-fix1": "node --test test/autonomous-environment-origins-08.1.8-fix1.test.mjs test/autonomous-environment-origins-integration-08.1.8-fix1.test.mjs",
     "test:f08-1-8-fix4": "node --test test/baseline-expiry-08.1.8-fix4.test.mjs",
     "test:f08-2-a1": "node --test test/ui-capture-grant-08.2-a1.test.mjs test/ui-capture-routing-08.2-a1.test.mjs test/ui-capture-compatibility-08.2-a1.test.mjs",
-    "test:f08-2-a2": "node --test test/ui-observed-capabilities-08.2-a2.test.mjs"
+    "test:f08-2-a2": "node --test test/ui-observed-capabilities-08.2-a2.test.mjs",
+    "test:f08-2-a2-fix2": "node --test test/ui-managed-configuration-08.2-a2-fix2.test.mjs"
   },
   "keywords": [],
   "author": "",

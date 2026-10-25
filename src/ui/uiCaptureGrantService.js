@@ -1,3 +1,4 @@
+import { resolveUiCaptureConfiguration } from './uiCaptureConfigurationService.js';
 import { assertPremiumAllowed, getLicenseByKeyHash } from '../lib/licenseService.js';
 import { getProjectEnvironment } from '../services/environmentService.js';
 import { getOrganizationProject } from '../services/projectService.js';
@@ -43,7 +44,8 @@ async function input(req) {
         fail('UI_INPUT_INVALID');
     }
     const keys = ['projectId', 'environmentId', 'purpose', 'contractRevision'];
-    if (!v || typeof v !== 'object' || Array.isArray(v) || keys.some(k => !Object.hasOwn(v, k)) || Object.keys(v).some(k => !keys.includes(k)))
+    const allowed = [...keys, 'configurationMode'];
+    if (!v || typeof v !== 'object' || Array.isArray(v) || keys.some(k => !Object.hasOwn(v, k)) || Object.keys(v).some(k => !allowed.includes(k)))
         fail('UI_INPUT_INVALID');
     for (const [k, prefix] of [['projectId', 'prj'], ['environmentId', 'env']])
         if (typeof v[k] !== 'string' || !new RegExp(`^${prefix}_[A-Za-z0-9-]{3,160}$`).test(v[k]))
@@ -52,6 +54,8 @@ async function input(req) {
         fail('UI_PURPOSE_REQUIRED');
     if (!UI_REVISIONS.includes(v.contractRevision))
         fail('UI_SERVICE_CAPABILITY_MISMATCH', 409);
+    if (v.configurationMode !== undefined && (v.configurationMode !== 'ENVIRONMENT' || v.purpose !== 'UI_CAPTURE' || v.contractRevision !== '08.2-A.2.r1'))
+        fail('UI_CONFIGURATION_MODE_UNSUPPORTED', 409);
     return v;
 }
 export async function createUiCaptureGrant(req, env) {
@@ -83,8 +87,10 @@ export async function createUiCaptureGrant(req, env) {
         fail('UI_WEB_ORIGIN_REQUIRED', 409);
     }
     const capabilities = await getObservationUiCapabilities(env, v.purpose, v.contractRevision);
+    const captureConfiguration = v.configurationMode === 'ENVIRONMENT'
+        ? await resolveUiCaptureConfiguration(env, organizationId, project.projectId, environment) : null;
     const signed = await createUiCaptureGrantToken(env, { organizationId, projectId: project.projectId, environmentId: environment.environmentId,
         pluginSessionId: session.pluginSessionId, contractRevision: v.contractRevision, purpose: v.purpose, origins: [web.origin], authorityExpiresAt: Math.floor(Math.min(now + 900000, ...dates) / 1000) });
     return { status: 'ok', grant: { token: signed.token, audience: 'qagent-observation-ui', purpose: v.purpose, expiresAt: signed.expiresAt, expiresInSeconds: signed.expiresInSeconds },
-        context: { organizationId, projectId: project.projectId, environmentId: environment.environmentId, pluginSessionId: session.pluginSessionId, origins: [web.origin] }, capabilities };
+        context: { organizationId, projectId: project.projectId, environmentId: environment.environmentId, pluginSessionId: session.pluginSessionId, origins: [web.origin] }, capabilities, ...(captureConfiguration ? { captureConfiguration } : {}) };
 }
