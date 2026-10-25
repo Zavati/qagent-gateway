@@ -10,7 +10,7 @@ export async function getObservationUiCapabilities(env, purpose, revision = UI_R
     let timer;
     try {
         const operation = (async () => {
-            const response = await env.OBSERVATION_SERVICE.fetch(new Request(`https://qagent-observation/v1/ui/capabilities${revision===UI_REVISION?'':'?revision='+encodeURIComponent(revision)}`, { method: 'GET', signal: controller.signal, redirect: 'error' }));
+            const response = await env.OBSERVATION_SERVICE.fetch(new Request(`https://qagent-observation/v1/ui/capabilities${revision===UI_REVISION?'':'?revision='+encodeURIComponent(revision)}`, { method: 'GET', signal: controller.signal, redirect: 'manual' }));
             if (!response.ok || !response.headers.get('content-type')?.includes('application/json'))
                 throw err('UI_SERVICE_CAPABILITY_MISMATCH');
             const reader = response.body?.getReader();
