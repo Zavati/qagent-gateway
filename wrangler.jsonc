@@ -61,7 +61,7 @@
 		]
 	},
 	"vars": {
-    "UI_CAPTURE_ENABLED": "false",
+    "UI_CAPTURE_ENABLED": "true",
     "SCENARIO_READINESS_V2_ENABLED": "true",
     "SCENARIO_READINESS_RECONCILIATION_ENABLED": "true",
         "OBSERVED_BASELINE_GENERATION_ENABLED": "true",
