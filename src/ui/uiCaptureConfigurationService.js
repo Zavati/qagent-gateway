@@ -4,6 +4,7 @@ import { listProjectEnvironmentVariables } from '../services/environmentVariable
 export const UI_MONITORING_CONFIG_VERSION = 'qagent.ui-monitoring-config.v1';
 export const UI_CAPTURE_POLICY_VARIABLE = 'QAGENT_UI_CAPTURE_POLICY';
 const fields = ['networkPaths', 'businessHeaderNames', 'publicTextSelectors', 'valueSelectors', 'screenshotSelectors', 'maskSelectors'];
+export const UI_CAPTURE_MODES = ['PROTECTED','FULL_TEST'];
 const fail = (code = 'UI_ENVIRONMENT_POLICY_INVALID', status = 409) => { throw Object.assign(new Error(code), { code, status }); };
 const own = (v, k) => Object.prototype.hasOwnProperty.call(v, k);
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -34,10 +35,11 @@ export function buildUiCaptureConfiguration({ projectId, environment, bindings =
         const variable = matches[0];
         if (variable.valueType !== 'JSON' || typeof variable.variableValue !== 'string' || new TextEncoder().encode(variable.variableValue).length > 8192) fail();
         try { configured = JSON.parse(variable.variableValue); } catch { fail(); }
-        const allowed = ['enabled', ...fields, 'startMode', 'sourceBuildRef'];
+        const allowed = ['enabled', 'mode', ...fields, 'startMode', 'sourceBuildRef'];
         if (!record(configured) || Object.keys(configured).some(k => !allowed.includes(k))) fail();
         if (own(configured, 'enabled') && typeof configured.enabled !== 'boolean') fail();
         if (configured.enabled === false) fail('UI_ENVIRONMENT_CAPTURE_DISABLED');
+        if (own(configured, 'mode') && !UI_CAPTURE_MODES.includes(configured.mode)) fail();
     }
     const inheritedPaths = [];
     for (const binding of bindings) {
@@ -50,8 +52,16 @@ export function buildUiCaptureConfiguration({ projectId, environment, bindings =
         inheritedPaths.push(u.pathname || '/');
     }
     const defaults = inheritedPaths.length ? [...new Set(inheritedPaths)].sort() : [web.pathname || '/'];
+    const mode = own(configured, 'mode') ? configured.mode : 'PROTECTED';
+    const fullDefaults = {
+        publicTextSelectors: ['body'],
+        valueSelectors: ['input:not([type="password"]):not([type="hidden"]):not([type="file"]),textarea,select'],
+        screenshotSelectors: ['body'],
+        maskSelectors: ['input[type="password"]','input[type="hidden"]','input[type="file"]','[autocomplete*="password"]','[autocomplete="one-time-code"]','[data-private]','[data-qagent-private]','[data-sensitive]']
+    };
     const policy = {
         version: 'qagent.ui-capture-policy.v1',
+        mode,
         // Compatibility with A.2's policy schema: a centrally enabled, authenticated scope;
         // NOT a fabricated per-session checkbox/acceptance receipt.
         acknowledgeTestData: true,
@@ -61,8 +71,8 @@ export function buildUiCaptureConfiguration({ projectId, environment, bindings =
         startMode: own(configured, 'startMode') ? configured.startMode : 'CURRENT_DOCUMENT'
     };
     for (const field of ['publicTextSelectors', 'valueSelectors', 'screenshotSelectors', 'maskSelectors']) {
-        // No default "body"/"*" allowlist: contract acceptance does not classify page data as public.
-        policy[field] = strings(own(configured, field) ? configured[field] : [], 32, x => x.length <= 256 && !/[{}<>\u0000-\u001f]|:has\(/i.test(x));
+        const fallback = mode === 'FULL_TEST' ? fullDefaults[field] : [];
+        policy[field] = strings(own(configured, field) ? configured[field] : fallback, 32, x => x.length <= 256 && !/[{}<>\u0000-\u001f]|:has\(/i.test(x));
     }
     if (!['CURRENT_DOCUMENT', 'NEXT_NAVIGATION'].includes(policy.startMode)) fail();
     const sourceBuildRef = configured.sourceBuildRef ?? null;

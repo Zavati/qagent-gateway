@@ -90,3 +90,13 @@ test('FIX2 global disable and environment disable both refuse automatic UI; API 
     const f = await fixture(); await assert.rejects(() => postPluginUiCaptureGrant(f.request(), { ...f.env, UI_CAPTURE_ENABLED: 'false' }), { code: 'UI_CAPTURE_DISABLED' });
     const disabled = await fixture([variable({ enabled: false })]); await assert.rejects(() => postPluginUiCaptureGrant(disabled.request(), disabled.env), { code: 'UI_ENVIRONMENT_CAPTURE_DISABLED' });
 });
+
+test('FULL_TEST centrally widens functional evidence without authorizing credentials', () => {
+    const value = buildUiCaptureConfiguration(opts({ variables: [variable({ mode: 'FULL_TEST', networkPaths: ['/api/'] })] }));
+    assert.equal(value.policy.mode, 'FULL_TEST');
+    assert.deepEqual(value.policy.publicTextSelectors, ['body']);
+    assert.equal(value.policy.valueSelectors.length, 1);
+    assert.deepEqual(value.policy.screenshotSelectors, ['body']);
+    assert.ok(value.policy.maskSelectors.some(x => x.includes('password')));
+    assert.throws(() => buildUiCaptureConfiguration(opts({ variables: [variable({ mode: 'UNSAFE_OFF' })] })), { code: 'UI_ENVIRONMENT_POLICY_INVALID' });
+});

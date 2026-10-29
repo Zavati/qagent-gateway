@@ -1,0 +1,31 @@
+{
+  "project": "gateway",
+  "base_version": "1.0.16",
+  "result_version": "1.0.17",
+  "changed": [
+    {
+      "path": "package-lock.json",
+      "base_sha256": "92a86290386163aac861b201d058dfb2a803104c3bcbb067516ba53bf8782457",
+      "result_sha256": "84e8e846c910b107a527ae4067ec4cd3bb17b565725808ba9686a52e747dbd9c",
+      "operation": "MODIFY"
+    },
+    {
+      "path": "package.json",
+      "base_sha256": "2f7fcedd4a74c90c04a031cc392bd6b806dcf9c8eb931c0f35483cdb8af4e2ce",
+      "result_sha256": "9114748373d196090d6c55f83cc609bd50c4cb01ab8426b7a81f8f995e6c6532",
+      "operation": "MODIFY"
+    },
+    {
+      "path": "src/ui/uiCaptureConfigurationService.js",
+      "base_sha256": "6fdce9808082ace007b256a122f6fb82f4e6b437fb1de02d6f16b2cd8de54e27",
+      "result_sha256": "2779123d5ca2003270ccf60a2c9d435c04b4e90a511e615ecdb8b5df4ea3bbb4",
+      "operation": "MODIFY"
+    },
+    {
+      "path": "test/ui-managed-configuration-08.2-a2-fix2.test.mjs",
+      "base_sha256": "311be271ea3dfc6c2e558048210fdd4280a34a17a694c708b720da9b2ba28ef6",
+      "result_sha256": "3d826887dbbc1bcb93a18bfeef044821c8daa0f224a082adb53ba52a88be737b",
+      "operation": "MODIFY"
+    }
+  ]
+}
