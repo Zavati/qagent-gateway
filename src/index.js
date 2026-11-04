@@ -39,6 +39,7 @@ import { getEnvNum } from './lib/config.js';
 import { corsHeaders } from './lib/http.js';
 import { safeId, isAdminToken, generateClientKey, hashClientKey, validateClientKeyFormat, generateAccessToken, hashAccessToken } from './lib/keyService.js';
 import { getOrCreateLicense, assertPremiumAllowed, daysLeft, createTrialLicenseForKeyHash, getLicenseByKeyHash, applyPaymentToLicense } from './lib/licenseService.js';
+import { resolveTrialDays } from './lib/trialConfig.js';
 import { createCustomer, getCustomerByEmail, getCustomerById, customerEmailIndexKey } from './lib/customerService.js';
 import { buildSignupEmailEvent, savePendingEmailEvent, markEmailEventStatus, saveEmailDispatchAck } from './lib/emailEventService.js';
 import { sendEmailEvent } from './lib/emailDispatcher.js';
@@ -1459,6 +1460,9 @@ async function handleSignupTrial(req, env) {
     err.status = 500;
     throw err;
   }
+
+  // Validate commercial configuration BEFORE creating any account/key records.
+  resolveTrialDays(env);
 
   const email = String(body.email || '').trim().toLowerCase();
 

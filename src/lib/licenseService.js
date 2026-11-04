@@ -1,7 +1,6 @@
 import { isAdminToken, safeId, hashClientKey, validateClientKeyFormat } from './keyService.js';
 
-const TRIAL_DAYS = 6;
-const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+import { resolveTrialDays, DAY_MS } from './trialConfig.js';
 
 // Duração padrão de licença paga quando o provedor não envia período explícito
 const PAID_DAYS = 30;
@@ -203,7 +202,7 @@ export async function getLicenseByKeyHash(env, keyHash) {
 
 export async function createTrialLicenseForKeyHash(env, { keyHash, customerId, plan = 'pro' }) {
   const createdAt = nowIso();
-  const trialEndsAt = addMsToIso(TRIAL_MS);
+  const trialEndsAt = addMsToIso(resolveTrialDays(env) * DAY_MS);
   const lic = {
     licenseId: `lic_${crypto.randomUUID()}`,
     customerId,
@@ -261,7 +260,7 @@ export async function getOrCreateLicense(env, token) {
       licenseId: `lic_${crypto.randomUUID()}`,
       status: 'trial',
       plan: 'pro',
-      expiresAt: addMsToIso(TRIAL_MS),
+      expiresAt: addMsToIso(resolveTrialDays(env) * DAY_MS),
       createdAt,
       updatedAt: createdAt,
     };

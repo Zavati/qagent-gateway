@@ -144,3 +144,5 @@ node_modules/
 .wrangler/
 .dev.vars
 *.log
+# Local license operations: private snapshots and apply journals
+.qagent-ops/

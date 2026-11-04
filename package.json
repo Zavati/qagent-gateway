@@ -1,10 +1,11 @@
 {
   "name": "backend",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "node test/run-tests.js",
+    "test:trial-config": "node --test test/trial-duration-config.test.mjs test/trial-extension.test.mjs test/trial-tools.test.mjs",
     "mock-sw": "node test/mock-sw.js",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
