@@ -3,8 +3,9 @@ import { assertPremiumAllowed, getLicenseByKeyHash } from '../lib/licenseService
 import { getProjectEnvironment } from '../services/environmentService.js';
 import { getOrganizationProject } from '../services/projectService.js';
 import { requirePluginSession } from '../services/pluginAuthService.js';
-import { createUiCaptureGrantToken, UI_REVISION, UI_REVISIONS, UI_PURPOSES } from './uiCaptureGrantToken.js';
+import { createUiCaptureGrantToken, UI_PAGE_OBSERVED_REVISION, UI_REVISIONS, UI_PURPOSES } from './uiCaptureGrantToken.js';
 import { getObservationUiCapabilities } from './observationUiCapabilitiesClient.js';
+import { uiCapturePolicyHash } from './uiCapturePolicyBinding.js';
 const fail = (code, status = 400) => { throw Object.assign(new Error(code), { status, code }); };
 async function input(req) {
     if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers.get('content-type') || '') || req.headers.has('content-encoding'))
@@ -54,7 +55,9 @@ async function input(req) {
         fail('UI_PURPOSE_REQUIRED');
     if (!UI_REVISIONS.includes(v.contractRevision))
         fail('UI_SERVICE_CAPABILITY_MISMATCH', 409);
-    if (v.configurationMode !== undefined && (v.configurationMode !== 'ENVIRONMENT' || v.purpose !== 'UI_CAPTURE' || v.contractRevision !== '08.2-A.2.r1'))
+    if (v.configurationMode !== undefined && (v.configurationMode !== 'ENVIRONMENT' || v.purpose !== 'UI_CAPTURE' || !['08.2-A.2.r1', UI_PAGE_OBSERVED_REVISION].includes(v.contractRevision)))
+        fail('UI_CONFIGURATION_MODE_UNSUPPORTED', 409);
+    if (v.contractRevision === UI_PAGE_OBSERVED_REVISION && v.purpose === 'UI_CAPTURE' && v.configurationMode !== 'ENVIRONMENT')
         fail('UI_CONFIGURATION_MODE_UNSUPPORTED', 409);
     return v;
 }
@@ -89,8 +92,14 @@ export async function createUiCaptureGrant(req, env) {
     const capabilities = await getObservationUiCapabilities(env, v.purpose, v.contractRevision);
     const captureConfiguration = v.configurationMode === 'ENVIRONMENT'
         ? await resolveUiCaptureConfiguration(env, organizationId, project.projectId, environment) : null;
+    const observedPageWrite = v.contractRevision === UI_PAGE_OBSERVED_REVISION && v.purpose === 'UI_CAPTURE';
+    // A PROTECTED environment can explicitly negotiate the existing A.2 recorder instead.
+    // The client cannot use PC.3 to widen the environment's authorized capture policy.
+    if (observedPageWrite && captureConfiguration?.policy?.mode !== 'FULL_TEST')
+        fail('UI_CONFIGURATION_MODE_UNSUPPORTED', 409);
+    const capturePolicyHash = observedPageWrite ? await uiCapturePolicyHash(captureConfiguration.policy) : undefined;
     const signed = await createUiCaptureGrantToken(env, { organizationId, projectId: project.projectId, environmentId: environment.environmentId,
-        pluginSessionId: session.pluginSessionId, contractRevision: v.contractRevision, purpose: v.purpose, origins: [web.origin], authorityExpiresAt: Math.floor(Math.min(now + 900000, ...dates) / 1000) });
+        pluginSessionId: session.pluginSessionId, contractRevision: v.contractRevision, purpose: v.purpose, origins: [web.origin], capturePolicyHash, authorityExpiresAt: Math.floor(Math.min(now + 900000, ...dates) / 1000) });
     return { status: 'ok', grant: { token: signed.token, audience: 'qagent-observation-ui', purpose: v.purpose, expiresAt: signed.expiresAt, expiresInSeconds: signed.expiresInSeconds },
         context: { organizationId, projectId: project.projectId, environmentId: environment.environmentId, pluginSessionId: session.pluginSessionId, origins: [web.origin] }, capabilities, ...(captureConfiguration ? { captureConfiguration } : {}) };
 }
