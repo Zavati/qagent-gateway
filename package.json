@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -167,7 +167,7 @@
     "test:f08-2-a1": "node --test test/ui-capture-grant-08.2-a1.test.mjs test/ui-capture-routing-08.2-a1.test.mjs test/ui-capture-compatibility-08.2-a1.test.mjs",
     "test:f08-2-a2": "node --test test/ui-observed-capabilities-08.2-a2.test.mjs",
     "test:f08-2-a2-fix2": "node --test test/ui-managed-configuration-08.2-a2-fix2.test.mjs",
-    "test:pc3": "node --test test/ui-page-observed-grant-pc3.test.mjs",
+    "test:pc3": "node --test test/ui-page-observed-grant-pc3.test.mjs test/ui-environment-managed-grant-pc3.test.mjs",
     "check:pc3": "node --test test/ui-*.test.mjs && npm run test:router"
   },
   "keywords": [],

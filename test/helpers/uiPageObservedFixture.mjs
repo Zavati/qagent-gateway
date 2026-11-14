@@ -22,6 +22,7 @@ export function pageCapabilities(patch = {}) {
 
 /** Only storage/binding seams are doubles. The handler, policy, auth and signature code are real. */
 export async function gatewayPageFixture(options = {}) {
+    const environment = { ...PC3_ENVIRONMENT, ...options.environment };
     const qps = 'qps_' + 'P'.repeat(48), keyHash = 'sha256:' + 'b'.repeat(64), hashed = await hashAccessToken(qps);
     const calls = [], capabilityRequests = [];
     const kv = new Map([
@@ -35,7 +36,7 @@ export async function gatewayPageFixture(options = {}) {
             calls.push({ sql, params });
             if (params[0] !== 'org_control') return null;
             if (/FROM\s+projects/i.test(sql)) return params[1] === 'prj_control' ? { projectId: 'prj_control', organizationId: 'org_control', status: 'active' } : null;
-            if (/FROM\s+environments/i.test(sql)) return params[1] === 'prj_control' && params[2] === 'env_control' ? PC3_ENVIRONMENT : null;
+            if (/FROM\s+environments/i.test(sql)) return params[1] === 'prj_control' && params[2] === 'env_control' ? environment : null;
             if (/FROM\s+organizations/i.test(sql)) return { organizationId: 'org_control', status: 'active' };
             throw new Error('Unexpected first query');
         },

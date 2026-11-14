@@ -1,5 +1,6 @@
 import { listProjectEnvironmentApiBindings } from '../services/environmentApiBindingService.js';
 import { listProjectEnvironmentVariables } from '../services/environmentVariableService.js';
+import { UI_PAGE_ENVIRONMENT_REVISION } from './uiCaptureGrantToken.js';
 
 export const UI_MONITORING_CONFIG_VERSION = 'qagent.ui-monitoring-config.v1';
 export const UI_CAPTURE_POLICY_VARIABLE = 'QAGENT_UI_CAPTURE_POLICY';
@@ -9,13 +10,13 @@ const fail = (code = 'UI_ENVIRONMENT_POLICY_INVALID', status = 409) => { throw O
 const own = (v, k) => Object.prototype.hasOwnProperty.call(v, k);
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const privateText = v => /(?:Bearer\s+\S+|\bq(?:ps|og|os|ug|us|ag)_\S+|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|-----BEGIN|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b)/i.test(v);
-function strings(v, max, check) {
+function strings(v, max, check, inspectContent = true) {
     if (!Array.isArray(v) || v.length > max) fail();
-    if (v.some(x => typeof x !== 'string' || !x.length || privateText(x) || !check(x))) fail();
+    if (v.some(x => typeof x !== 'string' || !x.length || (inspectContent && privateText(x)) || !check(x))) fail();
     return [...new Set(v)];
 }
-function paths(v) {
-    const result = strings(v, 16, x => x.length <= 256 && x.startsWith('/') && !x.startsWith('//') && !/[?#%\\\u0000-\u001f]/.test(x) && !x.split('/').some(p => p === '.' || p === '..'));
+function paths(v, inspectContent = true) {
+    const result = strings(v, 16, x => x.length <= 256 && x.startsWith('/') && !x.startsWith('//') && !/[?#%\\\u0000-\u001f]/.test(x) && !x.split('/').some(p => p === '.' || p === '..'), inspectContent);
     if (!result.length) fail();
     return result;
 }
@@ -25,8 +26,8 @@ function originUrl(raw) {
     if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password || u.search || u.hash) fail('UI_WEB_ORIGIN_REQUIRED');
     return u;
 }
-/** Resolve only non-secret capture settings. No AuthProfile/Vault values leave this boundary. */
-export function buildUiCaptureConfiguration({ projectId, environment, bindings = [], variables = [] }) {
+/** Resolve capture settings only. No AuthProfile/Vault values leave this boundary. */
+export function buildUiCaptureConfiguration({ projectId, environment, bindings = [], variables = [], contractRevision }) {
     const web = originUrl(environment.webBaseUrl);
     const matches = variables.filter(v => v.variableKey === UI_CAPTURE_POLICY_VARIABLE && v.status !== 'archived');
     if (matches.length > 1) fail();
@@ -53,26 +54,31 @@ export function buildUiCaptureConfiguration({ projectId, environment, bindings =
     }
     const defaults = inheritedPaths.length ? [...new Set(inheritedPaths)].sort() : [web.pathname || '/'];
     const mode = own(configured, 'mode') ? configured.mode : 'PROTECTED';
+    const environmentManaged = contractRevision === UI_PAGE_ENVIRONMENT_REVISION;
+    if (environmentManaged && (mode !== 'FULL_TEST' || !['DEV', 'STG'].includes(environment.environmentType)))
+        fail('UI_CONFIGURATION_MODE_UNSUPPORTED');
     const fullDefaults = {
         publicTextSelectors: ['body'],
-        valueSelectors: ['input:not([type="password"]):not([type="hidden"]):not([type="file"]),textarea,select'],
+        valueSelectors: [environmentManaged ? 'input:not([type="file"]),textarea,select' : 'input:not([type="password"]):not([type="hidden"]):not([type="file"]),textarea,select'],
         screenshotSelectors: ['body'],
         maskSelectors: ['input[type="password"]','input[type="hidden"]','input[type="file"]','[autocomplete*="password"]','[autocomplete="one-time-code"]','[data-private]','[data-qagent-private]','[data-sensitive]']
     };
     const policy = {
         version: 'qagent.ui-capture-policy.v1',
         mode,
+        ...(environmentManaged ? { dataProtection: 'ENVIRONMENT_MANAGED' } : {}),
         // Compatibility with A.2's policy schema: a centrally enabled, authenticated scope;
         // NOT a fabricated per-session checkbox/acceptance receipt.
         acknowledgeTestData: true,
-        networkPaths: paths(own(configured, 'networkPaths') ? configured.networkPaths : defaults),
-        businessHeaderNames: strings(own(configured, 'businessHeaderNames') ? configured.businessHeaderNames : [], 16, x => x.length <= 80 && /^[a-z][a-z0-9-]*$/.test(x) && !/(?:authorization|cookie|token|secret|api-?key|session|csrf)/i.test(x)),
+        networkPaths: paths(own(configured, 'networkPaths') ? configured.networkPaths : defaults, !environmentManaged),
+        businessHeaderNames: strings(own(configured, 'businessHeaderNames') ? configured.businessHeaderNames : [], 16, x => x.length <= 80 && /^[a-z][a-z0-9-]*$/.test(x) && (environmentManaged || !/(?:authorization|cookie|token|secret|api-?key|session|csrf)/i.test(x)), !environmentManaged),
         publicTextSelectors: [], valueSelectors: [], screenshotSelectors: [], maskSelectors: [],
         startMode: own(configured, 'startMode') ? configured.startMode : 'CURRENT_DOCUMENT'
     };
     for (const field of ['publicTextSelectors', 'valueSelectors', 'screenshotSelectors', 'maskSelectors']) {
         const fallback = mode === 'FULL_TEST' ? fullDefaults[field] : [];
-        policy[field] = strings(own(configured, field) ? configured[field] : fallback, 32, x => x.length <= 256 && !/[{}<>\u0000-\u001f]|:has\(/i.test(x));
+        policy[field] = strings(own(configured, field) ? configured[field] : fallback, 32, x => x.length <= 256 && !/[{}<>\u0000-\u001f]|:has\(/i.test(x), !environmentManaged);
+        if (environmentManaged && field === 'maskSelectors') policy[field] = [];
     }
     if (!['CURRENT_DOCUMENT', 'NEXT_NAVIGATION'].includes(policy.startMode)) fail();
     const sourceBuildRef = configured.sourceBuildRef ?? null;
@@ -88,10 +94,10 @@ export function buildUiCaptureConfiguration({ projectId, environment, bindings =
         sourceBuildRef
     };
 }
-export async function resolveUiCaptureConfiguration(env, organizationId, projectId, environment) {
+export async function resolveUiCaptureConfiguration(env, organizationId, projectId, environment, contractRevision) {
     const [bindings, variables] = await Promise.all([
         listProjectEnvironmentApiBindings(env, organizationId, projectId, environment.environmentId),
         listProjectEnvironmentVariables(env, organizationId, projectId, environment.environmentId)
     ]);
-    return buildUiCaptureConfiguration({ projectId, environment, bindings, variables });
+    return buildUiCaptureConfiguration({ projectId, environment, bindings, variables, contractRevision });
 }

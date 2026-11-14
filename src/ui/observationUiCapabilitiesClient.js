@@ -1,4 +1,4 @@
-import { UI_REVISION, UI_OBSERVED_REVISION, UI_PAGE_OBSERVED_REVISION, UI_REVISIONS } from './uiCaptureGrantToken.js';
+import { UI_REVISION, UI_OBSERVED_REVISION, UI_PAGE_OBSERVED_REVISION, UI_PAGE_ENVIRONMENT_REVISION, UI_REVISIONS } from './uiCaptureGrantToken.js';
 const CONTRACTS = ['qagent.ui-capture.v1', 'qagent.ui-capture-events.v1', 'qagent.ui-artifact.v1'];
 const EXPECTED_LIMITS = { artifactBytes: 1048576, artifactsPerCapture: 128, captureArtifactBytes: 67108864, eventBytes: 32768, batchBytes: 262144, batchEvents: 100, captureEvents: 2000, captureEventBytes: 8388608, controlBytes: 32768, sessionSeconds: 900 };
 const PAGE_CONTRACTS = ['qagent.ui-capture.v2', 'qagent.ui-capture-events.v2', 'qagent.ui-artifact.v2', 'qagent.ui-action.v2', 'qagent.ui-interaction.v2', 'qagent.ui-checkpoint.v2'];
@@ -45,7 +45,8 @@ export async function getObservationUiCapabilities(env, purpose, revision = UI_R
                 reader.releaseLock();
             }
             const c = JSON.parse(text);
-            const observedPage = revision === UI_PAGE_OBSERVED_REVISION;
+            const environmentManaged = revision === UI_PAGE_ENVIRONMENT_REVISION;
+            const observedPage = revision === UI_PAGE_OBSERVED_REVISION || environmentManaged;
             if (!c || c.contractVersion !== 'qagent.ui-capabilities.v1' || c.revision !== revision
                 || (observedPage ? c.status !== 'ok' || !contains(c.contracts, PAGE_CONTRACTS) || !pageLimitsCompatible(c.limits)
                     : CONTRACTS.some(v => !c.contracts?.includes(v)) || Object.entries(EXPECTED_LIMITS).some(([k, v]) => c.limits?.[k] !== v)))
@@ -54,10 +55,10 @@ export async function getObservationUiCapabilities(env, purpose, revision = UI_R
                 throw err('UI_STORAGE_OR_SCHEMA_UNAVAILABLE');
             if (observedPage) {
                 if (purpose === 'UI_CAPTURE' && (c.captureEnabled !== true
-                    || !contains(c.captureDataOrigins, ['OBSERVED_SANITIZED'])
+                    || !contains(c.captureDataOrigins, [environmentManaged ? 'OBSERVED_ENVIRONMENT_MANAGED' : 'OBSERVED_SANITIZED'])
                     || !contains(c.artifactKinds, PAGE_KINDS)
                     || !contains(c.artifactContentTypes, ['application/json', 'text/html', 'text/css', 'text/javascript', 'image/png'])
-                    || !contains(c.capabilities, ['OBSERVED_PAGE_COPY', 'FULL_TEST_CAPTURE', 'MASKED_SCREENSHOTS', 'PRIVATE_INERT_STORAGE', 'EXPLICIT_V2_EVENTS', 'PAGED_SOURCE_READ'])
+                    || !contains(c.capabilities, ['OBSERVED_PAGE_COPY', 'FULL_TEST_CAPTURE', environmentManaged ? 'ENVIRONMENT_MANAGED_TEST_DATA' : 'MASKED_SCREENSHOTS', 'PRIVATE_INERT_STORAGE', 'EXPLICIT_V2_EVENTS', 'PAGED_SOURCE_READ'])
                     || c.ingestion?.contractVersion !== 'qagent.ui-ingestion.v1' || c.ingestion?.receiptVersion !== 'qagent.ui-ingestion-receipt.v1'
                     || c.ingestion?.mode !== 'ASYNC_QUEUE' || c.ingestion?.enabled !== true || c.ingestion?.durability !== 'QUEUE_PUBLISHED'))
                     throw err('UI_CAPTURE_UNAVAILABLE');
