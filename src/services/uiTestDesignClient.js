@@ -60,19 +60,33 @@ export function canonicalUiJson(input) {
   }
   return visit(input, 0);
 }
-export async function readUiText(response, limit = 1024 * 1024) {
+function cancelUiStream(stream) {
+  // Cleanup must not wait on an upstream cancel hook or replace the original error.
+  try { Promise.resolve(stream?.cancel()).catch(() => {}); } catch {}
+}
+const upstreamTimeout = () => uiError('UI_TEST_DESIGN_UPSTREAM_TIMEOUT', 503);
+
+export async function readUiText(response, limit = 1024 * 1024, { signal = null } = {}) {
+  if (signal?.aborted) { cancelUiStream(response.body); throw upstreamTimeout(); }
   const declared = response.headers.get('content-length');
-  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > limit)) throw uiError('UI_TEST_DESIGN_PAYLOAD_TOO_LARGE', 413);
+  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > limit)) {
+    cancelUiStream(response.body); throw uiError('UI_TEST_DESIGN_PAYLOAD_TOO_LARGE', 413);
+  }
   if (!response.body) return '';
   const reader = response.body.getReader(), parts = []; let size = 0;
+  const abort = () => cancelUiStream(reader);
+  signal?.addEventListener('abort', abort, { once: true });
   try {
+    if (signal?.aborted) { abort(); throw upstreamTimeout(); }
     while (true) {
-      const { value, done } = await reader.read(); if (done) break;
+      const { value, done } = await reader.read();
+      if (signal?.aborted) throw upstreamTimeout();
+      if (done) break;
       size += value.length;
-      if (size > limit) { await reader.cancel(); throw uiError('UI_TEST_DESIGN_PAYLOAD_TOO_LARGE', 413); }
+      if (size > limit) { cancelUiStream(reader); throw uiError('UI_TEST_DESIGN_PAYLOAD_TOO_LARGE', 413); }
       parts.push(value);
     }
-  } finally { reader.releaseLock(); }
+  } finally { signal?.removeEventListener('abort', abort); reader.releaseLock(); }
   const bytes = new Uint8Array(size); let offset = 0;
   for (const part of parts) { bytes.set(part, offset); offset += part.length; }
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
@@ -141,25 +155,69 @@ export async function requestUiDesignService({ env, service, scope, path, method
   if (new TextEncoder().encode(rawBody).length > 1024 * 1024) throw uiError('UI_TEST_DESIGN_PAYLOAD_TOO_LARGE', 413);
   const headers = service === 'ui' ? await uiHeaders(env, path, rawBody)
     : await buildTestGenerationInternalHeaders({ env, method, url, ...scope, rawBody });
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
+  const controller = new AbortController();
+  const compileCall = service === 'ui' && path === '/internal/ui/v1/test-design/compile';
+  const requestId = compileCall ? crypto.randomUUID() : null;
+  const bundleVersionId = compileCall && typeof body?.bundleVersionId === 'string'
+    && /^urbv_[A-Za-z0-9_-]{1,175}$/.test(body.bundleVersionId) ? body.bundleVersionId : null;
+  const startedAt = Date.now();
+  let timer, response, timedOut = false, phase = 'headers', headersReceived = false, bodyDone = false;
+  const diagnostic = (event, details = {}) => {
+    if (!compileCall) return;
+    try {
+      console.info(JSON.stringify({ t: 'qagent_ui_test_design_gateway', event, requestId, bundleVersionId,
+        elapsedMs: Math.max(0, Date.now() - startedAt), phase, headersReceived, bodyDone, ...details }));
+    } catch {}
+  };
+  diagnostic('compile.upstream.started');
   try {
-    const response = await binding.fetch(new Request(url, { method, headers: { ...headers, accept: 'application/json', ...(body === null ? {} : { 'content-type': 'application/json' }) },
-      ...(body === null ? {} : { body: rawBody }), signal: controller.signal, redirect: 'manual' }));
-    let payload;
-    try { payload = parseUiJson(await readUiText(response)); }
-    catch (error) { if (error.status === 413) throw error; throw uiError('UI_TEST_DESIGN_UPSTREAM_INVALID', 502); }
-    if (!response.ok) {
-      const code = /^[A-Z][A-Z0-9_]{2,100}$/.test(payload?.code || '') ? payload.code : 'UI_TEST_DESIGN_UPSTREAM_FAILED';
-      throw uiError(code, response.status >= 400 ? response.status : 502);
-    }
-    if (service === 'orchestrator') {
-      if (payload?.status !== 'ok' || !payload.data) throw uiError('UI_TEST_DESIGN_UPSTREAM_INVALID', 502);
-      return payload.data;
-    }
-    return payload;
+    const operation = (async () => {
+      response = await binding.fetch(new Request(url, { method,
+        headers: { ...headers, accept: 'application/json', ...(body === null ? {} : { 'content-type': 'application/json' }),
+          ...(requestId ? { 'X-QAgent-UI-Test-Design-Request-Id': requestId } : {}) },
+        ...(body === null ? {} : { body: rawBody }), signal: controller.signal, redirect: 'manual' }));
+      // A binding can ignore AbortSignal and resolve after the deadline. Dispose of
+      // that response without parsing it or emitting a misleading success event.
+      if (timedOut || controller.signal.aborted) { cancelUiStream(response?.body); throw upstreamTimeout(); }
+      headersReceived = true; phase = 'body';
+      diagnostic('compile.upstream.headers', { httpStatus: response.status });
+      let payload;
+      try {
+        const raw = await readUiText(response, 1024 * 1024, { signal: controller.signal });
+        if (timedOut || controller.signal.aborted) throw upstreamTimeout();
+        bodyDone = true;
+        diagnostic('compile.upstream.body_done', { httpStatus: response.status });
+        phase = 'parse'; payload = parseUiJson(raw);
+      } catch (error) {
+        if (timedOut || controller.signal.aborted) throw upstreamTimeout();
+        if (error.status === 413) throw error;
+        throw uiError('UI_TEST_DESIGN_UPSTREAM_INVALID', 502);
+      }
+      phase = 'response';
+      if (!response.ok) {
+        const code = /^[A-Z][A-Z0-9_]{2,100}$/.test(payload?.code || '') ? payload.code : 'UI_TEST_DESIGN_UPSTREAM_FAILED';
+        throw uiError(code, response.status >= 400 ? response.status : 502);
+      }
+      if (service === 'orchestrator') {
+        if (payload?.status !== 'ok' || !payload.data) throw uiError('UI_TEST_DESIGN_UPSTREAM_INVALID', 502);
+        return payload.data;
+      }
+      return payload;
+    })();
+    // Race the entire fetch/read operation, not only headers. Reject before abort
+    // so an abort-related stream error cannot mask the deadline's public code.
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => { timedOut = true; const error = upstreamTimeout(); reject(error); controller.abort(error); }, timeoutMs);
+    });
+    return await Promise.race([operation, deadline]);
   } catch (error) {
-    if (typeof error.code === 'string' && Number.isInteger(error.status)) throw error;
-    throw uiError(controller.signal.aborted ? 'UI_TEST_DESIGN_UPSTREAM_TIMEOUT' : 'UI_TEST_DESIGN_UPSTREAM_UNAVAILABLE', 503);
+    const failure = timedOut || controller.signal.aborted ? upstreamTimeout()
+      : typeof error?.code === 'string' && Number.isInteger(error.status) ? error
+        : uiError('UI_TEST_DESIGN_UPSTREAM_UNAVAILABLE', 503);
+    diagnostic('compile.upstream.failed', { code: /^[A-Z][A-Z0-9_]{2,100}$/.test(failure.code)
+      ? failure.code : 'UI_TEST_DESIGN_UPSTREAM_UNAVAILABLE', status: failure.status, errorPhase: phase });
+    controller.abort(failure); cancelUiStream(response?.body);
+    throw failure;
   } finally { clearTimeout(timer); }
 }
 

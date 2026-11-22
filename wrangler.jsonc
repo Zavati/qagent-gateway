@@ -26,6 +26,10 @@
 		{
 			"binding": "TEST_GENERATION_ORCHESTRATOR_SERVICE",
 			"service": "qagent-test-generation-orchestrator"
+		},
+		{
+ 			 "binding": "UI_SERVICE",
+  			 "service": "qagent-ui"
 		}
 	],
 	"queues": {
