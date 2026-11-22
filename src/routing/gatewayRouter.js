@@ -41,11 +41,11 @@ export function resolveGatewayRoute(method, pathname) {
   // Observed UI compilation has its own domain and never enters the API/AI generator.
   const uiInternal = normalizedPath.match(/^\/internal\/v1\/ui-test-design\/(compile|publish)$/);
   if (normalizedMethod === 'POST' && uiInternal) return { name: 'internalUiTestDesign', params: { action: uiInternal[1] } };
-  const uiDesign = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/environments\/([^/]+)\/ui-test-design\/(sources|jobs|designs)(?:\/([^/]+)(?:\/(items|cancel))?)?$/);
+  const uiDesign = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/environments\/([^/]+)\/ui-test-design\/(sources|jobs|designs)(?:\/([^/]+)(?:\/(items|cancel|evidence))?)?$/);
   if (uiDesign) {
     const [, project, environment, resource, id, action] = uiDesign;
     const validGet = normalizedMethod === 'GET' && (
-      (resource === 'sources' && !id && !action) || (resource === 'designs' && !action)
+      (resource === 'sources' && !id && !action) || (resource === 'designs' && (!action || (id && action === 'evidence')))
       || (resource === 'jobs' && (!action || (id && action === 'items'))));
     const validPost = normalizedMethod === 'POST' && resource === 'jobs' && ((!id && !action) || (id && action === 'cancel'));
     if (validGet || validPost) return { name: 'consoleUiTestDesign', params: {

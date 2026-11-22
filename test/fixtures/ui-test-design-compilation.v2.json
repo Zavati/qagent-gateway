@@ -1,0 +1,231 @@
+{
+  "contractVersion": "qagent.ui-test-design-compilation.v2",
+  "compilerVersion": "qagent_ui_test_design_compiler_v2",
+  "outcome": "COMPILED",
+  "source": {
+    "scope": {
+      "environmentId": "env_test",
+      "organizationId": "org_observed",
+      "projectId": "prj_observed"
+    },
+    "captureId": "uic_observed_sample",
+    "bundleVersionId": "urbv_e8326011b7466828bf28d591057973a5b5c26e1f775592e319557c76af665e36",
+    "sourceHash": "24885f01ae02d7b00320d25163d70ba69348bfd74682fb10eb1db654fb98c6aa",
+    "manifestHash": "43287c2750f1e6cebb144442935fb0ee07246d657140182a04d0d5a46e36abeb"
+  },
+  "specification": {
+    "contractVersion": "qagent.ui-test-design.v2",
+    "compilerVersion": "qagent_ui_test_design_compiler_v2",
+    "templateVersion": "qagent_ui_observed_templates_v2",
+    "adapterVersion": "qagent_ui_page_evidence_adapter_v1",
+    "canonicalizerVersion": "qagent.ui-canonical-json.v1",
+    "scope": {
+      "environmentId": "env_test",
+      "organizationId": "org_observed",
+      "projectId": "prj_observed"
+    },
+    "source": {
+      "scope": {
+        "environmentId": "env_test",
+        "organizationId": "org_observed",
+        "projectId": "prj_observed"
+      },
+      "captureId": "uic_observed_sample",
+      "bundleVersionId": "urbv_e8326011b7466828bf28d591057973a5b5c26e1f775592e319557c76af665e36",
+      "sourceHash": "24885f01ae02d7b00320d25163d70ba69348bfd74682fb10eb1db654fb98c6aa",
+      "manifestHash": "43287c2750f1e6cebb144442935fb0ee07246d657140182a04d0d5a46e36abeb"
+    },
+    "profile": {
+      "comparisonPolicyVersion": "qagent_ui_observed_comparison_v1",
+      "contractVersion": "qagent.ui-test-design-profile.v2",
+      "coveragePolicy": "ALL_OBSERVED",
+      "layoutTolerancePx": 2,
+      "revision": 2
+    },
+    "executionModes": [
+      "UI_REPLAY",
+      "UI_LIVE"
+    ],
+    "entryUrl": "https://app.example.test/items",
+    "sourceBuildRef": null,
+    "preparation": {
+      "strategy": "EXECUTE_TARGET_BUILD",
+      "observedBootstrapPointer": "/profile/bootstrap",
+      "targetBuildPinRequired": true,
+      "freshContextPerMode": true,
+      "livePreparationRequired": true,
+      "observedResponsesRestoreWholeState": false
+    },
+    "plan": {
+      "contractVersion": "qagent.ui-observed-validation-plan.v1",
+      "ruleSetVersion": "qagent_ui_observed_validation_rules_v1",
+      "selection": "ALL_OBSERVED",
+      "expectedValues": "IMMUTABLE_SOURCE_REFERENCES",
+      "expansion": "PAGED",
+      "unknownData": "PENDING_WITH_REASON",
+      "unstableEvidence": "PENDING_WITH_REASON",
+      "silentOmissionAllowed": false,
+      "completion": "ALL_SECTIONS_AND_ARTIFACT_CONTENT",
+      "pendingCannotPass": true,
+      "sections": [
+        {
+          "section": "ACTIONS",
+          "pointer": "/journey/actions",
+          "rule": "ACTION_SEQUENCE_ALL",
+          "count": 1
+        },
+        {
+          "section": "CHECKPOINTS",
+          "pointer": "/pageIndex/states",
+          "rule": "CHECKPOINT_FIELDS_ALL",
+          "count": 1
+        },
+        {
+          "section": "INTERACTIONS",
+          "pointer": "/pageIndex/interactions",
+          "rule": "NETWORK_INTERACTIONS_ALL",
+          "count": 1
+        },
+        {
+          "section": "FIXTURES",
+          "pointer": "/bundle/fixtures",
+          "rule": "FIXTURE_CONSUMPTION_ALL",
+          "count": 1
+        },
+        {
+          "section": "DOCUMENTS",
+          "pointer": "/pageIndex/documents",
+          "rule": "DOCUMENT_FIELDS_ALL",
+          "count": 1
+        },
+        {
+          "section": "RESOURCES",
+          "pointer": "/pageIndex/resources",
+          "rule": "RESOURCE_FIELDS_ALL",
+          "count": 1
+        },
+        {
+          "section": "STATE_RESOURCES",
+          "pointer": "/pageIndex/stateResources",
+          "rule": "STATE_RESOURCE_LINKS_ALL",
+          "count": 0
+        },
+        {
+          "section": "ARTIFACTS",
+          "pointer": "/bundle/artifacts",
+          "rule": "ARTIFACT_BYTES_AND_FIELDS_ALL",
+          "count": 5
+        },
+        {
+          "section": "SOURCE_METADATA",
+          "pointer": "",
+          "rule": "SOURCE_METADATA_ALL",
+          "count": 171
+        }
+      ]
+    },
+    "evidenceVerification": {
+      "manifest": "VERIFIED",
+      "artifactBytes": "VERIFIED_AT_BUNDLE_ASSEMBLY",
+      "artifactBytesRecheckedDuringCompilation": false
+    },
+    "coverage": {
+      "actionsTotal": 1,
+      "actionsPlanned": 1,
+      "checkpointsTotal": 1,
+      "checkpointsPlanned": 1,
+      "stableCheckpoints": 1,
+      "unstableCheckpoints": 0,
+      "interactionsTotal": 1,
+      "interactionsPlanned": 1,
+      "businessFixtures": 1,
+      "usableFixtures": 1,
+      "unavailableFixtures": 0,
+      "sourceMetadataValues": 171,
+      "documentsTotal": 1,
+      "resourcesTotal": 1,
+      "stateResourceLinksTotal": 0,
+      "artifactsTotal": 5,
+      "referencedArtifacts": 5,
+      "verifiedArtifacts": 5,
+      "artifactBytesReferenced": 1402,
+      "artifactsReadDuringCompilation": 0,
+      "checksGenerated": 0,
+      "validationUnitsPlanned": 182,
+      "validationUnitsPending": 172,
+      "validationUnitsExecuted": 0
+    },
+    "limitations": [
+      "SOURCE_BUILD_UNKNOWN",
+      "UI_BOOTSTRAP_UNAVAILABLE",
+      "UI_PAGE_REPLAY_NOT_IMPLEMENTED",
+      "UI_TEST_DESIGN_NOT_EXECUTED",
+      "UI_TEST_DESIGN_OBSERVED_CHARACTERIZATION",
+      "UI_TEST_DESIGN_PENDING_COMPARATORS",
+      "UI_TEST_DESIGN_VALIDATION_EXPANSION_DEFERRED",
+      "UI_VISUAL_CHECKPOINT_UNAVAILABLE"
+    ],
+    "readiness": {
+      "UI_REPLAY": {
+        "status": "REQUIRES_CONFIGURATION",
+        "reasonCodes": [
+          "UI_BOOTSTRAP_UNAVAILABLE",
+          "UI_TEST_DESIGN_RENDER_PROFILE_REQUIRED",
+          "UI_TEST_DESIGN_RUNNER_REQUIRED",
+          "UI_TEST_DESIGN_TARGET_BUILD_REQUIRED"
+        ]
+      },
+      "UI_LIVE": {
+        "status": "REQUIRES_CONFIGURATION",
+        "reasonCodes": [
+          "UI_BOOTSTRAP_UNAVAILABLE",
+          "UI_TEST_DESIGN_RENDER_PROFILE_REQUIRED",
+          "UI_TEST_DESIGN_RUNNER_REQUIRED",
+          "UI_TEST_DESIGN_TARGET_BUILD_REQUIRED"
+        ]
+      }
+    },
+    "executionPerformed": false
+  },
+  "specificationHash": "27fe8a86ab81f9eff4b59e7a63dddefc2b54ccbd5fe77c30c6107418b8c63e4f",
+  "summary": {
+    "coverage": {
+      "actionsTotal": 1,
+      "actionsPlanned": 1,
+      "checkpointsTotal": 1,
+      "checkpointsPlanned": 1,
+      "stableCheckpoints": 1,
+      "unstableCheckpoints": 0,
+      "interactionsTotal": 1,
+      "interactionsPlanned": 1,
+      "businessFixtures": 1,
+      "usableFixtures": 1,
+      "unavailableFixtures": 0,
+      "sourceMetadataValues": 171,
+      "documentsTotal": 1,
+      "resourcesTotal": 1,
+      "stateResourceLinksTotal": 0,
+      "artifactsTotal": 5,
+      "referencedArtifacts": 5,
+      "verifiedArtifacts": 5,
+      "artifactBytesReferenced": 1402,
+      "artifactsReadDuringCompilation": 0,
+      "checksGenerated": 0,
+      "validationUnitsPlanned": 182,
+      "validationUnitsPending": 172,
+      "validationUnitsExecuted": 0
+    },
+    "limitations": [
+      "SOURCE_BUILD_UNKNOWN",
+      "UI_BOOTSTRAP_UNAVAILABLE",
+      "UI_PAGE_REPLAY_NOT_IMPLEMENTED",
+      "UI_TEST_DESIGN_NOT_EXECUTED",
+      "UI_TEST_DESIGN_OBSERVED_CHARACTERIZATION",
+      "UI_TEST_DESIGN_PENDING_COMPARATORS",
+      "UI_TEST_DESIGN_VALIDATION_EXPANSION_DEFERRED",
+      "UI_VISUAL_CHECKPOINT_UNAVAILABLE"
+    ],
+    "reasonCodes": []
+  },
+  "executionPerformed": false
+}

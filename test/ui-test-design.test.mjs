@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHmac, createHash } from 'node:crypto';
 import { consoleUiTestDesign, internalUiTestDesign } from '../src/handlers/uiTestDesign.js';
 import { requestUiDesignService, assertUiCompilation, canonicalUiJson, normalizeUiProfile, UI_DEFAULT_PROFILE,
-  UI_COMPILER_VERSION, readUiText, uiError, uiId } from '../src/services/uiTestDesignClient.js';
+  UI_COMPILER_VERSION, UI_LEGACY_DEFAULT_PROFILE, readUiText, uiError, uiId } from '../src/services/uiTestDesignClient.js';
 import { buildTestGenerationInternalHeaders, verifyTestGenerationInternalRequest } from '../src/security/testGenerationInternalAuth.js';
 import { resolveGatewayRoute } from '../src/routing/gatewayRouter.js';
 
@@ -24,7 +24,7 @@ function dependencies(overrides = {}) {
     }, organization: async () => ({ status: 'active' }), ...overrides };
 }
 const callbackBody = (action = 'compile') => ({ ...scope, jobId: 'uitdj_fixture', jobItemId: 'uitdi_fixture', generationRequestId: 'uitdg_uitdi_fixture',
-  ...(action === 'compile' ? { bundleVersionId: compilation.source.bundleVersionId, compilerVersion: UI_COMPILER_VERSION, profile: {} } : { compilation: structuredClone(compilation) }) });
+  ...(action === 'compile' ? { bundleVersionId: compilation.source.bundleVersionId, compilerVersion: compilation.compilerVersion, profile: {} } : { compilation: structuredClone(compilation) }) });
 async function internal(body, action = 'compile', signerScope = scope) {
   const url = `https://gateway.invalid/internal/v1/ui-test-design/${action}`, rawBody = JSON.stringify(body);
   const headers = await buildTestGenerationInternalHeaders({ env, method: 'POST', url, ...signerScope, rawBody });
@@ -115,7 +115,7 @@ test('Registry and Orchestrator requests retain the existing internal HMAC wire'
 test('callback authenticates raw bytes, then checks tenant, environment and deterministic compilation hash', async () => {
   const args = await internal(callbackBody()), calls = [];
   const result = await internalUiTestDesign(...args, dependencies({ request: async input => { calls.push(input); return compilation; } }));
-  assert.deepEqual(result.data, compilation); assert.deepEqual(calls[0].body.profile, UI_DEFAULT_PROFILE);
+  assert.deepEqual(result.data, compilation); assert.deepEqual(calls[0].body.profile, UI_LEGACY_DEFAULT_PROFILE);
   const crossed = await internal(callbackBody(), 'compile', { ...scope, organizationId: 'org_other' });
   await assert.rejects(internalUiTestDesign(...crossed, dependencies()), e => e.code === 'UI_TEST_DESIGN_SCOPE_MISMATCH');
   await assert.rejects(internalUiTestDesign(new Request(args[0].url, { method: 'POST', body: '{invalid' }), env, { action: 'compile' }, dependencies()), e => e.code === 'PROJECT_TEST_GENERATION_UNAUTHORIZED');

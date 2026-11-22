@@ -2,8 +2,8 @@ import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { getProjectEnvironment } from '../services/environmentService.js';
 import { getOrganizationById } from '../repositories/organizationRepository.js';
 import { verifyTestGenerationInternalRequest } from '../security/testGenerationInternalAuth.js';
-import { UI_COMPILER_VERSION, uiError, uiId, uiObject, normalizeUiProfile, readUiText, parseUiJson,
-  assertUiSource, assertUiCompilation, assertUiVersionReceipt, assertUiDesignPage, requestUiDesignService, uiScopeQuery, uiSourceRequest } from '../services/uiTestDesignClient.js';
+import { UI_COMPILER_VERSION, uiCompilerVersion, uiError, uiId, uiObject, normalizeUiProfile, readUiText, parseUiJson,
+  assertUiSource, assertUiCompilation, assertUiVersionReceipt, assertUiDesignPage, assertUiEvidencePage, requestUiDesignService, uiScopeQuery, uiSourceRequest } from '../services/uiTestDesignClient.js';
 
 const depsFor = deps => ({ tenant: requireConsoleTenant, environment: getProjectEnvironment, organization: getOrganizationById,
   verify: verifyTestGenerationInternalRequest, request: requestUiDesignService, source: uiSourceRequest, ...deps });
@@ -40,9 +40,9 @@ export async function consoleUiTestDesign(req, env, params, injected = {}) {
     if (!Array.isArray(input.bundleVersionIds) || input.bundleVersionIds.length < 1 || input.bundleVersionIds.length > 50) throw uiError('UI_TEST_DESIGN_SOURCE_LIMIT');
     const bundleVersionIds = input.bundleVersionIds.map(value => uiId(value, 'UI_TEST_DESIGN_SOURCE_INVALID'));
     if (new Set(bundleVersionIds).size !== bundleVersionIds.length) throw uiError('UI_TEST_DESIGN_DUPLICATE_SOURCE');
-    if (input.compilerVersion !== undefined && input.compilerVersion !== UI_COMPILER_VERSION) throw uiError('UI_TEST_DESIGN_COMPILER_UNSUPPORTED');
+    const compilerVersion = uiCompilerVersion(input.compilerVersion);
     data = await deps.request({ env, service: 'orchestrator', scope, path: `/v1/test-design-generation/projects/${project}/ui-jobs`, method: 'POST',
-      body: { ...scope, operationId, bundleVersionIds, compilerVersion: UI_COMPILER_VERSION, profile: normalizeUiProfile(input.profile), createdBy: tenant.user?.userId || null, createdByAccountId: tenant.accountId || null } });
+      body: { ...scope, operationId, bundleVersionIds, compilerVersion, profile: normalizeUiProfile(input.profile, compilerVersion), createdBy: tenant.user?.userId || null, createdByAccountId: tenant.accountId || null } });
   } else if (resource === 'jobs' && req.method === 'GET') {
     if (id) uiId(id);
     const suffix = id ? `/ui-jobs/${encodeURIComponent(id)}${action === 'items' ? '/items' : ''}` : `/projects/${project}/ui-jobs`;
@@ -55,6 +55,7 @@ export async function consoleUiTestDesign(req, env, params, injected = {}) {
     const query = uiScopeQuery({ organizationId: scope.organizationId, environmentId: scope.environmentId }, pagination(url));
     data = assertUiDesignPage(await deps.request({ env, service: 'registry', scope, path: `/v1/test-registry/projects/${project}/ui-test-designs?${query}` }), scope);
   } else if (resource === 'designs' && id && req.method === 'GET') {
+    if (action !== null && action !== 'evidence') throw uiError('UI_TEST_DESIGN_ROUTE_NOT_FOUND', 404);
     uiId(id);
     data = await deps.request({ env, service: 'registry', scope, path: `/v1/test-registry/ui-test-designs/versions/${encodeURIComponent(id)}?${uiScopeQuery(scope)}` });
     await assertUiCompilation(data?.compilation, scope);
@@ -65,6 +66,18 @@ export async function consoleUiTestDesign(req, env, params, injected = {}) {
     // A persisted design is not authority to keep reading a revoked observation.
     const receipt = await deps.source(env, scope, source.bundleVersionId, source.manifestHash);
     requireSameSource(receipt?.source, source, scope);
+    if (action === 'evidence') {
+      if (data.compilation.specification.contractVersion !== 'qagent.ui-test-design.v2') throw uiError('UI_TEST_DESIGN_PLAN_UNSUPPORTED', 422);
+      const page = pagination(url), section = url.searchParams.get('section'), artifactId = url.searchParams.get('artifactId');
+      if (!['ACTIONS', 'CHECKPOINTS', 'INTERACTIONS', 'FIXTURES', 'DOCUMENTS', 'RESOURCES', 'STATE_RESOURCES', 'ARTIFACTS', 'SOURCE_METADATA', 'ARTIFACT_CONTENT'].includes(section)
+        || [...url.searchParams.keys()].some(key => !['section', 'cursor', 'limit', 'artifactId'].includes(key))
+        || ['section', 'cursor', 'limit', 'artifactId'].some(key => url.searchParams.getAll(key).length > 1)
+        || (section === 'ARTIFACT_CONTENT' ? !artifactId : artifactId !== null)) throw uiError('UI_TEST_DESIGN_PAGINATION_INVALID');
+      if (artifactId) uiId(artifactId, 'UI_TEST_DESIGN_ARTIFACT_REF_INVALID');
+      const compilation = data.compilation;
+      data = assertUiEvidencePage(await deps.request({ env, service: 'ui', scope, path: '/internal/ui/v1/test-design/plan-page', method: 'POST',
+        body: { scope, specification: compilation.specification, specificationHash: compilation.specificationHash, section, ...page, ...(artifactId ? { artifactId } : {}) } }), compilation, section, artifactId);
+    }
   } else throw uiError('UI_TEST_DESIGN_ROUTE_NOT_FOUND', 404);
   return { status: 'ok', data };
 }
@@ -87,10 +100,10 @@ export async function internalUiTestDesign(req, env, { action }, injected = {}) 
   await deps.environment(env, scope.organizationId, scope.projectId, scope.environmentId);
   if (action === 'compile') {
     uiId(input.bundleVersionId);
-    if (input.compilerVersion !== UI_COMPILER_VERSION) throw uiError('UI_TEST_DESIGN_COMPILER_UNSUPPORTED');
+    const compilerVersion = uiCompilerVersion(input.compilerVersion ?? null), profile = normalizeUiProfile(input.profile, compilerVersion);
     const compilation = await deps.request({ env, service: 'ui', scope, path: '/internal/ui/v1/test-design/compile', method: 'POST', timeoutMs: 120000,
-      body: { scope, bundleVersionId: input.bundleVersionId, compilerVersion: input.compilerVersion, profile: normalizeUiProfile(input.profile) } });
-    await assertUiCompilation(compilation, scope, input.bundleVersionId);
+      body: { scope, bundleVersionId: input.bundleVersionId, compilerVersion, profile } });
+    await assertUiCompilation(compilation, scope, input.bundleVersionId, { compilerVersion, profile });
     return { status: 'ok', data: compilation };
   }
   if (action === 'publish') {

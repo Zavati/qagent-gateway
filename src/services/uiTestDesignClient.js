@@ -1,14 +1,26 @@
 /** UI Test Design transport. No AI provider, Catalog lookup, or browser execution. */
 import { buildTestGenerationInternalHeaders, sha256TextHex } from '../security/testGenerationInternalAuth.js';
+import { validateUiObservedPlanShape, validateUiObservedPlanPageShape } from './uiObservedPlanGuard.js';
 
-export const UI_COMPILER_VERSION = 'qagent_ui_test_design_compiler_v1';
-export const UI_COMPILATION_VERSION = 'qagent.ui-test-design-compilation.v1';
+export const UI_LEGACY_COMPILER_VERSION = 'qagent_ui_test_design_compiler_v1';
+export const UI_LEGACY_COMPILATION_VERSION = 'qagent.ui-test-design-compilation.v1';
+export const UI_COMPILER_VERSION = 'qagent_ui_test_design_compiler_v2';
+export const UI_COMPILATION_VERSION = 'qagent.ui-test-design-compilation.v2';
 export const UI_COMPILATION_MAX_BYTES = 768 * 1024;
-export const UI_DEFAULT_PROFILE = Object.freeze({
+export const UI_LEGACY_DEFAULT_PROFILE = Object.freeze({
   contractVersion: 'qagent.ui-test-design-profile.v1', revision: 1,
   comparisonPolicyVersion: 'qagent_ui_observed_comparison_v1', layoutTolerancePx: 2,
   maxChecks: 2000, maxNodes: 25000, maxArtifactBytes: 33554432,
 });
+export const UI_DEFAULT_PROFILE = Object.freeze({
+  contractVersion: 'qagent.ui-test-design-profile.v2', revision: 2,
+  comparisonPolicyVersion: 'qagent_ui_observed_comparison_v1', layoutTolerancePx: 2,
+  coveragePolicy: 'ALL_OBSERVED',
+});
+export function uiCompilerVersion(value = UI_COMPILER_VERSION) {
+  if (![UI_COMPILER_VERSION, UI_LEGACY_COMPILER_VERSION].includes(value)) throw uiError('UI_TEST_DESIGN_COMPILER_UNSUPPORTED');
+  return value;
+}
 
 export function uiError(code, status = 400) {
   const error = new Error(code); error.code = code; error.status = status;
@@ -24,14 +36,16 @@ export function uiObject(value, allowed, required = []) {
     || required.some(key => !Object.hasOwn(value, key))) throw uiError('UI_TEST_DESIGN_INPUT_INVALID');
   return value;
 }
-export function normalizeUiProfile(input) {
-  if (input === undefined || (input && typeof input === 'object' && !Array.isArray(input) && Object.keys(input).length === 0)) return { ...UI_DEFAULT_PROFILE };
-  const keys = Object.keys(UI_DEFAULT_PROFILE), profile = uiObject(input, keys, keys);
-  if (profile.contractVersion !== UI_DEFAULT_PROFILE.contractVersion || profile.revision !== 1
-    || profile.comparisonPolicyVersion !== UI_DEFAULT_PROFILE.comparisonPolicyVersion) throw uiError('UI_TEST_DESIGN_PROFILE_UNSUPPORTED');
+export function normalizeUiProfile(input, compilerVersion = UI_COMPILER_VERSION) {
+  const defaults = uiCompilerVersion(compilerVersion) === UI_COMPILER_VERSION ? UI_DEFAULT_PROFILE : UI_LEGACY_DEFAULT_PROFILE;
+  if (input === undefined || (input && typeof input === 'object' && !Array.isArray(input) && Object.keys(input).length === 0)) return { ...defaults };
+  const keys = Object.keys(defaults), profile = uiObject(input, keys, keys);
+  if (profile.contractVersion !== defaults.contractVersion || profile.revision !== defaults.revision
+    || profile.comparisonPolicyVersion !== defaults.comparisonPolicyVersion) throw uiError('UI_TEST_DESIGN_PROFILE_UNSUPPORTED');
   if (typeof profile.layoutTolerancePx !== 'number' || !Number.isFinite(profile.layoutTolerancePx)
     || profile.layoutTolerancePx < 0 || profile.layoutTolerancePx > 20) throw uiError('UI_TEST_DESIGN_PROFILE_INVALID');
-  for (const [key, min, max] of [['maxChecks', 1, 5000], ['maxNodes', 1, 50000], ['maxArtifactBytes', 1024, 67108864]]) {
+  if (compilerVersion === UI_COMPILER_VERSION && profile.coveragePolicy !== 'ALL_OBSERVED') throw uiError('UI_TEST_DESIGN_PROFILE_UNSUPPORTED');
+  for (const [key, min, max] of compilerVersion === UI_LEGACY_COMPILER_VERSION ? [['maxChecks', 1, 5000], ['maxNodes', 1, 50000], ['maxArtifactBytes', 1024, 67108864]] : []) {
     if (!Number.isSafeInteger(profile[key]) || profile[key] < min || profile[key] > max) throw uiError('UI_TEST_DESIGN_PROFILE_INVALID');
   }
   return { ...profile };
@@ -102,21 +116,33 @@ export function assertUiSource(source, scope, bundleVersionId = null) {
   if (![source.sourceHash, source.manifestHash].every(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value))) throw uiError('UI_TEST_DESIGN_SOURCE_INVALID', 502);
   return source;
 }
-export async function assertUiCompilation(compilation, scope, bundleVersionId = null) {
-  if (compilation?.contractVersion !== UI_COMPILATION_VERSION || compilation.compilerVersion !== UI_COMPILER_VERSION
+export async function assertUiCompilation(compilation, scope, bundleVersionId = null, expected = null) {
+  const isPlan = compilation?.compilerVersion === UI_COMPILER_VERSION;
+  const expectedContract = isPlan ? UI_COMPILATION_VERSION : UI_LEGACY_COMPILATION_VERSION;
+  if (compilation?.contractVersion !== expectedContract || ![UI_COMPILER_VERSION, UI_LEGACY_COMPILER_VERSION].includes(compilation.compilerVersion)
     || compilation.executionPerformed !== false || !['COMPILED', 'NO_DESIGN'].includes(compilation.outcome)) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
+  if (expected && compilation.compilerVersion !== expected.compilerVersion) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
+  if (isPlan && (Object.keys(compilation).sort().join(',') !== 'compilerVersion,contractVersion,executionPerformed,outcome,source,specification,specificationHash,summary'
+    || !compilation.summary || Object.keys(compilation.summary).sort().join(',') !== 'coverage,limitations,reasonCodes')) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
   assertUiSource(compilation.source, scope, bundleVersionId);
   if (new TextEncoder().encode(canonicalUiJson(compilation)).length > UI_COMPILATION_MAX_BYTES) throw uiError('UI_TEST_DESIGN_PAYLOAD_TOO_LARGE', 413);
   if (compilation.outcome === 'NO_DESIGN') {
-    if (compilation.specification !== null || compilation.specificationHash !== null) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
+    if (isPlan || compilation.specification !== null || compilation.specificationHash !== null) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
     return compilation;
   }
   const spec = compilation.specification;
-  if (spec?.contractVersion !== 'qagent.ui-test-design.v1' || spec.executionPerformed !== false
+  if (spec?.contractVersion !== (isPlan ? 'qagent.ui-test-design.v2' : 'qagent.ui-test-design.v1') || spec.compilerVersion !== compilation.compilerVersion || spec.executionPerformed !== false
     || JSON.stringify(spec.executionModes) !== '["UI_REPLAY","UI_LIVE"]'
     || ['organizationId', 'projectId', 'environmentId'].some(key => spec.scope?.[key] !== scope[key])) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
   if (canonicalUiJson(spec.source) !== canonicalUiJson(compilation.source)
     || await sha256TextHex(canonicalUiJson(spec)) !== compilation.specificationHash) throw uiError('UI_TEST_DESIGN_HASH_MISMATCH', 409);
+  if (expected && canonicalUiJson(spec.profile) !== canonicalUiJson(expected.profile)) throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
+  if (isPlan) {
+    validateUiObservedPlanShape(spec);
+    if (canonicalUiJson(compilation.summary?.coverage) !== canonicalUiJson(spec.coverage)
+      || canonicalUiJson(compilation.summary?.limitations) !== canonicalUiJson(spec.limitations)
+      || canonicalUiJson(compilation.summary?.reasonCodes) !== '[]') throw uiError('UI_TEST_DESIGN_COMPILATION_INVALID', 502);
+  }
   return compilation;
 }
 
@@ -132,6 +158,18 @@ export function assertUiDesignPage(value, scope) {
     || !Array.isArray(value.items) || value.items.length > 50
     || !(value.nextCursor === null || (typeof value.nextCursor === 'string' && value.nextCursor.length <= 4096))) throw uiError('UI_TEST_DESIGN_REGISTRY_RESPONSE_INVALID', 502);
   for (const item of value.items) { assertUiVersionReceipt(item); assertUiSource(item.source, scope); }
+  return value;
+}
+
+/** The browser supplies a stored version ID, never an alternate plan or an evidence URL. */
+export function assertUiEvidencePage(value, compilation, section, artifactId = null) {
+  validateUiObservedPlanPageShape(value);
+  if (value.specificationHash !== compilation.specificationHash || value.section !== section || value.artifactId !== artifactId
+    || canonicalUiJson(value.source) !== canonicalUiJson(compilation.source)) throw uiError('UI_TEST_DESIGN_SOURCE_MISMATCH', 409);
+  if (section !== 'ARTIFACT_CONTENT') {
+    const expected = compilation.specification.plan.sections.find(item => item.section === section);
+    if (!expected || value.totalItems !== expected.count || value.items.some(item => item.validation.rule !== expected.rule)) throw uiError('UI_TEST_DESIGN_PLAN_PAGE_INVALID', 502);
+  }
   return value;
 }
 
