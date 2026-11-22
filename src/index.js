@@ -317,6 +317,7 @@ import {
   listConsoleProjectTestDesignGenerationJobs,
 } from './handlers/consoleTestDesignGenerationJobs.js';
 import { postInternalEndpointTestDesignGeneration } from './handlers/internalTestDesignGeneration.js';
+import { consoleUiTestDesign, internalUiTestDesign } from './handlers/uiTestDesign.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleRunBatch } from './handlers/consoleRunBatches.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
@@ -2093,6 +2094,13 @@ const gatewayRouteHandlers = {
   consoleScenarioRequestEditPost: async (req, env, _ctx, params) => json(await postConsoleScenarioRequestEdit(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleScenarioLifecyclePost: async (req, env, _ctx, params) => json(await postConsoleScenarioLifecycle(req, env, params), { status: 201, headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobCreate: async (req, env, _ctx, params) => json(await postConsoleProjectTestDesignGenerationJob(req, env, params), { status: 202, headers: corsHeaders(req, env) }),
+  consoleUiTestDesign: async (req, env, _ctx, params) => {
+    const result = await consoleUiTestDesign(req, env, params);
+    const accepted = req.method === 'POST' && params.resource === 'jobs' && !params.id && !result.data?.reused;
+    return new Response(JSON.stringify(result), { status: accepted ? 202 : 200, headers: { ...corsHeaders(req, env), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' } });
+  },
+  // Keep the immutable compilation compact: pretty-printing can exceed its wire budget.
+  internalUiTestDesign: async (req, env, _ctx, params) => new Response(JSON.stringify(await internalUiTestDesign(req, env, params)), { headers: { ...corsHeaders(req, env), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' } }),
   consoleProjectTestDesignGenerationJobGet: async (req, env, _ctx, params) => json(await getConsoleProjectTestDesignGenerationJob(req, env, params), { headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobItemsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobItems(req, env, params), { headers: corsHeaders(req, env) }),
   consoleProjectTestDesignGenerationJobsList: async (req, env, _ctx, params) => json(await listConsoleProjectTestDesignGenerationJobs(req, env, params), { headers: corsHeaders(req, env) }),

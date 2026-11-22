@@ -38,6 +38,22 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  // Observed UI compilation has its own domain and never enters the API/AI generator.
+  const uiInternal = normalizedPath.match(/^\/internal\/v1\/ui-test-design\/(compile|publish)$/);
+  if (normalizedMethod === 'POST' && uiInternal) return { name: 'internalUiTestDesign', params: { action: uiInternal[1] } };
+  const uiDesign = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/environments\/([^/]+)\/ui-test-design\/(sources|jobs|designs)(?:\/([^/]+)(?:\/(items|cancel))?)?$/);
+  if (uiDesign) {
+    const [, project, environment, resource, id, action] = uiDesign;
+    const validGet = normalizedMethod === 'GET' && (
+      (resource === 'sources' && !id && !action) || (resource === 'designs' && !action)
+      || (resource === 'jobs' && (!action || (id && action === 'items'))));
+    const validPost = normalizedMethod === 'POST' && resource === 'jobs' && ((!id && !action) || (id && action === 'cancel'));
+    if (validGet || validPost) return { name: 'consoleUiTestDesign', params: {
+      projectId: decodeURIComponent(project), environmentId: decodeURIComponent(environment), resource,
+      id: id ? decodeURIComponent(id) : null, action: action || null,
+    } };
+  }
+
   const adaptiveMatch = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/intelligence\/test-readiness\/workspace$/);
   if (normalizedMethod === 'GET' && adaptiveMatch) return { name: 'consoleAdaptiveReadinessWorkspaceGet', params: { projectId: decodeURIComponent(adaptiveMatch[1]) } };
 
