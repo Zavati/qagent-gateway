@@ -38,6 +38,28 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  // UI-EXEC-1: Console and CI share one control plane; browser worker actions
+  // are available only on the machine surface, with scoped bearer authority.
+  const uiExecution = normalizedPath.match(/^\/v1\/(console|automation)\/projects\/([^/]+)\/environments\/([^/]+)\/ui-executions\/(profiles|inventory|batches)(?:\/([^/]+)(?:\/(cancel|claim|report|items)(?:\/([^/]+)\/(heartbeat|source|artifacts|result|evidence)(?:\/([^/]+))?)?)?)?$/);
+  if (uiExecution) {
+    const [, surface, project, environment, resource, batchId, branch, itemId, itemAction, assetId] = uiExecution;
+    const action = branch === 'items' ? itemAction : branch;
+    const hasItem = !!itemId && branch === 'items';
+    const assetAction = ['artifacts', 'evidence'].includes(action);
+    const validAsset = assetAction ? !!assetId : !assetId;
+    const validGet = normalizedMethod === 'GET' && (
+      ((resource === 'profiles' || resource === 'inventory') && !batchId) ||
+      (resource === 'batches' && ((!branch && !hasItem) || (batchId && action === 'report') || (hasItem && action === 'evidence' && validAsset))));
+    const validPost = normalizedMethod === 'POST' && resource === 'batches' && (
+      (!batchId && !branch) || (batchId && action === 'cancel' && !hasItem) ||
+      (surface === 'automation' && ((batchId && action === 'claim' && !hasItem) || (hasItem && ['heartbeat', 'source', 'artifacts', 'result', 'evidence'].includes(action) && validAsset))));
+    if (validGet || validPost) return { name: 'uiExecutions', params: { surface, projectId: decodeURIComponent(project), environmentId: decodeURIComponent(environment),
+      resource, batchId: batchId ? decodeURIComponent(batchId) : null, action: action || null,
+      itemId: itemId ? decodeURIComponent(itemId) : null,
+      artifactId: action === 'artifacts' ? decodeURIComponent(assetId) : null, evidenceId: action === 'evidence' ? decodeURIComponent(assetId) : null } };
+    return null;
+  }
+
   // Observed UI compilation has its own domain and never enters the API/AI generator.
   const uiInternal = normalizedPath.match(/^\/internal\/v1\/ui-test-design\/(compile|publish)$/);
   if (normalizedMethod === 'POST' && uiInternal) return { name: 'internalUiTestDesign', params: { action: uiInternal[1] } };

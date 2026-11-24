@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -170,7 +170,8 @@
     "test:pc3": "node --test test/ui-page-observed-grant-pc3.test.mjs test/ui-environment-managed-grant-pc3.test.mjs",
     "check:pc3": "node --test test/ui-*.test.mjs && npm run test:router",
     "test:ui-test-design": "node --test test/ui-test-design.test.mjs test/ui-test-design-timeout-fix1.test.mjs test/ui-test-design-observed-plan.test.mjs",
-    "test:ui-td3": "node --test test/ui-test-design.test.mjs test/ui-test-design-timeout-fix1.test.mjs test/ui-test-design-observed-plan.test.mjs"
+    "test:ui-td3": "node --test test/ui-test-design.test.mjs test/ui-test-design-timeout-fix1.test.mjs test/ui-test-design-observed-plan.test.mjs",
+    "test:ui-exec1": "node --test test/ui-execution-control-plane.test.mjs"
   },
   "keywords": [],
   "author": "",

@@ -318,6 +318,7 @@ import {
 } from './handlers/consoleTestDesignGenerationJobs.js';
 import { postInternalEndpointTestDesignGeneration } from './handlers/internalTestDesignGeneration.js';
 import { consoleUiTestDesign, internalUiTestDesign } from './handlers/uiTestDesign.js';
+import { uiExecutions } from './handlers/uiExecutions.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleRunBatch } from './handlers/consoleRunBatches.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
@@ -2098,6 +2099,12 @@ const gatewayRouteHandlers = {
     const result = await consoleUiTestDesign(req, env, params);
     const accepted = req.method === 'POST' && params.resource === 'jobs' && !params.id && !result.data?.reused;
     return new Response(JSON.stringify(result), { status: accepted ? 202 : 200, headers: { ...corsHeaders(req, env), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' } });
+  },
+  uiExecutions: async (req, env, _ctx, params) => {
+    const response = await uiExecutions(req, env, params);
+    const headers = new Headers(response.headers);
+    for (const [key, value] of Object.entries(corsHeaders(req, env))) headers.set(key, value);
+    return new Response(response.body, { status: response.status, headers });
   },
   // Keep the immutable compilation compact: pretty-printing can exceed its wire budget.
   internalUiTestDesign: async (req, env, _ctx, params) => new Response(JSON.stringify(await internalUiTestDesign(req, env, params)), { headers: { ...corsHeaders(req, env), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' } }),
