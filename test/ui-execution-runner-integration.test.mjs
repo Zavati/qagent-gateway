@@ -35,6 +35,7 @@ class SqliteD1 {
   constructor() {
     this.sqlite = new DatabaseSync(':memory:'); this.sqlite.exec('PRAGMA foreign_keys=ON');
     this.sqlite.exec(readFileSync(new URL('../migrations/0022_ui_execution_control_plane.sql', import.meta.url), 'utf8'));
+    this.sqlite.exec(readFileSync(new URL('../migrations/0023_ui_hosted_automation.sql', import.meta.url), 'utf8'));
   }
   prepare(sql) { return new Prepared(this.sqlite, sql); }
   async batch(statements) {
@@ -48,7 +49,7 @@ class MemoryR2 {
   async put(key, body) { this.values.set(key, typeof body === 'string' ? Buffer.from(body) : Buffer.from(body)); return { key }; }
   async get(key) { const bytes = this.values.get(key); return bytes ? { body: new Response(bytes).body, size: bytes.length } : null; }
 }
-async function setup(t, { partial = false, cancel = false, loseResultAck = false, failUpload = false } = {}) {
+async function setup(t, { partial = false, cancel = false, loseResultAck = false, failUpload = false, resultAckDelayMs = 0, heartbeatDelayMs = 0 } = {}) {
   const f = fixture(), scope = f.claim.scope, token = 'ui-execution-wire-test-token-01234567890123456789';
   const database = new SqliteD1(), bucket = new MemoryR2(), calls = [], routeErrors = [], artifactsRead = [];
   const directory = await mkdtemp(join(tmpdir(), 'qagent-wire-'));
@@ -70,18 +71,22 @@ async function setup(t, { partial = false, cancel = false, loseResultAck = false
       artifactsRead.push(artifactId); const bytes = f.bytes.get(artifactId); assert.ok(bytes);
       return new Response(bytes, { headers: { 'content-type': f.envelope.bundle.artifacts.find(a => a.artifactId === artifactId).contentType } });
     } };
-  let lost = false;
+  let lost = false, heartbeatStarted;
+  const firstHeartbeat = new Promise(resolve => { heartbeatStarted = resolve; });
   const fetchImpl = async (url, options) => {
     const req = new Request(url, options), parsed = new URL(url), route = resolveGatewayRoute(req.method, parsed.pathname);
     calls.push({ method: req.method, path: parsed.pathname }); assert.equal(route?.name, 'uiExecutions');
     let response;
     try {
+      if (heartbeatDelayMs && parsed.pathname.endsWith('/heartbeat')) { heartbeatStarted(); await new Promise(resolve => setTimeout(resolve, heartbeatDelayMs)); }
       if (failUpload && req.method === 'POST' && parsed.pathname.includes('/evidence/')) throw Object.assign(new Error('UI_EXECUTION_TEST_UPLOAD_REJECTED'), { code: 'UI_EXECUTION_TEST_UPLOAD_REJECTED', status: 409 });
       response = await uiExecutions(req, env, route.params, deps);
     } catch (error) {
-      routeErrors.push(error.code);
+      const item = route.params.itemId ? database.sqlite.prepare('SELECT status,result_hash FROM ui_execution_items WHERE item_id=?').get(route.params.itemId) : null;
+      routeErrors.push({ method: req.method, path: parsed.pathname, code: error.code, status: error.status ?? 500, itemStatus: item?.status ?? null, resultCommitted: !!item?.result_hash });
       return Response.json({ status: 'error', code: error.code, message: error.message }, { status: error.status ?? 500 });
     }
+    if (resultAckDelayMs && parsed.pathname.endsWith('/result')) await new Promise(resolve => setTimeout(resolve, resultAckDelayMs));
     if (loseResultAck && !lost && parsed.pathname.endsWith('/result')) { lost = true; await response.body.cancel(); throw new TypeError('ACK lost after D1 commit'); }
     return response;
   };
@@ -90,6 +95,7 @@ async function setup(t, { partial = false, cancel = false, loseResultAck = false
   const engineFactory = options => {
     class BrowserBoundaryStub extends UiRunner {
       async runMode({ claim, mode, spec, signal }) {
+        if (heartbeatDelayMs && mode === 'UI_REPLAY') await firstHeartbeat;
         const counts = { actionsPlanned: spec.coverage.actionsTotal, actionsExecuted: 0, checkpointsPlanned: spec.coverage.checkpointsTotal, checkpointsReached: 0,
           checksPassed: 0, checksFailed: 0, checksPending: 0, fixturesConsumed: 0, requestsObserved: 0 };
         this.modeProgress = { mode, executionPerformed: false, counts };
@@ -129,6 +135,15 @@ async function setup(t, { partial = false, cancel = false, loseResultAck = false
   return { client, worker, batch, scope, directory, database, bucket, calls, routeErrors, artifactsRead, f };
 }
 
+function assertTransportErrors(h) {
+  // A renewal already in flight can cross the terminal result commit. Prove
+  // that exact terminal state in SQLite; never accept arbitrary 409s, a lost
+  // lease before commit, rejected evidence, or a rejected result as benign.
+  const unexpected = h.routeErrors.filter(error => !(error.method === 'POST' && error.path.endsWith('/heartbeat')
+    && error.code === 'UI_EXECUTION_STALE_CLAIM' && error.status === 409 && error.itemStatus === 'COMPLETED' && error.resultCommitted));
+  assert.deepEqual(unexpected, [], 'only a heartbeat racing an already committed result may be stale');
+}
+
 integration('real Client/Worker/Gateway complete claim, artifact proof, paged evidence, result and canonical JSON/JUnit', async t => {
   const h = await setup(t), outcome = await h.worker.runBatch(h.batch.batchId, { pollMs: 1 });
   assert.equal(outcome.exitCode, 0); assert.equal(outcome.batch.status, 'COMPLETED'); assert.equal(outcome.batch.gate, 'PASSED');
@@ -138,7 +153,7 @@ integration('real Client/Worker/Gateway complete claim, artifact proof, paged ev
   assert.equal(new Set(pair.evidence.map(e => e.evidenceId)).size, pair.evidence.length);
   assert.deepEqual([...new Set(h.artifactsRead)].sort(), [...h.f.bytes.keys()].sort());
   assert.equal(h.database.sqlite.prepare('SELECT COUNT(*) AS n FROM ui_execution_evidence').get().n, pair.evidence.length);
-  assert.equal(h.routeErrors.length, 0);
+  assertTransportErrors(h);
   const report = JSON.parse(await readFile(join(h.directory, h.batch.batchId, 'report.json'), 'utf8'));
   assert.equal(report.gate, 'PASSED'); assert.ok(report.items[0].result.evidence.every(e => e.downloadPath));
   assert.match(await readFile(join(h.directory, h.batch.batchId, 'junit.xml'), 'utf8'), /tests="2" failures="0" errors="0"/);
@@ -152,6 +167,26 @@ integration('lost result ACK retries the canonical result without re-executing b
   assert.equal(h.calls.filter(c => c.path.endsWith('/result')).length, 2);
   assert.equal(h.calls.filter(c => c.path.endsWith('/source')).length, 1);
   assert.equal(h.database.sqlite.prepare('SELECT COUNT(*) AS n FROM ui_execution_items WHERE status=\'COMPLETED\'').get().n, 1);
+  assertTransportErrors(h);
+});
+
+integration('delayed result acknowledgement does not invalidate completed execution', async t => {
+  const h = await setup(t, { resultAckDelayMs: 50 }), outcome = await h.worker.runBatch(h.batch.batchId, { pollMs: 1 });
+  assert.equal(outcome.batch.gate, 'PASSED'); assertTransportErrors(h);
+  assert.equal(h.routeErrors.length, 1, 'stop renewals after the first definitive stale response');
+  assert.equal(h.calls.filter(c => c.path.endsWith('/result')).length, 1);
+  assert.equal(h.calls.filter(c => c.path.endsWith('/source')).length, 1, 'the committed execution must never be restarted');
+});
+
+integration('executeClaim waits for an in-flight heartbeat before returning', async t => {
+  const h = await setup(t, { heartbeatDelayMs: 100 }), { claim } = await h.client.claim(h.batch.batchId, 'uiworker_wire');
+  const outcome = await h.worker.executeClaim(claim);
+  assert.equal(outcome.gate, 'PASSED'); assertTransportErrors(h);
+  const errors = structuredClone(h.routeErrors), calls = h.calls.length;
+  await new Promise(resolve => setTimeout(resolve, 130));
+  assert.deepEqual(h.routeErrors, errors, 'a renewal must not complete outside the claim lifecycle');
+  assert.equal(h.calls.length, calls, 'no new renewal may start after executeClaim returns');
+  assert.equal(h.routeErrors.length, 1, 'the delayed renewal actually crossed the result commit');
 });
 
 integration('Live technical failure preserves executed Replay and partial Live instead of declaring no browser execution', async t => {
@@ -162,7 +197,7 @@ integration('Live technical failure preserves executed Replay and partial Live i
   assert.equal(pair.modes[1].status, 'ERROR'); assert.equal(pair.modes[1].executionPerformed, true); assert.equal(pair.modes[1].counts.actionsExecuted, 1);
   assert.equal(pair.modes[1].counts.checksPending, 1); assert.ok(pair.evidence.some(e => e.mode === 'UI_REPLAY'));
   assert.match(await readFile(join(h.directory, h.batch.batchId, 'junit.xml'), 'utf8'), /errors="1"/);
-  assert.deepEqual(h.routeErrors, []);
+  assertTransportErrors(h);
 });
 
 integration('Console/CI cancellation reaches the Worker via real heartbeat and never exports a passing gate', async t => {
@@ -171,7 +206,7 @@ integration('Console/CI cancellation reaches the Worker via real heartbeat and n
   assert.ok(h.calls.some(c => c.path.endsWith('/heartbeat')));
   assert.deepEqual(outcome.batch.items[0].result.modes.map(m => m.status), ['CANCELLED', 'CANCELLED']);
   assert.match(await readFile(join(h.directory, h.batch.batchId, 'junit.xml'), 'utf8'), /errors="2"/);
-  assert.deepEqual(h.routeErrors, []);
+  assertTransportErrors(h);
 });
 
 integration('an evidence transport failure retains the complete local executed result and stops heartbeat', async t => {

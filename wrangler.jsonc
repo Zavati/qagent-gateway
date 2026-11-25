@@ -28,8 +28,8 @@
 			"service": "qagent-test-generation-orchestrator"
 		},
 		{
- 			 "binding": "UI_SERVICE",
-  			 "service": "qagent-ui"
+			"binding": "UI_SERVICE",
+			"service": "qagent-ui"
 		}
 	],
 	"queues": {
@@ -69,6 +69,7 @@
 	},
 	"vars": {
 		// Commercial trial for NEW licenses only; sessions/grants keep their own TTLs.
+		"UI_EXECUTION_PROFILE_SOURCE": "PROJECT",
 		"QAGENT_TRIAL_DAYS": "30",
 		"UI_CAPTURE_ENABLED": "true",
 		"SCENARIO_READINESS_V2_ENABLED": "true",
@@ -147,5 +148,16 @@
 			"persist": false,
 			"head_sampling_rate": 1
 		}
-	}
+	},
+	"triggers": {
+		"crons": [
+			"* * * * *"
+		]
+	},
+	"r2_buckets": [
+		{
+			"binding": "UI_EXECUTION_RESULTS",
+			"bucket_name": "qagent-ui-execution-results-dev"
+		}
+	]
 }

@@ -1,4 +1,5 @@
 import { requireConsoleTenant } from '../services/tenantContextService.js';
+import { projectExecutionProfiles } from '../services/uiExecutionProjectProfiles.js';
 import { getProjectEnvironment } from '../services/environmentService.js';
 import { getOrganizationById } from '../repositories/organizationRepository.js';
 import { UiExecutionRepository } from '../repositories/uiExecutionRepository.js';
@@ -6,9 +7,10 @@ import { requestUiDesignService, uiScopeQuery, assertUiCompilation, assertUiVers
 import { EXECUTION_LEASE_MS, RESULT_MAX_BYTES, EVIDENCE_MAX_BYTES, canonical, hashBytes, executionError, executionId, scopeValues, sameScope,
   object, textValue, isHash, machineAuthority, executionProfiles, readJson, readBytes } from '../services/uiExecutionContract.js';
 import { executionBucket, putJson, getJson, objectPrefix, executionSourceRequest } from '../services/uiExecutionStorage.js';
+import { enqueueUiWake, hostingState } from '../services/uiRunnerDispatch.js';
 import { ndjsonStats, validatePairResult, assertUniquePageChecks, junitReport } from '../services/uiExecutionResults.js';
 
-const dependencies = overrides => ({ tenant: requireConsoleTenant, environment: getProjectEnvironment, organization: getOrganizationById,
+export const uiExecutionDependencies = overrides => ({ tenant: requireConsoleTenant, environment: getProjectEnvironment, organization: getOrganizationById,
   request: requestUiDesignService, source: uiSourceRequest, executionSource: executionSourceRequest, now: Date.now, ...overrides });
 const json = (data, status = 200) => new Response(JSON.stringify({ status: 'ok', data }), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' } });
 async function mapBounded(values, operation) {
@@ -19,7 +21,7 @@ async function mapBounded(values, operation) {
   const rejected = settled.find(row => row.status === 'rejected'); if (rejected) throw rejected.reason;
   return output;
 }
-async function authority(req, env, params, deps) {
+export async function uiExecutionAuthority(req, env, params, deps) {
   executionId(params.projectId); executionId(params.environmentId);
   const permission = req.method === 'GET' ? 'read' : params.action === 'cancel' || (params.resource === 'batches' && !params.batchId) ? 'create' : 'execute';
   let authorized;
@@ -99,13 +101,17 @@ function batchSummary(row, items) {
 async function requireBatch(repo, scope, id) {
   executionId(id); const row = await repo.batch(scope, id); if (!row) throw executionError('BATCH_NOT_FOUND', 404); return row;
 }
-async function detail(env, repo, scope, id, now) {
+export async function uiExecutionDetail(env, repo, scope, id, now) {
   const row = await requireBatch(repo, scope, id); await repo.sweep(scope, now, id);
   const rows = await repo.items(scope, id), summary = batchSummary(row, rows);
-  return { ...summary, items: await mapBounded(rows, async item => ({ itemId: item.item_id, ordinal: item.ordinal,
-    captureId: item.capture_id, testDesignId: item.test_design_id, testDesignVersionId: item.test_design_version_id, version: item.version,
-    source: JSON.parse(item.source_json), bundleVersionId: JSON.parse(item.source_json).bundleVersionId,
-    status: item.status, result: item.result_key ? await getJson(env, item.result_key, item.result_hash, RESULT_MAX_BYTES) : null, errorCode: item.error_code })) };
+  return { ...summary, hosting: await hostingState(env, scope, id), items: await mapBounded(rows, async item => {
+    const result = item.result_key ? await getJson(env, item.result_key, item.result_hash, RESULT_MAX_BYTES) : null;
+    const evidence = (await repo.evidenceList(scope, id, item.item_id)).map(row => ({ evidenceId: row.evidence_id, sha256: row.sha256, byteLength: row.byte_length, contentType: row.content_type, ...(row.page_stats_json ? JSON.parse(row.page_stats_json).labels ?? {} : {}) }));
+    return { itemId: item.item_id, ordinal: item.ordinal, captureId: item.capture_id, testDesignId: item.test_design_id,
+      testDesignVersionId: item.test_design_version_id, version: item.version, source: JSON.parse(item.source_json),
+      bundleVersionId: JSON.parse(item.source_json).bundleVersionId, status: item.status, result,
+      evidence, partialEvidence: result === null && evidence.length > 0, errorCode: item.error_code };
+  }) };
 }
 async function frozenDesign(env, item, scope) {
   const design = await getJson(env, item.design_key, item.design_hash);
@@ -121,9 +127,8 @@ async function requireClaim(repo, scope, batchId, itemId, claimToken, now, { com
   if (item.claim_token_hash !== tokenHash || !(item.status === 'RUNNING' && item.lease_expires_at > now || completed && item.status === 'COMPLETED')) throw executionError('STALE_CLAIM', 409);
   return { item, tokenHash };
 }
-async function createBatch(req, env, repo, scope, actor, deps) {
-  executionBucket(env);
-  const input = object(await readJson(req), ['operationId', 'testDesignVersionIds', 'profileId', 'targetBuildRef', 'trigger'], ['operationId', 'testDesignVersionIds', 'profileId', 'targetBuildRef']);
+export function normalizeUiExecutionAdmission(raw) {
+  const input = object(raw, ['operationId', 'testDesignVersionIds', 'profileId', 'targetBuildRef', 'trigger'], ['operationId', 'testDesignVersionIds', 'profileId', 'targetBuildRef']);
   executionId(input.operationId); executionId(input.profileId); textValue(input.targetBuildRef, 512);
   if (!Array.isArray(input.testDesignVersionIds) || !input.testDesignVersionIds.length || new Set(input.testDesignVersionIds).size !== input.testDesignVersionIds.length) throw executionError('DESIGN_SELECTION_INVALID');
   input.testDesignVersionIds.forEach(executionId);
@@ -132,12 +137,19 @@ async function createBatch(req, env, repo, scope, actor, deps) {
     if (input.trigger.kind !== 'CI') throw executionError('TRIGGER_INVALID');
     for (const [key, value] of Object.entries(input.trigger)) textValue(value, key === 'branch' ? 512 : 160);
   }
+  return input;
+}
+export async function createUiExecutionBatch(env, scope, actor, raw, injected = {}) {
+  const deps = uiExecutionDependencies(injected), repo = new UiExecutionRepository(env);
+  executionBucket(env);
+  const input = normalizeUiExecutionAdmission(raw);
   const requestHash = await hashBytes(canonical(input)), previous = await repo.byOperation(scope, input.operationId);
   if (previous) {
     if (previous.request_hash !== requestHash) throw executionError('IDEMPOTENCY_CONFLICT', 409);
-    return json({ ...await detail(env, repo, scope, previous.batch_id, deps.now()), reused: true });
+    await enqueueUiWake(env, scope, previous.batch_id, deps);
+    return { ...await uiExecutionDetail(env, repo, scope, previous.batch_id, deps.now()), reused: true };
   }
-  const profile = executionProfiles(env, scope).find(value => value.profileId === input.profileId);
+  const profile = (await (deps.profiles ?? projectExecutionProfiles)(env, scope)).find(value => value.profileId === input.profileId);
   if (!profile) throw executionError('PROFILE_NOT_FOUND', 404);
   const id = 'uieb_' + await hashBytes(canonical({ scope, operationId: input.operationId }));
   const prefix = objectPrefix(scope) + '/' + id;
@@ -149,7 +161,8 @@ async function createBatch(req, env, repo, scope, actor, deps) {
   });
   const snapshot = await putJson(env, prefix + '/snapshot', { scope, ...input, profile });
   const row = await repo.insert(scope, { id, ...input, requestHash, snapshotKey: snapshot.key, snapshotHash: snapshot.hash, now: deps.now(), actor }, designs);
-  return json({ ...await detail(env, repo, scope, row.batch_id, deps.now()), reused: false }, 202);
+  await enqueueUiWake(env, scope, row.batch_id, deps);
+  return { ...await uiExecutionDetail(env, repo, scope, row.batch_id, deps.now()), reused: false };
 }
 function pagination(url) {
   const limit = url.searchParams.get('limit') ?? '20';
@@ -164,12 +177,12 @@ function pagination(url) {
 }
 /** Independent UI control plane. No endpoint enters the existing API runner. */
 export async function uiExecutions(req, env, params, injected = {}) {
-  const deps = dependencies(injected), { scope, actor } = await authority(req, env, params, deps);
+  const deps = uiExecutionDependencies(injected), { scope, actor } = await uiExecutionAuthority(req, env, params, deps);
   const { resource, batchId, itemId, action, artifactId, evidenceId } = params, url = new URL(req.url);
-  if (resource === 'profiles') return json({ items: executionProfiles(env, scope) });
+  if (resource === 'profiles') return json({ items: await (deps.profiles ?? projectExecutionProfiles)(env, scope) });
   if (resource === 'inventory') return json(await inventory(env, scope, deps));
   const repo = new UiExecutionRepository(env);
-  if (!batchId && req.method === 'POST') return createBatch(req, env, repo, scope, actor, deps);
+  if (!batchId && req.method === 'POST') { const result = await createUiExecutionBatch(env, scope, actor, await readJson(req), deps); return json(result, result.reused ? 200 : 202); }
   if (!batchId) {
     const { limit, cursor } = pagination(url); await repo.sweep(scope, deps.now());
     const rows = await repo.list(scope, limit, cursor), chosen = rows.slice(0, limit);
@@ -177,14 +190,14 @@ export async function uiExecutions(req, env, params, injected = {}) {
       nextCursor: rows.length > limit ? btoa(JSON.stringify({ at: chosen.at(-1).created_at, id: chosen.at(-1).batch_id })) : null });
   }
   const batch = await requireBatch(repo, scope, batchId); await repo.sweep(scope, deps.now(), batchId);
-  if (!action) return json(await detail(env, repo, scope, batchId, deps.now()));
+  if (!action) return json(await uiExecutionDetail(env, repo, scope, batchId, deps.now()));
   if (action === 'cancel') {
     object(await readJson(req, 1024), []); await repo.cancel(scope, batchId, deps.now());
-    return json(await detail(env, repo, scope, batchId, deps.now()));
+    return json(await uiExecutionDetail(env, repo, scope, batchId, deps.now()));
   }
   if (action === 'report') {
     const format = url.searchParams.get('format') ?? 'json'; if (!['json', 'junit'].includes(format)) throw executionError('REPORT_FORMAT_INVALID');
-    const report = await detail(env, repo, scope, batchId, deps.now());
+    const report = await uiExecutionDetail(env, repo, scope, batchId, deps.now());
     // References are route-local and authenticated; R2 keys and signed URLs are
     // never published. JSON/NDJSON pages conserve the complete result ledger.
     for (const item of report.items) if (item.result) for (const ref of item.result.evidence) {
@@ -222,13 +235,17 @@ export async function uiExecutions(req, env, params, injected = {}) {
     const { item, tokenHash } = await requireClaim(repo, scope, batchId, itemId, req.headers.get('X-QAgent-Claim-Token'), deps.now(), { completed: true });
     const hash = req.headers.get('X-QAgent-SHA256'), type = req.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
     if (!isHash(hash) || !type || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(type)) throw executionError('EVIDENCE_METADATA_INVALID');
+    const labels = {}, mode = req.headers.get('X-QAgent-Evidence-Mode'), kind = req.headers.get('X-QAgent-Evidence-Kind');
+    if (mode !== null) { if (!['UI_REPLAY', 'UI_LIVE'].includes(mode)) throw executionError('EVIDENCE_METADATA_INVALID'); labels.mode = mode; }
+    if (kind !== null) { if (!/^[A-Z0-9_]{1,128}$/.test(kind)) throw executionError('EVIDENCE_METADATA_INVALID'); labels.kind = kind; }
     const bytes = await readBytes(req, EVIDENCE_MAX_BYTES); if (await hashBytes(bytes) !== hash) throw executionError('EVIDENCE_HASH_MISMATCH', 409);
     const existing = await repo.evidence(scope, batchId, itemId, evidenceId);
-    const matching = row => row && row.claim_token_hash === tokenHash && row.sha256 === hash && row.byte_length === bytes.length && row.content_type === type;
+    const matching = row => row && row.claim_token_hash === tokenHash && row.sha256 === hash && row.byte_length === bytes.length && row.content_type === type && canonical(row.page_stats_json ? JSON.parse(row.page_stats_json).labels ?? {} : {}) === canonical(labels);
     if (existing && !matching(existing)) throw executionError('EVIDENCE_CONFLICT', 409);
     if (!existing) {
       if (item.status !== 'RUNNING') throw executionError('STALE_CLAIM', 409);
-      const stats = type === 'application/x-ndjson' ? ndjsonStats(bytes) : null;
+      const stats = type === 'application/x-ndjson' ? ndjsonStats(bytes) : Object.keys(labels).length ? {} : null;
+      if (stats && Object.keys(labels).length) stats.labels = labels;
       const key = objectPrefix(scope) + '/' + batchId + '/' + itemId + '/evidence/' + evidenceId + '/' + hash;
       await executionBucket(env).put(key, bytes, { httpMetadata: { contentType: type }, customMetadata: { sha256: hash } });
       const published = await repo.recordEvidence(scope, item, tokenHash, { id: evidenceId, key, hash, size: bytes.length, type, stats }, deps.now());
@@ -259,7 +276,7 @@ export async function uiExecutions(req, env, params, injected = {}) {
     const digest = await hashBytes(canonical(input.result));
     if (item.result_hash) {
       if (item.result_hash !== digest) throw executionError('RESULT_CONFLICT', 409);
-      return json(await detail(env, repo, scope, batchId, deps.now()));
+      return json(await uiExecutionDetail(env, repo, scope, batchId, deps.now()));
     }
     const design = await frozenDesign(env, item, scope), evidence = await repo.evidenceList(scope, batchId, itemId);
     const gate = validatePairResult(input.result, design, evidence, tokenHash);
@@ -275,7 +292,7 @@ export async function uiExecutions(req, env, params, injected = {}) {
       const current = await repo.item(scope, batchId, itemId);
       if (current?.claim_token_hash !== tokenHash || current.result_hash !== digest) throw executionError(current?.result_hash ? 'RESULT_CONFLICT' : 'STALE_CLAIM', 409);
     }
-    return json(await detail(env, repo, scope, batchId, deps.now()));
+    return json(await uiExecutionDetail(env, repo, scope, batchId, deps.now()));
   }
   throw executionError('ROUTE_NOT_FOUND', 404);
 }

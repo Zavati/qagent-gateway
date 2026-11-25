@@ -319,6 +319,9 @@ import {
 import { postInternalEndpointTestDesignGeneration } from './handlers/internalTestDesignGeneration.js';
 import { consoleUiTestDesign, internalUiTestDesign } from './handlers/uiTestDesign.js';
 import { uiExecutions } from './handlers/uiExecutions.js';
+import { automationRuns } from './handlers/automationRuns.js';
+import { reconcileAutomationRuns } from './services/automationRunService.js';
+import { reconcileUiDispatches } from './services/uiRunnerDispatch.js';
 import { postConsoleRun, getConsoleRun } from './handlers/consoleRuns.js';
 import { postConsoleRunBatch } from './handlers/consoleRunBatches.js';
 import { postConsoleSuiteRun, getConsoleSuiteRun } from './handlers/consoleSuiteRuns.js';
@@ -2100,8 +2103,14 @@ const gatewayRouteHandlers = {
     const accepted = req.method === 'POST' && params.resource === 'jobs' && !params.id && !result.data?.reused;
     return new Response(JSON.stringify(result), { status: accepted ? 202 : 200, headers: { ...corsHeaders(req, env), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' } });
   },
-  uiExecutions: async (req, env, _ctx, params) => {
-    const response = await uiExecutions(req, env, params);
+  automationRuns: async (req, env, ctx, params) => {
+    const response = await automationRuns(req, env, params, { waitUntil: p => ctx.waitUntil(p) });
+    const headers = new Headers(response.headers);
+    for (const [key, value] of Object.entries(corsHeaders(req, env))) headers.set(key, value);
+    return new Response(response.body, { status: response.status, headers });
+  },
+  uiExecutions: async (req, env, ctx, params) => {
+    const response = await uiExecutions(req, env, params, { waitUntil: p => ctx.waitUntil(p) });
     const headers = new Headers(response.headers);
     for (const [key, value] of Object.entries(corsHeaders(req, env))) headers.set(key, value);
     return new Response(response.body, { status: response.status, headers });
@@ -2330,6 +2339,13 @@ Em caso de dúvidas, entre em contato pelo e-mail:
       if (e?.publicDetails && typeof e.publicDetails === "object") errorBody.details = e.publicDetails;
       return json(errorBody, { status, headers });
     }
+  },
+  async scheduled(_controller, env, ctx) {
+    const task = (async () => {
+      const results = await Promise.allSettled([reconcileAutomationRuns(env), reconcileUiDispatches(env)]);
+      for (let i = 0; i < results.length; i++) if (results[i].status === 'rejected') console.error(JSON.stringify({ event: 'automation.reconcile_failed', component: ['admission', 'ui-dispatch'][i], code: results[i].reason?.code || 'RECONCILIATION_UNAVAILABLE' }));
+    })();
+    ctx.waitUntil(task);
   },
   async queue(batch, env, ctx) {
     const queueName=String(batch?.queue||'');

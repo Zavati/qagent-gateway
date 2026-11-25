@@ -38,6 +38,14 @@ export function resolveGatewayRoute(method, pathname) {
     return { name: exact, params: {} };
   }
 
+  // UI-EXEC-2: one Console admission intent, separate API/UI child services.
+  const automation = normalizedPath.match(/^\/v1\/console\/projects\/([^/]+)\/environments\/([^/]+)\/automation-runs(?:\/([^/]+))?$/);
+  if (automation) {
+    if (normalizedMethod === 'GET' || normalizedMethod === 'POST' && !automation[3]) return { name: 'automationRuns', params: {
+      projectId: decodeURIComponent(automation[1]), environmentId: decodeURIComponent(automation[2]), automationRunId: automation[3] ? decodeURIComponent(automation[3]) : null } };
+    return null;
+  }
+
   // UI-EXEC-1: Console and CI share one control plane; browser worker actions
   // are available only on the machine surface, with scoped bearer authority.
   const uiExecution = normalizedPath.match(/^\/v1\/(console|automation)\/projects\/([^/]+)\/environments\/([^/]+)\/ui-executions\/(profiles|inventory|batches)(?:\/([^/]+)(?:\/(cancel|claim|report|items)(?:\/([^/]+)\/(heartbeat|source|artifacts|result|evidence)(?:\/([^/]+))?)?)?)?$/);

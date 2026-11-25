@@ -1,5 +1,7 @@
 # UI-EXEC-1 — execução de UI em lotes
 
+> Documento histórico da UI-EXEC-1. Para a implantação atual do Gateway 1.4.0, a automação conjunta e o runner hospedado, use [UI-EXEC-2](UI-EXEC-2.md).
+
 Gateway **1.3.0**. A aba Automação e o CI usam o mesmo controle de execução UI. O serviço `qagent-ui-runner` executa o navegador; o Gateway admite as versões, entrega evidências autorizadas, controla a posse dos itens e publica resultados. Os endpoints e as filas de execução de API permanecem independentes.
 
 ## Configuração e implantação

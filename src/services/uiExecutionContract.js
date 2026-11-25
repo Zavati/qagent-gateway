@@ -39,8 +39,8 @@ function jsonConfig(env, key) {
 export function executionProfiles(env, scope) {
   const list = jsonConfig(env, 'UI_EXECUTION_PROFILES_JSON'), ids = new Set(), output = [];
   for (const raw of list) {
-    object(raw, ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'originMap', 'preparationKey', 'viewport', 'deviceScaleFactor', 'locale', 'timezoneId', 'stepTimeoutMs', 'modeTimeoutMs'],
-      ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'preparationKey', 'viewport']);
+    object(raw, ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'originMap', 'preparationKey', 'preparationMode', 'viewport', 'deviceScaleFactor', 'locale', 'timezoneId', 'stepTimeoutMs', 'modeTimeoutMs'],
+      ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'viewport']);
     object(raw.scope, ['organizationId', 'projectId', 'environmentId']);
     scopeValues(raw.scope).forEach(executionId);
     const profileId = executionId(raw.profileId), key = scopeValues(raw.scope).join('/') + '/' + profileId;
@@ -56,6 +56,10 @@ export function executionProfiles(env, scope) {
     for (const [from, to] of Object.entries(originMap)) {
       httpUrl(from, true); if (!allowedOrigins.includes(httpUrl(to, true).origin)) throw executionError('PROFILE_ORIGIN_INVALID', 503);
     }
+    const preparationMode = raw.preparationMode ?? 'REQUIRE_ADAPTER';
+    if (!['REQUIRE_ADAPTER', 'UNAUTHENTICATED'].includes(preparationMode)) throw executionError('PROFILE_PREPARATION_INVALID', 503);
+    const preparationKey = raw.preparationKey ?? (preparationMode === 'UNAUTHENTICATED' ? 'unprepared' : null);
+    executionId(preparationKey);
     object(raw.viewport, ['width', 'height']);
     const width = number(raw.viewport.width, 240, 7680), height = number(raw.viewport.height, 240, 7680);
     if (!Number.isInteger(width) || !Number.isInteger(height)) throw executionError('PROFILE_INVALID', 503);
@@ -64,7 +68,7 @@ export function executionProfiles(env, scope) {
     const stepTimeoutMs = number(raw.stepTimeoutMs ?? 7000, 1000, 120000), modeTimeoutMs = number(raw.modeTimeoutMs ?? 600000, 10000, 3600000);
     if (!Number.isSafeInteger(stepTimeoutMs) || !Number.isSafeInteger(modeTimeoutMs) || modeTimeoutMs < stepTimeoutMs) throw executionError('PROFILE_INVALID', 503);
     output.push({ ...raw, profileId, targetBaseUrl: target.href, allowedOrigins, originMap: { ...originMap }, viewport: { width, height },
-      name: textValue(raw.name, 160), preparationKey: executionId(raw.preparationKey),
+      name: textValue(raw.name, 160), preparationKey, preparationMode,
       deviceScaleFactor: number(raw.deviceScaleFactor ?? 1, 0.5, 4), locale, timezoneId,
       stepTimeoutMs, modeTimeoutMs, browser: 'chromium' });
   }

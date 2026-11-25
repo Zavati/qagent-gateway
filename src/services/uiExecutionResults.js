@@ -58,6 +58,8 @@ function evidenceRef(value, records, claimHash) {
   if (value.mode !== undefined && !['UI_REPLAY', 'UI_LIVE'].includes(value.mode)) throw executionError('EVIDENCE_REF_INVALID');
   const row = records.get(value.evidenceId);
   if (!row || row.claim_token_hash !== claimHash || row.sha256 !== value.sha256 || row.byte_length !== value.byteLength || row.content_type !== value.contentType) throw executionError('EVIDENCE_REF_MISMATCH', 409);
+  const labels = row.page_stats_json ? JSON.parse(row.page_stats_json).labels : null;
+  if (labels && ((labels.mode && labels.mode !== value.mode) || (labels.kind && labels.kind !== value.kind))) throw executionError('EVIDENCE_REF_MISMATCH', 409);
   return row;
 }
 export function validatePairResult(result, design, rows, claimHash) {

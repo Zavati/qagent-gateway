@@ -10,7 +10,7 @@ import { executionSourceRequest } from '../src/services/uiExecutionStorage.js';
 import { validatePairResult, ndjsonStats } from '../src/services/uiExecutionResults.js';
 
 const golden = JSON.parse(readFileSync(new URL('./fixtures/ui-test-design-compilation.v2.json', import.meta.url), 'utf8'));
-const migration = readFileSync(new URL('../migrations/0022_ui_execution_control_plane.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../migrations/0022_ui_execution_control_plane.sql', import.meta.url), 'utf8') + '\n' + readFileSync(new URL('../migrations/0023_ui_hosted_automation.sql', import.meta.url), 'utf8');
 const scope = golden.source.scope, token = 'ui-machine-token-for-local-verification-123456789';
 const encoder = new TextEncoder();
 
