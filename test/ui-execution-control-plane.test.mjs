@@ -300,3 +300,22 @@ test('execution source adapter uses separate HMAC principal and supports source 
   assert.equal(await crypto.subtle.verify('HMAC', key, signature, encoder.encode(`QAGENT_UI_BUNDLE_HTTP_V1\nexecution\nPOST\n${path}\n${timestamp}\n${await hashBytes(body)}`)), true);
   assert.equal(JSON.parse(body).specificationHash, golden.specificationHash);
 });
+
+test('UI-EXEC-3: browser auth credential access requires active machine claim and matching pinned config', async () => {
+  const h = await harness();
+  const browserLogin = { loginPath:'/login', usernameSelector:'#user',passwordSelector:'#pass',submitSelector:'#submit',successSelector:'#member' };
+  h.profile.preparationMode = 'BROWSER_AUTH';
+  h.profile.preparationKey = 'browser-login';
+  h.profile.browserAuth = { authProfileId: 'authp_browser_a', config: browserLogin };
+  h.env.UI_EXECUTION_PROFILES_JSON = JSON.stringify([h.profile]);
+  const batch = await h.create(); const claim = await h.claim(batch);
+  const base = itemRoute(claim,'browser-auth');
+  const dep = { browserProfile: async()=>({type:'basic',config:{browserLogin}}),resolveBrowserCredentials:async()=>({type:'basic',credentials:{username:'vault.user',password:'vault.secret'}}) };
+  const result = await h.data(base,'POST',{claimToken:claim.claimToken},{machine:true,dependency:dep});
+  assert.deepEqual(result,{username:'vault.user',password:'vault.secret'});
+  assert.equal(resolveGatewayRoute('POST', `/v1/console/projects/${scope.projectId}/environments/${scope.environmentId}/ui-executions${base}`),null);
+  await assert.rejects(h.data(base,'POST',{claimToken:'uiclaim_wrong'},{machine:true,dependency:dep}),{code:'UI_EXECUTION_STALE_CLAIM'});
+  await assert.rejects(h.data(base,'POST',{claimToken:claim.claimToken},{machine:true,dependency:{...dep,browserProfile:async()=>({type:'basic',config:{browserLogin:{...browserLogin,loginPath:'/changed'}}})}}),{code:'UI_EXECUTION_BROWSER_AUTH_PROFILE_CHANGED'});
+  await h.data(`/batches/${batch.batchId}/cancel`,'POST',{});
+  await assert.rejects(h.data(base,'POST',{claimToken:claim.claimToken},{machine:true,dependency:dep}), {code:'UI_EXECUTION_CANCELLED'});
+});

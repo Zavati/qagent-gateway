@@ -1,3 +1,5 @@
+import { resolveAuthProfileCredentialsJit } from '../services/authProfileRuntimeService.js';
+import { getProjectAuthProfile } from '../services/authProfileService.js';
 import { requireConsoleTenant } from '../services/tenantContextService.js';
 import { projectExecutionProfiles } from '../services/uiExecutionProjectProfiles.js';
 import { getProjectEnvironment } from '../services/environmentService.js';
@@ -252,6 +254,26 @@ export async function uiExecutions(req, env, params, injected = {}) {
       if (!matching(published)) throw executionError(published ? 'EVIDENCE_CONFLICT' : 'STALE_CLAIM', 409);
     }
     return json({ evidenceId, sha256: hash, byteLength: bytes.length, contentType: type });
+  }
+  if (action === 'browser-auth') {
+    if (params.surface !== 'automation' || req.method !== 'POST') throw executionError('ROUTE_NOT_FOUND', 404);
+    const input = object(await readJson(req, 1024), ['claimToken']);
+    await requireClaim(repo, scope, batchId, itemId, input.claimToken, deps.now());
+    if (batch.cancel_requested) throw executionError('CANCELLED', 409);
+    const snapshot = await getJson(env, batch.snapshot_key, batch.snapshot_hash);
+    if (!sameScope(snapshot.scope, scope)) throw executionError('SNAPSHOT_MISMATCH', 503);
+    const auth = snapshot.profile?.browserAuth;
+    if (snapshot.profile?.preparationMode !== 'BROWSER_AUTH' || !auth?.authProfileId)
+      throw executionError('BROWSER_AUTH_NOT_CONFIGURED', 409);
+    const profile = await (deps.browserProfile ?? getProjectAuthProfile)(env, scope.organizationId, scope.projectId, auth.authProfileId);
+    if (profile.type !== 'basic' || !profile.config?.browserLogin || canonical(profile.config.browserLogin) !== canonical(auth.config))
+      throw executionError('BROWSER_AUTH_PROFILE_CHANGED', 409);
+    const resolved = await (deps.resolveBrowserCredentials ?? resolveAuthProfileCredentialsJit)(env, ...scopeValues(scope), auth.authProfileId);
+    if (resolved.type !== 'basic' || !resolved.credentials?.username || !resolved.credentials?.password)
+      throw executionError('BROWSER_AUTH_CREDENTIALS_UNAVAILABLE', 409);
+    await requireClaim(repo, scope, batchId, itemId, input.claimToken, deps.now());
+    if ((await repo.batch(scope, batchId)).cancel_requested) throw executionError('CANCELLED', 409);
+    return json({ username: resolved.credentials.username, password: resolved.credentials.password });
   }
   const input = object(await readJson(req, action === 'result' ? RESULT_MAX_BYTES : 1024), action === 'result' ? ['claimToken', 'result'] : ['claimToken']);
   const { item, tokenHash } = await requireClaim(repo, scope, batchId, itemId, input.claimToken, deps.now(), { completed: action === 'result' });

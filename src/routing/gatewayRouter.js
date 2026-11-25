@@ -48,7 +48,7 @@ export function resolveGatewayRoute(method, pathname) {
 
   // UI-EXEC-1: Console and CI share one control plane; browser worker actions
   // are available only on the machine surface, with scoped bearer authority.
-  const uiExecution = normalizedPath.match(/^\/v1\/(console|automation)\/projects\/([^/]+)\/environments\/([^/]+)\/ui-executions\/(profiles|inventory|batches)(?:\/([^/]+)(?:\/(cancel|claim|report|items)(?:\/([^/]+)\/(heartbeat|source|artifacts|result|evidence)(?:\/([^/]+))?)?)?)?$/);
+  const uiExecution = normalizedPath.match(/^\/v1\/(console|automation)\/projects\/([^/]+)\/environments\/([^/]+)\/ui-executions\/(profiles|inventory|batches)(?:\/([^/]+)(?:\/(cancel|claim|report|items)(?:\/([^/]+)\/(heartbeat|source|artifacts|result|evidence|browser-auth)(?:\/([^/]+))?)?)?)?$/);
   if (uiExecution) {
     const [, surface, project, environment, resource, batchId, branch, itemId, itemAction, assetId] = uiExecution;
     const action = branch === 'items' ? itemAction : branch;
@@ -60,7 +60,7 @@ export function resolveGatewayRoute(method, pathname) {
       (resource === 'batches' && ((!branch && !hasItem) || (batchId && action === 'report') || (hasItem && action === 'evidence' && validAsset))));
     const validPost = normalizedMethod === 'POST' && resource === 'batches' && (
       (!batchId && !branch) || (batchId && action === 'cancel' && !hasItem) ||
-      (surface === 'automation' && ((batchId && action === 'claim' && !hasItem) || (hasItem && ['heartbeat', 'source', 'artifacts', 'result', 'evidence'].includes(action) && validAsset))));
+      (surface === 'automation' && ((batchId && action === 'claim' && !hasItem) || (hasItem && ['heartbeat', 'source', 'artifacts', 'result', 'evidence', 'browser-auth'].includes(action) && validAsset))));
     if (validGet || validPost) return { name: 'uiExecutions', params: { surface, projectId: decodeURIComponent(project), environmentId: decodeURIComponent(environment),
       resource, batchId: batchId ? decodeURIComponent(batchId) : null, action: action || null,
       itemId: itemId ? decodeURIComponent(itemId) : null,

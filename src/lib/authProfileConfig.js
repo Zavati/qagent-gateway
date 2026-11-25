@@ -450,11 +450,29 @@ function normalizeLoginHttpResultConfig(baseConfig, rawConfig) {
   };
 }
 
+/** Browser form login reuses BASIC Vault credentials and avoids altering D1 CHECK constraints. */
+export function normalizeBrowserLoginConfig(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw authConfigError('browserLogin inválido.', 'INVALID_UI_BROWSER_LOGIN');
+  const allowed = ['loginPath', 'usernameSelector', 'passwordSelector', 'submitSelector', 'successSelector'];
+  if (Object.keys(value).some(k => !allowed.includes(k))) throw authConfigError('Campo inesperado em browserLogin.', 'INVALID_UI_BROWSER_LOGIN');
+  const loginPath = normalizeRelativeApiPath(value.loginPath, 'browserLogin.loginPath');
+  const selectors = {};
+  for (const name of allowed.slice(1)) {
+    const v = cleanConfigText(value[name], 200);
+    // CSS selectors are declarative. No XPath, JS or pseudo-elements allowed.
+    if (!v || /[\r\n\0]|javascript:|url\s*\(|::/i.test(v)) throw authConfigError('Seletor de login UI inválido.', 'INVALID_UI_BROWSER_SELECTOR');
+    selectors[name] = v;
+  }
+  if (selectors.usernameSelector === selectors.passwordSelector) throw authConfigError('Campos de usuário e senha não podem ser iguais.', 'INVALID_UI_BROWSER_SELECTOR');
+  return { loginPath, ...selectors };
+}
+
 export function normalizeAuthProfileConfig(typeValue, input = {}) {
   const type = normalizeAuthProfileType(typeValue);
   const config = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
 
-  if (type === 'none' || type === 'basic') return {};
+  if (type === 'none') return {};
+  if (type === 'basic') return config.browserLogin ? { browserLogin: normalizeBrowserLoginConfig(config.browserLogin) } : {};
 
   if (type === 'api_key') {
     const placement = cleanConfigText(config.placement || 'header', 16).toLowerCase();

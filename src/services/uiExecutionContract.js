@@ -39,7 +39,7 @@ function jsonConfig(env, key) {
 export function executionProfiles(env, scope) {
   const list = jsonConfig(env, 'UI_EXECUTION_PROFILES_JSON'), ids = new Set(), output = [];
   for (const raw of list) {
-    object(raw, ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'originMap', 'preparationKey', 'preparationMode', 'viewport', 'deviceScaleFactor', 'locale', 'timezoneId', 'stepTimeoutMs', 'modeTimeoutMs'],
+    object(raw, ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'originMap', 'preparationKey', 'preparationMode', 'viewport', 'deviceScaleFactor', 'locale', 'timezoneId', 'stepTimeoutMs', 'modeTimeoutMs', 'browserAuth'],
       ['profileId', 'name', 'scope', 'targetBaseUrl', 'allowedOrigins', 'viewport']);
     object(raw.scope, ['organizationId', 'projectId', 'environmentId']);
     scopeValues(raw.scope).forEach(executionId);
@@ -57,9 +57,16 @@ export function executionProfiles(env, scope) {
       httpUrl(from, true); if (!allowedOrigins.includes(httpUrl(to, true).origin)) throw executionError('PROFILE_ORIGIN_INVALID', 503);
     }
     const preparationMode = raw.preparationMode ?? 'REQUIRE_ADAPTER';
-    if (!['REQUIRE_ADAPTER', 'UNAUTHENTICATED'].includes(preparationMode)) throw executionError('PROFILE_PREPARATION_INVALID', 503);
+    if (!['REQUIRE_ADAPTER', 'UNAUTHENTICATED', 'BROWSER_AUTH'].includes(preparationMode)) throw executionError('PROFILE_PREPARATION_INVALID', 503);
     const preparationKey = raw.preparationKey ?? (preparationMode === 'UNAUTHENTICATED' ? 'unprepared' : null);
     executionId(preparationKey);
+    if (preparationMode === 'BROWSER_AUTH') {
+      object(raw.browserAuth, ['authProfileId', 'config']);
+      executionId(raw.browserAuth.authProfileId);
+      object(raw.browserAuth.config, ['loginPath','usernameSelector','passwordSelector','submitSelector','successSelector']);
+      for (const key of ['loginPath','usernameSelector','passwordSelector','submitSelector','successSelector']) textValue(raw.browserAuth.config[key], 200);
+    } else if (raw.browserAuth !== undefined) throw executionError('PROFILE_INVALID', 503);
+
     object(raw.viewport, ['width', 'height']);
     const width = number(raw.viewport.width, 240, 7680), height = number(raw.viewport.height, 240, 7680);
     if (!Number.isInteger(width) || !Number.isInteger(height)) throw executionError('PROFILE_INVALID', 503);

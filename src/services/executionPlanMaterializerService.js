@@ -397,6 +397,11 @@ async function resolveRuntimeReferences(runtimeConfig, selectedScenarios, {
       });
     }
     const profile = publicProfiles.find((item) => item.authProfileId === authProfileRef || item.profileKey === authProfileRef);
+    // BASIC credentials associated with a browserLogin profile must never be
+    // selected for REST Basic authorization; browser form login is UI-only.
+    if (profile?.config?.browserLogin) {
+      runError('Auth Profile de navegador não é elegível como Basic Auth para APIs.', 'RUN_AUTH_BROWSER_PROFILE_UI_ONLY', 409, { scenarioId: scenario?.scenarioId || null, authProfileRef });
+    }
     if (!profile || profile.credentialsConfigured !== true) {
       runError('Auth Profile não está configurado para o Environment selecionado.', 'RUN_AUTH_PROFILE_ENVIRONMENT_NOT_CONFIGURED', 409, {
         scenarioId: scenario?.scenarioId || null,

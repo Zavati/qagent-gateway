@@ -24,6 +24,14 @@ export function profileFromRuntime(runtime, scope) {
   // Scope, URL, API origins and public auth readiness come from the existing
   // environment configuration. Authentication credentials are NEVER serialized.
   // Browser auth is deliberately pending rather than misusing API bearer tokens.
+  const browserCandidates = Object.values(runtime.authProfiles ?? {}).filter(p =>
+    p.type === 'basic' && p.config?.browserLogin);
+  // Ambiguous login is a configuration error; do not silently disable auth.
+  if (browserCandidates.length > 1) throw executionError('BROWSER_AUTH_AMBIGUOUS', 409);
+  const browserAuth = browserCandidates.length === 1 ? {
+    authProfileId: browserCandidates[0].authProfileId,
+    config: browserCandidates[0].config.browserLogin,
+  } : null;
   return [{
     profileId: stableId(scope.environmentId),
     name: `${environment.name || environment.slug || 'Environment'} · Chromium`,
@@ -31,8 +39,9 @@ export function profileFromRuntime(runtime, scope) {
     targetBaseUrl: target.href,
     allowedOrigins: [...new Set(origins)],
     originMap: {},
-    preparationMode: 'UNAUTHENTICATED',
-    preparationKey: 'unprepared',
+    preparationMode: browserAuth ? 'BROWSER_AUTH' : 'UNAUTHENTICATED',
+    preparationKey: browserAuth ? 'browser-login' : 'unprepared',
+    ...(browserAuth ? { browserAuth } : {}),
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,
     locale: 'pt-BR',
